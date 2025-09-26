@@ -3,7 +3,10 @@ name: Train weekly
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 10 * * 2" # Tuesdays 10:00 UTC
+    - cron: "0 10 * * 2"  # Tuesdays 10:00 UTC
+
+permissions:
+  contents: write   # <-- important so the job can commit artifacts back
 
 jobs:
   train:
@@ -13,7 +16,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: npm ci
+      - name: Install deps
+        run: npm install --no-audit --no-fund
       - name: Train current season & week
         env:
           SEASON: 2025

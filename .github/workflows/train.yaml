@@ -3,7 +3,7 @@ name: Train weekly
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 10 * * 2"   # Tuesdays 10:00 UTC (after NFL week ends)
+    - cron: "0 10 * * 2"   # Tuesdays 10:00 UTC
 
 permissions:
   contents: write
@@ -21,15 +21,15 @@ jobs:
       - name: Install deps
         run: npm install --no-audit --no-fund
 
-      # Auto-detect week; floor to WEEK>=2
       - name: Resolve NFL week (auto)
         id: resolve
         env:
-          # You can omit SEASON to auto-infer from today's date
+          # Optional: pin season; omit to auto-infer
           SEASON: 2025
         run: |
-          node scripts/resolveWeek.js >> "$GITHUB_OUTPUT"
-          echo "Resolved WEEK=${{ steps.resolve.outputs.week }}"
+          WEEK=$(node scripts/resolveWeek.js)
+          echo "Resolved WEEK=${WEEK}"
+          echo "week=${WEEK}" >> "$GITHUB_OUTPUT"
 
       - name: Train for season/week
         env:

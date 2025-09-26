@@ -1,12 +1,13 @@
 // trainer/dataSources.js
 // Downloads nflverse schedules and team weekly stats (CSV or CSV.GZ) for a given season.
+// Uses the asset pattern: stats_team_week_<season>.csv[.gz]
 
 import axios from "axios";
 import Papa from "papaparse";
 import { gunzipSync } from "zlib";
 
 const NFLVERSE_RELEASE = "https://github.com/nflverse/nflverse-data/releases/download";
-const STATS_TEAM_TAG = "stats_team"; // team weekly stats bundle
+const STATS_TEAM_TAG = "stats_team"; // team-week summary release
 const SCHEDULES_URL = "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv";
 
 /** Parse CSV text -> array of objects */
@@ -15,13 +16,13 @@ function parseCSV(text) {
   return parsed.data;
 }
 
-/** Fetch a text file */
+/** Fetch text */
 async function fetchText(url) {
   const { data } = await axios.get(url, { responseType: "text" });
   return data;
 }
 
-/** Fetch a CSV or CSV.GZ and return rows */
+/** Fetch CSV or CSV.GZ -> rows[] */
 async function fetchCSVMaybeGz(url) {
   if (url.endsWith(".csv")) {
     const text = await fetchText(url);
@@ -29,15 +30,12 @@ async function fetchCSVMaybeGz(url) {
   }
   if (url.endsWith(".csv.gz")) {
     const { data, headers } = await axios.get(url, { responseType: "arraybuffer" });
-    // Some CDNs auto-decompress; detect by header
     let buf = Buffer.from(data);
     const enc = (headers["content-encoding"] || "").toLowerCase();
     if (enc.includes("gzip")) {
-      // already compressed; gunzip
       buf = gunzipSync(buf);
     } else {
-      // may still be gzipped file content
-      try { buf = gunzipSync(buf); } catch (_) { /* noop if already plain */ }
+      try { buf = gunzipSync(buf); } catch (_) { /* already plain */ }
     }
     const text = buf.toString("utf8");
     return parseCSV(text);
@@ -45,21 +43,19 @@ async function fetchCSVMaybeGz(url) {
   throw new Error(`Unsupported extension for ${url}`);
 }
 
-/** Load schedules (all seasons) then filter by caller */
+/** Load schedules (all seasons) */
 export async function loadSchedules() {
-  // Contains: season, week, season_type (REG/POST), game_id, home_team, away_team, etc.
   const text = await fetchText(SCHEDULES_URL);
   return parseCSV(text);
 }
 
-/** Load team weekly stats for a season from nflverse-data release */
+/** Load team-week stats for a season */
 export async function loadTeamWeekly(season) {
-  // Try CSV, then CSV.GZ (common for recent seasons)
+  // Correct filename pattern here:
   const candidates = [
-    `${NFLVERSE_RELEASE}/stats_team/team_stats_week_${season}.csv`,
-    `${NFLVERSE_RELEASE}/stats_team/team_stats_week_${season}.csv.gz`,
+    `${NFLVERSE_RELEASE}/${STATS_TEAM_TAG}/stats_team_week_${season}.csv`,
+    `${NFLVERSE_RELEASE}/${STATS_TEAM_TAG}/stats_team_week_${season}.csv.gz`,
   ];
-
   let lastErr = null;
   for (const url of candidates) {
     try {

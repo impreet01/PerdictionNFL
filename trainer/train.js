@@ -1,5 +1,5 @@
 // trainer/train.js
-// Train Logistic + Decision Tree + Hybrid; emit per-game JSON + English.
+// Train Logistic + Decision Tree + Hybrid; include "similar-opponent same-venue" features.
 
 import { loadSchedules, loadTeamWeekly } from "./dataSources.js";
 import { buildFeatures } from "./featureBuild.js";
@@ -14,10 +14,13 @@ mkdirSync(ART_DIR, { recursive: true });
 const TARGET_SEASON = Number(process.env.SEASON || new Date().getFullYear());
 const TARGET_WEEK = Number(process.env.WEEK || 6);
 
+// Base S2D features (paper-faithful) + NEW similarity features
 const FEATS = [
   "off_1st_down_s2d","off_total_yds_s2d","off_rush_yds_s2d","off_pass_yds_s2d","off_turnovers_s2d",
   "def_1st_down_s2d","def_total_yds_s2d","def_rush_yds_s2d","def_pass_yds_s2d","def_turnovers_s2d",
-  "wins_s2d","losses_s2d","home"
+  "wins_s2d","losses_s2d","home",
+  // NEW:
+  "sim_winrate_same_loc_s2d","sim_pointdiff_same_loc_s2d","sim_count_same_loc_s2d"
 ];
 
 function Xy(rows) {
@@ -25,27 +28,35 @@ function Xy(rows) {
   const y = rows.map(r => Number(r.win));
   return { X, y };
 }
+
 function splitTrainTest(all, season, week) {
   const train = all.filter(r => r.season === season && r.week < week);
   const test  = all.filter(r => r.season === season && r.week === week);
   return { train, test };
 }
-function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
-function dot(a, b) { let s=0; for (let i=0;i<a.length;i++) s += (a[i]||0)*(b[i]||0); return s; }
-function toArrayMaybe(v) {
-  // Normalize Matrix/Array-like to plain array
-  if (!v) return [];
-  if (Array.isArray(v)) return v.map(Number);
-  if (typeof v.to1DArray === "function") return v.to1DArray().map(Number);
-  if (typeof v.toJSON === "function") return v.toJSON().map(Number);
-  return Array.from(v).map(Number);
+
+// logistic probability helpers
+function sigmoid(z){ return 1/(1+Math.exp(-z)); }
+function dot(a,b){ let s=0; for (let i=0;i<a.length;i++) s += (a[i]||0)*(b[i]||0); return s; }
+function toArray1D(theta){
+  if (!theta) return [];
+  if (Array.isArray(theta)) return theta.map(Number);
+  if (typeof theta.to1DArray === "function") return theta.to1DArray().map(Number);
+  if (typeof theta.toJSON === "function") return theta.toJSON().map(Number);
+  return Array.from(theta).map(Number);
 }
-function probsFromWeights(weights, X) {
-  // weights can be Matrix or array
-  const w = Array.isArray(weights) ? weights : (typeof weights.to1DArray === "function" ? weights.to1DArray() : toArrayMaybe(weights));
+function vectorizeProba(theta, X){
+  const w = toArray1D(theta);
   return X.map(x => sigmoid(dot(w, x)));
 }
-function logLoss(y, p){ let s=0,eps=1e-12; for(let i=0;i<y.length;i++){s+=-(y[i]*Math.log(p[i]+eps)+(1-y[i])*Math.log(1-p[i]+eps));} return s/y.length; }
+
+function logLoss(y, p){
+  let s=0,eps=1e-12;
+  for(let i=0;i<y.length;i++){
+    s += -(y[i]*Math.log(p[i]+eps) + (1-y[i])*Math.log(1-p[i]+eps));
+  }
+  return s/y.length;
+}
 function chooseHybridWeight(y, pL, pT){
   let bestW=0.6, bestLL=1e9;
   for(let w=0; w<=1.0001; w+=0.05){
@@ -59,6 +70,7 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
 
 (async function main(){
   console.log(`Training season ${TARGET_SEASON}, week ${TARGET_WEEK}`);
+
   const schedules = await loadSchedules();
   const teamWeekly = await loadTeamWeekly(TARGET_SEASON);
   const featRows = buildFeatures({ teamWeekly, schedules, season: TARGET_SEASON });
@@ -66,48 +78,31 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
   const { train, test } = splitTrainTest(featRows, TARGET_SEASON, TARGET_WEEK);
   if (!train.length || !test.length) throw new Error("No train or test rows—adjust SEASON/WEEK.");
 
-  // Data matrices for logistic regression (ml-logistic-regression v2 expects Matrix inputs)
+  // sanity log
+  const pos = train.filter(r => r.win === 1).length;
+  const neg = train.length - pos;
+  console.log(`Train size: ${train.length} (wins=${pos}, losses=${neg})`);
+
+  // Logistic on Matrix; compute probabilities from weights
   const { X: XL_raw, y: yL_raw } = Xy(train);
   const XL = new Matrix(XL_raw);
   const yL = Matrix.columnVector(yL_raw);
 
-  // --- Logistic ---
   const logit = new LogisticRegression({ numSteps: 2500, learningRate: 5e-3 });
   logit.train(XL, yL);
 
-  // Get logistic probabilities robustly (prefer model.predict if available)
-  const { X: Xtest_raw, y: ytest } = Xy(test);
-  const XtestM = new Matrix(Xtest_raw);
+  const { X: Xtest_raw } = Xy(test);
+  const pL_train = vectorizeProba(logit.theta || logit.weights, XL_raw);
+  const pL_test  = vectorizeProba(logit.theta || logit.weights, Xtest_raw);
 
-  let pL_test;
-  if (typeof logit.predict === "function") {
-    pL_test = toArrayMaybe(logit.predict(XtestM));
-  } else if (logit.theta || logit.weights) {
-    pL_test = probsFromWeights(logit.theta || logit.weights, Xtest_raw);
-  } else {
-    throw new Error("Cannot get logistic probabilities: no predict() or weights found.");
-  }
-
-  // Also get logistic probabilities on train (for hybrid weight search)
-  let pL_train;
-  if (typeof logit.predict === "function") {
-    pL_train = toArrayMaybe(logit.predict(XL));
-  } else if (logit.theta || logit.weights) {
-    pL_train = probsFromWeights(logit.theta || logit.weights, XL_raw);
-  } else {
-    throw new Error("Cannot get logistic train probabilities: no predict() or weights found.");
-  }
-
-  // --- Decision Tree (CART) ---
+  // Decision Tree (CART)
   const cart = new CART({ maxDepth: 4, minNumSamples: 30, gainFunction: "gini" });
-  const { X: XT_raw, y: yT } = Xy(train);
-  cart.train(XT_raw, yT);
-
+  cart.train(XL_raw, yL_raw);
   const getProb1 = (pred) => Array.isArray(pred) ? pred[1] : Number(pred);
-  const pT_test = cart.predict(Xtest_raw).map(getProb1);
-  const pT_train = cart.predict(XT_raw).map(getProb1);
+  const pT_train = cart.predict(XL_raw).map(getProb1);
+  const pT_test  = cart.predict(Xtest_raw).map(getProb1);
 
-  // --- Hybrid weight chosen on train
+  // Hybrid weight on train
   const wHybrid = chooseHybridWeight(yL_raw, pL_train, pT_train);
   const pH_test = pL_test.map((p,i)=> wHybrid*p + (1-wHybrid)*pT_test[i]);
 
@@ -134,11 +129,13 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
     };
   });
 
-  // Write artifacts
+  // write artifacts
   writeFileSync(`${ART_DIR}/predictions_${TARGET_SEASON}_W${String(TARGET_WEEK).padStart(2,"0")}.json`, JSON.stringify(results, null, 2));
   writeFileSync(`${ART_DIR}/model_${TARGET_SEASON}_W${String(TARGET_WEEK).padStart(2,"0")}.json`, JSON.stringify({
-    season: TARGET_SEASON, week: TARGET_WEEK, features: FEATS,
-    logistic: (logit.theta && toArrayMaybe(logit.theta)) || (logit.weights && toArrayMaybe(logit.weights)) || null,
+    season: TARGET_SEASON,
+    week: TARGET_WEEK,
+    features: FEATS,
+    logistic: (logit.theta && toArray1D(logit.theta)) || (logit.weights && toArray1D(logit.weights)) || null,
     hybrid_weight: wHybrid
   }, null, 2));
 
@@ -152,10 +149,20 @@ function explain(r, means, probs){
     const dir = d>=0 ? "higher" : "lower"; const good = betterLow ? d<0 : d>0;
     lines.push(`${name} is ${dir} than league average by ${Math.abs(d).toFixed(1)} (${good ? "good" : "needs attention"}).`);
   };
+  // paper-ish drivers
   delta("def_turnovers_s2d", false, "Defensive takeaways");
   delta("off_turnovers_s2d", true,  "Offensive giveaways");
   delta("off_total_yds_s2d", false, "Offensive total yards");
   delta("def_total_yds_s2d", true,  "Yards allowed");
   if (r.home) lines.push("Home-field advantage applies.");
+
+  // NEW: similar-opponent summary (same venue)
+  if (Number(r.sim_count_same_loc_s2d) > 0) {
+    const wr = Number(r.sim_winrate_same_loc_s2d) * 100;
+    const pd = Number(r.sim_pointdiff_same_loc_s2d);
+    const cnt = Number(r.sim_count_same_loc_s2d);
+    lines.push(`History vs similar opponents (same venue): win rate ${wr.toFixed(0)}% over ${cnt} games, avg point diff ${pd.toFixed(1)}.`);
+  }
+
   return `Logistic: ${(probs.logit*100).toFixed(1)}%. Tree: ${(probs.tree*100).toFixed(1)}%. Hybrid: ${(probs.hybrid*100).toFixed(1)}%. ` + lines.join(" ");
 }

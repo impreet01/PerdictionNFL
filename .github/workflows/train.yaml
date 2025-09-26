@@ -3,31 +3,45 @@ name: Train weekly
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 10 * * 2"  # Tuesdays 10:00 UTC
+    - cron: "0 10 * * 2"   # Tuesdays 10:00 UTC (after NFL week ends)
 
 permissions:
-  contents: write   # <-- important so the job can commit artifacts back
+  contents: write
 
 jobs:
   train:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+
       - name: Install deps
         run: npm install --no-audit --no-fund
-      - name: Train current season & week
+
+      # Auto-detect week for the target season
+      - name: Resolve NFL week (auto)
+        id: resolve
+        env:
+          # Pin the season here, or omit to let the script infer from today's date
+          SEASON: 2025
+        run: |
+          node scripts/resolveWeek.js >> "$GITHUB_OUTPUT"
+          echo "Resolved WEEK=${{ steps.resolve.outputs.week }}"
+
+      - name: Train for season/week
         env:
           SEASON: 2025
-          WEEK: 3
+          WEEK: ${{ steps.resolve.outputs.week }}
         run: npm run train
+
       - name: Commit artifacts
         run: |
           git config user.name "gh-actions"
           git config user.email "actions@github.com"
           mkdir -p artifacts
           git add artifacts/*.json || true
-          git commit -m "weekly model + predictions" || echo "no changes"
+          git commit -m "weekly model + predictions (S=${{ env.SEASON }}, W=${{ env.WEEK }})" || echo "no changes"
           git push

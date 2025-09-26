@@ -1,14 +1,12 @@
 // scripts/resolveWeek.js
-// Decide which NFL regular-season week to PREDICT next, based on nflverse schedules.
-// Output: a GitHub Action output named `week=<N>`
+// Decide which NFL regular-season week to PREDICT next from nflverse schedules.
+// Always return at least WEEK=2 (Week 1 has no prior history for S2D features).
 //
-// Logic: for the target season, find the FIRST REG week that is NOT fully scored
-// (i.e., any game has missing scores). That week is "upcoming" -> predict it.
-// If all weeks are scored, fallback to the max REG week.
+// Outputs a GitHub Actions output line: week=<N>
 //
-// You can pin season via env SEASON; otherwise we infer from today:
-//  - If month <= 2 (Jan/Feb), season = currentYear - 1 (postseason spillover)
-//  - Else season = currentYear
+// SEASON inference:
+// - If env SEASON is set, use it.
+// - Otherwise: if month <= Feb, use previous year; else current year.
 
 import axios from "axios";
 import Papa from "papaparse";
@@ -17,9 +15,9 @@ const SCHEDULES_URL = "https://raw.githubusercontent.com/nflverse/nfldata/master
 
 function inferSeason() {
   const now = new Date();
-  const year = now.getUTCFullYear();
-  const m = now.getUTCMonth() + 1; // 1..12
-  return m <= 2 ? year - 1 : year; // Jan/Feb -> previous season
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth() + 1;
+  return m <= 2 ? y - 1 : y;
 }
 
 function parseCSV(text) {
@@ -33,10 +31,8 @@ function toInt(x) {
 }
 
 function hasScore(row) {
-  // Accept several possible column names found in nfldata:
-  // home_score/away_score OR result columns. Treat missing/blank as "no score yet".
-  const hs = row.home_score ?? row.home_points ?? row.home_pts ?? row.home ?? null;
-  const as = row.away_score ?? row.away_points ?? row.away_pts ?? row.away ?? null;
+  const hs = row.home_score ?? row.home_points ?? row.home_pts ?? null;
+  const as = row.away_score ?? row.away_points ?? row.away_pts ?? null;
   const h = toInt(hs);
   const a = toInt(as);
   return Number.isFinite(h) && Number.isFinite(a);
@@ -49,29 +45,24 @@ try {
     r => Number(r.season) === season && String(r.season_type).toUpperCase() === "REG"
   );
 
-  // Weeks present in data
   const weeks = [...new Set(rows.map(r => Number(r.week)).filter(w => Number.isFinite(w)))].sort((a,b)=>a-b);
   if (weeks.length === 0) {
-    // Default to week 1 if schedules aren’t there yet for some reason
-    process.stdout.write(`week=1\n`);
+    process.stdout.write(`week=2\n`); // default floor
     process.exit(0);
   }
 
-  // For each week in order, if ANY game is missing a score -> that's the next (upcoming) week to predict
   let chosen = null;
   for (const w of weeks) {
     const games = rows.filter(r => Number(r.week) === w);
     const allScored = games.every(hasScore);
-    if (!allScored) { chosen = w; break; }
+    if (!allScored) { chosen = w; break; } // upcoming/in-progress week
   }
-  if (chosen == null) {
-    // All weeks scored -> pick the last (useful for backfills)
-    chosen = weeks[weeks.length - 1];
-  }
+  if (chosen == null) chosen = weeks[weeks.length - 1]; // all finished -> last week
 
-  // Emit GitHub Actions output
+  if (chosen < 2) chosen = 2; // floor to week 2 (Week 1 has no S2D)
+
   process.stdout.write(`week=${chosen}\n`);
-} catch (e) {
-  // If anything fails, default to week 1 so the workflow doesn't crash
-  process.stdout.write(`week=1\n`);
+} catch (_e) {
+  // Fail-safe: don't break the workflow; choose a sane default
+  process.stdout.write(`week=2\n`);
 }

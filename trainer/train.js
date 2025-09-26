@@ -1,10 +1,6 @@
 // trainer/train.js
-// Train Logistic + Decision Tree + Hybrid with:
-// - Paper S2D features
-// - Similar-opponent same-venue features
-// - Opponent-adjusted differentials
-// - Pre-game Elo and rest-day features
-// Outputs JSON + natural-language summaries.
+// Train Logistic + Decision Tree + Hybrid with advanced features.
+// Gracefully no-op if there's not enough data (e.g., Week 1).
 
 import { loadSchedules, loadTeamWeekly } from "./dataSources.js";
 import { buildFeatures } from "./featureBuild.js";
@@ -19,18 +15,14 @@ mkdirSync(ART_DIR, { recursive: true });
 const TARGET_SEASON = Number(process.env.SEASON || new Date().getFullYear());
 const TARGET_WEEK = Number(process.env.WEEK || 6);
 
-// Base + similarity + differentials + Elo + rest
+// Feature list (same as previous enhanced version)
 const FEATS = [
-  // Paper S2D
   "off_1st_down_s2d","off_total_yds_s2d","off_rush_yds_s2d","off_pass_yds_s2d","off_turnovers_s2d",
   "def_1st_down_s2d","def_total_yds_s2d","def_rush_yds_s2d","def_pass_yds_s2d","def_turnovers_s2d",
   "wins_s2d","losses_s2d","home",
-  // Similar-opponent same venue
   "sim_winrate_same_loc_s2d","sim_pointdiff_same_loc_s2d","sim_count_same_loc_s2d",
-  // Opponent-adjusted differentials (team S2D minus opponent S2D)
   "off_total_yds_s2d_minus_opp","def_total_yds_s2d_minus_opp",
   "off_turnovers_s2d_minus_opp","def_turnovers_s2d_minus_opp",
-  // Elo + Rest
   "elo_pre","elo_diff","rest_days","rest_diff"
 ];
 
@@ -45,7 +37,7 @@ function splitTrainTest(all, season, week) {
   return { train, test };
 }
 
-// logistic probability helpers
+// logistic helpers
 function sigmoid(z){ return 1/(1+Math.exp(-z)); }
 function dot(a,b){ let s=0; for (let i=0;i<a.length;i++) s += (a[i]||0)*(b[i]||0); return s; }
 function toArray1D(theta){
@@ -59,7 +51,6 @@ function vectorizeProba(theta, X){
   const w = toArray1D(theta);
   return X.map(x => sigmoid(dot(w, x)));
 }
-
 function logLoss(y, p){
   let s=0,eps=1e-12;
   for(let i=0;i<y.length;i++){
@@ -86,7 +77,11 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
   const featRows = buildFeatures({ teamWeekly, schedules, season: TARGET_SEASON });
 
   const { train, test } = splitTrainTest(featRows, TARGET_SEASON, TARGET_WEEK);
-  if (!train.length || !test.length) throw new Error("No train or test rows—adjust SEASON/WEEK.");
+
+  if (!train.length || !test.length) {
+    console.log("No train/test rows (likely Week 1 or offseason). Skipping training gracefully.");
+    process.exit(0); // succeed without artifacts
+  }
 
   const pos = train.filter(r => r.win === 1).length;
   const neg = train.length - pos;
@@ -96,7 +91,6 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
   const { X: XL_raw, y: yL_raw } = Xy(train);
   const XL = new Matrix(XL_raw);
   const yL = Matrix.columnVector(yL_raw);
-
   const logit = new LogisticRegression({ numSteps: 2500, learningRate: 5e-3 });
   logit.train(XL, yL);
 
@@ -153,14 +147,12 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
 function explain(r, means, probs){
   const lines = [];
 
-  // Classic drivers
   addDelta(lines, r, means, "def_turnovers_s2d", false, "Defensive takeaways");
   addDelta(lines, r, means, "off_turnovers_s2d", true,  "Offensive giveaways");
   addDelta(lines, r, means, "off_total_yds_s2d", false, "Offensive total yards");
   addDelta(lines, r, means, "def_total_yds_s2d", true,  "Yards allowed");
   if (r.home) lines.push("Home-field advantage applies.");
 
-  // Similar-opponent same-venue
   if (Number(r.sim_count_same_loc_s2d) > 0) {
     const wr = Number(r.sim_winrate_same_loc_s2d) * 100;
     const pd = Number(r.sim_pointdiff_same_loc_s2d);
@@ -168,13 +160,11 @@ function explain(r, means, probs){
     lines.push(`History vs similar opponents (same venue): win rate ${wr.toFixed(0)}% over ${cnt} games, avg point diff ${pd.toFixed(1)}.`);
   }
 
-  // Opponent-adjusted differentials
   addDelta(lines, r, means, "off_total_yds_s2d_minus_opp", false, "Offense vs opp (S2D differential)");
   addDelta(lines, r, means, "def_total_yds_s2d_minus_opp", true,  "Defense vs opp (S2D differential)");
   addDelta(lines, r, means, "off_turnovers_s2d_minus_opp", true,  "Giveaways vs opp (S2D differential)");
   addDelta(lines, r, means, "def_turnovers_s2d_minus_opp", false, "Takeaways vs opp (S2D differential)");
 
-  // Elo & Rest
   const eloDiff = Number(r.elo_diff);
   if (Number.isFinite(eloDiff) && Math.abs(eloDiff) >= 25) {
     lines.push(`Elo edge: ${eloDiff >= 0 ? "favorable" : "unfavorable"} by ${Math.abs(eloDiff).toFixed(0)} pts.`);

@@ -21,11 +21,11 @@ jobs:
       - name: Install deps
         run: npm install --no-audit --no-fund
 
-      # Auto-detect week for the target season
+      # Auto-detect week; floor to WEEK>=2
       - name: Resolve NFL week (auto)
         id: resolve
         env:
-          # Pin the season here, or omit to let the script infer from today's date
+          # You can omit SEASON to auto-infer from today's date
           SEASON: 2025
         run: |
           node scripts/resolveWeek.js >> "$GITHUB_OUTPUT"

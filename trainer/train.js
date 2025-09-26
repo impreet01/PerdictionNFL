@@ -1,7 +1,4 @@
 // trainer/train.js
-// Train Logistic + Decision Tree + Hybrid with advanced features.
-// Gracefully no-op if there's not enough data (e.g., Week 1).
-
 import { loadSchedules, loadTeamWeekly } from "./dataSources.js";
 import { buildFeatures } from "./featureBuild.js";
 import { writeFileSync, mkdirSync } from "fs";
@@ -15,7 +12,6 @@ mkdirSync(ART_DIR, { recursive: true });
 const TARGET_SEASON = Number(process.env.SEASON || new Date().getFullYear());
 const TARGET_WEEK = Number(process.env.WEEK || 6);
 
-// Feature list (same as previous enhanced version)
 const FEATS = [
   "off_1st_down_s2d","off_total_yds_s2d","off_rush_yds_s2d","off_pass_yds_s2d","off_turnovers_s2d",
   "def_1st_down_s2d","def_total_yds_s2d","def_rush_yds_s2d","def_pass_yds_s2d","def_turnovers_s2d",
@@ -36,8 +32,6 @@ function splitTrainTest(all, season, week) {
   const test  = all.filter(r => r.season === season && r.week === week);
   return { train, test };
 }
-
-// logistic helpers
 function sigmoid(z){ return 1/(1+Math.exp(-z)); }
 function dot(a,b){ let s=0; for (let i=0;i<a.length;i++) s += (a[i]||0)*(b[i]||0); return s; }
 function toArray1D(theta){
@@ -74,20 +68,22 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
 
   const schedules = await loadSchedules();
   const teamWeekly = await loadTeamWeekly(TARGET_SEASON);
-  const featRows = buildFeatures({ teamWeekly, schedules, season: TARGET_SEASON });
+  let prevTeamWeekly = [];
+  try { prevTeamWeekly = await loadTeamWeekly(TARGET_SEASON - 1); } catch (_) {}
 
+  const featRows = buildFeatures({ teamWeekly, schedules, season: TARGET_SEASON, prevTeamWeekly });
   const { train, test } = splitTrainTest(featRows, TARGET_SEASON, TARGET_WEEK);
 
+  console.log(`DEBUG: featRows=${featRows.length}, train=${train.length}, test=${test.length}`);
   if (!train.length || !test.length) {
-    console.log("No train/test rows (likely Week 1 or offseason). Skipping training gracefully.");
-    process.exit(0); // succeed without artifacts
+    console.log("No train/test rows (calendar or data timing). Skipping gracefully.");
+    process.exit(0);
   }
 
   const pos = train.filter(r => r.win === 1).length;
   const neg = train.length - pos;
   console.log(`Train size: ${train.length} (wins=${pos}, losses=${neg})`);
 
-  // Logistic
   const { X: XL_raw, y: yL_raw } = Xy(train);
   const XL = new Matrix(XL_raw);
   const yL = Matrix.columnVector(yL_raw);
@@ -98,18 +94,15 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
   const pL_train = vectorizeProba(logit.theta || logit.weights, XL_raw);
   const pL_test  = vectorizeProba(logit.theta || logit.weights, Xtest_raw);
 
-  // Decision Tree
   const cart = new CART({ maxDepth: 4, minNumSamples: 30, gainFunction: "gini" });
   cart.train(XL_raw, yL_raw);
   const getProb1 = (pred) => Array.isArray(pred) ? pred[1] : Number(pred);
   const pT_train = cart.predict(XL_raw).map(getProb1);
   const pT_test  = cart.predict(Xtest_raw).map(getProb1);
 
-  // Hybrid
   const wHybrid = chooseHybridWeight(yL_raw, pL_train, pT_train);
   const pH_test = pL_test.map((p,i)=> wHybrid*p + (1-wHybrid)*pT_test[i]);
 
-  // Means for explanations
   const leagueMeans = {}; for (const k of FEATS) leagueMeans[k] = mean(train.map(r=> Number(r[k])));
   function mean(a){ return a.reduce((s,v)=>s+v,0)/a.length; }
 
@@ -132,8 +125,10 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
     };
   });
 
-  writeFileSync(`${ART_DIR}/predictions_${TARGET_SEASON}_W${String(TARGET_WEEK).padStart(2,"0")}.json`, JSON.stringify(results, null, 2));
-  writeFileSync(`${ART_DIR}/model_${TARGET_SEASON}_W${String(TARGET_WEEK).padStart(2,"0")}.json`, JSON.stringify({
+  const predPath = `${ART_DIR}/predictions_${TARGET_SEASON}_W${String(TARGET_WEEK).padStart(2,"0")}.json`;
+  const modelPath = `${ART_DIR}/model_${TARGET_SEASON}_W${String(TARGET_WEEK).padStart(2,"0")}.json`;
+  writeFileSync(predPath, JSON.stringify(results, null, 2));
+  writeFileSync(modelPath, JSON.stringify({
     season: TARGET_SEASON,
     week: TARGET_WEEK,
     features: FEATS,
@@ -141,42 +136,33 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
     hybrid_weight: wHybrid
   }, null, 2));
 
-  console.log("Artifacts written in /artifacts");
+  console.log(`WROTE: ${predPath}`);
+  console.log(`WROTE: ${modelPath}`);
 })().catch(e=>{ console.error(e); process.exit(1); });
 
 function explain(r, means, probs){
   const lines = [];
-
   addDelta(lines, r, means, "def_turnovers_s2d", false, "Defensive takeaways");
   addDelta(lines, r, means, "off_turnovers_s2d", true,  "Offensive giveaways");
   addDelta(lines, r, means, "off_total_yds_s2d", false, "Offensive total yards");
   addDelta(lines, r, means, "def_total_yds_s2d", true,  "Yards allowed");
   if (r.home) lines.push("Home-field advantage applies.");
-
   if (Number(r.sim_count_same_loc_s2d) > 0) {
     const wr = Number(r.sim_winrate_same_loc_s2d) * 100;
     const pd = Number(r.sim_pointdiff_same_loc_s2d);
     const cnt = Number(r.sim_count_same_loc_s2d);
     lines.push(`History vs similar opponents (same venue): win rate ${wr.toFixed(0)}% over ${cnt} games, avg point diff ${pd.toFixed(1)}.`);
   }
-
   addDelta(lines, r, means, "off_total_yds_s2d_minus_opp", false, "Offense vs opp (S2D differential)");
   addDelta(lines, r, means, "def_total_yds_s2d_minus_opp", true,  "Defense vs opp (S2D differential)");
   addDelta(lines, r, means, "off_turnovers_s2d_minus_opp", true,  "Giveaways vs opp (S2D differential)");
   addDelta(lines, r, means, "def_turnovers_s2d_minus_opp", false, "Takeaways vs opp (S2D differential)");
-
   const eloDiff = Number(r.elo_diff);
-  if (Number.isFinite(eloDiff) && Math.abs(eloDiff) >= 25) {
-    lines.push(`Elo edge: ${eloDiff >= 0 ? "favorable" : "unfavorable"} by ${Math.abs(eloDiff).toFixed(0)} pts.`);
-  }
+  if (Number.isFinite(eloDiff) && Math.abs(eloDiff) >= 25) lines.push(`Elo edge: ${eloDiff >= 0 ? "favorable" : "unfavorable"} by ${Math.abs(eloDiff).toFixed(0)} pts.`);
   const restDiff = Number(r.rest_diff);
-  if (Number.isFinite(restDiff) && Math.abs(restDiff) >= 2) {
-    lines.push(`Rest edge: ${restDiff >= 0 ? "+" : ""}${restDiff} day(s) vs opponent.`);
-  }
-
+  if (Number.isFinite(restDiff) && Math.abs(restDiff) >= 2) lines.push(`Rest edge: ${restDiff >= 0 ? "+" : ""}${restDiff} day(s) vs opponent.`);
   return `Logistic: ${(probs.logit*100).toFixed(1)}%. Tree: ${(probs.tree*100).toFixed(1)}%. Hybrid: ${(probs.hybrid*100).toFixed(1)}%. ` + lines.join(" ");
 }
-
 function addDelta(lines, r, means, key, betterLow, label){
   const v = Number(r[key]), m = Number(means[key]);
   if (!Number.isFinite(v) || !Number.isFinite(m)) return;

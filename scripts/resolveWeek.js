@@ -1,12 +1,11 @@
 // scripts/resolveWeek.js
-// Decide which NFL regular-season week to PREDICT next from nflverse schedules.
-// Always return at least WEEK=2 (Week 1 has no prior history for S2D features).
+// Prints the target NFL regular-season week number to STDOUT (just the number).
+// Logic: choose first REG week that is not fully scored; if all scored, choose the last.
+// Floor result to >= 2 (we don't predict Week 1, but we DO ingest Week 1 as training).
 //
-// Outputs a GitHub Actions output line: week=<N>
-//
-// SEASON inference:
-// - If env SEASON is set, use it.
-// - Otherwise: if month <= Feb, use previous year; else current year.
+// Usage in GH Action step:
+//   WEEK=$(node scripts/resolveWeek.js)
+//   echo "week=$WEEK" >> "$GITHUB_OUTPUT"
 
 import axios from "axios";
 import Papa from "papaparse";
@@ -16,7 +15,8 @@ const SCHEDULES_URL = "https://raw.githubusercontent.com/nflverse/nfldata/master
 function inferSeason() {
   const now = new Date();
   const y = now.getUTCFullYear();
-  const m = now.getUTCMonth() + 1;
+  const m = now.getUTCMonth() + 1; // 1..12
+  // Jan/Feb belong to previous NFL season
   return m <= 2 ? y - 1 : y;
 }
 
@@ -38,31 +38,34 @@ function hasScore(row) {
   return Number.isFinite(h) && Number.isFinite(a);
 }
 
-try {
-  const season = Number(process.env.SEASON || inferSeason());
-  const text = await axios.get(SCHEDULES_URL, { responseType: "text" }).then(r => r.data);
-  const rows = parseCSV(text).filter(
-    r => Number(r.season) === season && String(r.season_type).toUpperCase() === "REG"
-  );
+(async () => {
+  try {
+    const season = Number(process.env.SEASON || inferSeason());
+    const text = await axios.get(SCHEDULES_URL, { responseType: "text" }).then(r => r.data);
+    const rows = parseCSV(text).filter(
+      r => Number(r.season) === season && String(r.season_type).toUpperCase() === "REG"
+    );
 
-  const weeks = [...new Set(rows.map(r => Number(r.week)).filter(w => Number.isFinite(w)))].sort((a,b)=>a-b);
-  if (weeks.length === 0) {
-    process.stdout.write(`week=2\n`); // default floor
-    process.exit(0);
+    const weeks = [...new Set(rows.map(r => Number(r.week)).filter(w => Number.isFinite(w)))].sort((a,b)=>a-b);
+
+    let chosen;
+    if (weeks.length === 0) {
+      chosen = 2; // default
+    } else {
+      chosen = null;
+      for (const w of weeks) {
+        const games = rows.filter(r => Number(r.week) === w);
+        const allScored = games.every(hasScore);
+        if (!allScored) { chosen = w; break; } // upcoming/in-progress
+      }
+      if (chosen == null) chosen = weeks[weeks.length - 1]; // all finished
+      if (chosen < 2) chosen = 2; // floor
+    }
+
+    // PRINT JUST THE NUMBER
+    process.stdout.write(String(chosen));
+  } catch (_e) {
+    // On any error, print a sane default (2)
+    process.stdout.write("2");
   }
-
-  let chosen = null;
-  for (const w of weeks) {
-    const games = rows.filter(r => Number(r.week) === w);
-    const allScored = games.every(hasScore);
-    if (!allScored) { chosen = w; break; } // upcoming/in-progress week
-  }
-  if (chosen == null) chosen = weeks[weeks.length - 1]; // all finished -> last week
-
-  if (chosen < 2) chosen = 2; // floor to week 2 (Week 1 has no S2D)
-
-  process.stdout.write(`week=${chosen}\n`);
-} catch (_e) {
-  // Fail-safe: don't break the workflow; choose a sane default
-  process.stdout.write(`week=2\n`);
-}
+})();

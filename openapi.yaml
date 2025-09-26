@@ -1,0 +1,49 @@
+openapi: 3.0.1
+info:
+  title: NFL Win Predictor (free)
+  version: "1.0.0"
+servers:
+  - url: https://YOUR_WORKER_SUBDOMAIN.workers.dev
+paths:
+  /predict_week:
+    get:
+      summary: Return per-game win probabilities + English explanations for an NFL week
+      parameters:
+        - name: season
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: week
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    game_id: { type: string }
+                    home_team: { type: string }
+                    away_team: { type: string }
+                    season: { type: integer }
+                    week: { type: integer }
+                    models:
+                      type: object
+                      properties:
+                        logistic: { type: object, properties: { prob_win: { type: number, format: float } } }
+                        decision_tree: { type: object, properties: { prob_win: { type: number, format: float } } }
+                        hybrid:
+                          type: object
+                          properties:
+                            prob_win: { type: number, format: float }
+                            weights:
+                              type: object
+                              properties:
+                                logistic: { type: number }
+                                tree: { type: number }
+                    natural_language: { type: string }

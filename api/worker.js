@@ -14,7 +14,7 @@ export default {
       return new Response(JSON.stringify({ error: "season & week required" }), { status: 400 });
     }
 
-    const REPO_RAW = "https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main";
+    const REPO_RAW = "https://raw.githubusercontent.com/impreet01/PerdictionNFL/main";
     const predUrl = `${REPO_RAW}/artifacts/predictions_${season}_W${String(week).padStart(2, "0")}.json`;
     const res = await fetch(predUrl);
     if (!res.ok) {

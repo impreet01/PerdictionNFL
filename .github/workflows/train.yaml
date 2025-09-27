@@ -39,11 +39,11 @@ jobs:
           echo "SEASON=$SEASON WEEK=$WEEK"
           node scripts/debugData.js
 
-      - name: Train for season/week
+      - name: Train for season/week (rolling up to resolved week)
         env:
           SEASON: 2025
           WEEK: ${{ steps.resolve.outputs.week }}
-        run: npm run train
+        run: npm run train:multi
 
       - name: List artifacts
         run: |

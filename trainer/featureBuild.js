@@ -1,89 +1,205 @@
 // trainer/featureBuild.js
-// Build pre-game Season-To-Date (S2D) features aligned to the paper,
-// add "similar-opponent, same-venue" features, opponent-adjusted DIFFERENTIALS,
-// pre-game Elo ratings, and rest-days features.
-//
-// Inputs expected (team-week CSV: stats_team_week_<season>.csv):
-//   season, week, team, season_type, opponent_team,
-//   passing_yards, rushing_yards,
-//   passing_first_downs, rushing_first_downs, receiving_first_downs,
-//   passing_interceptions, rushing_fumbles_lost, receiving_fumbles_lost, sack_fumbles_lost,
-//   def_interceptions, fumble_recovery_opp,
-//   points_for (or points), points_against (or points_allowed)
-//
-// From schedules (games.csv) we need: season, week, season_type, home_team, away_team, gameday (or game_date), game_id
-//
-// Derived:
-//   - Paper S2D features (off/def yards, 1st downs, turnovers, wins_s2d, losses_s2d, home, label win)
-//   - Similar-opponent, same-venue features: sim_winrate_same_loc_s2d, sim_pointdiff_same_loc_s2d, sim_count_same_loc_s2d
-//   - Opponent-adjusted DIFFERENTIALS: *_s2d_minus_opp
-//   - Pre-game Elo ratings: elo_pre, elo_diff (team minus opponent); margin-aware, no leakage
-//   - Rest days features: rest_days, opp_rest_days, rest_diff
+// Pre-game Season-To-Date features with Week-1 carry-in from prior season,
+// plus similar-opponent (same venue), opponent differentials, Elo, and rest-days.
 
 function parseDate(d) {
-  // Robust parse: try common fields and formats
   if (!d) return null;
   const t = String(d).trim();
-  // Some files use YYYY-MM-DD, some have time too
   const dt = new Date(t);
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
-export function buildFeatures({ teamWeekly, schedules, season }) {
-  // ---------------- Schedules index ----------------
+// Accept REG season rows generously: if season_type is missing/blank, treat as REG.
+// Accept values like "REG", "Regular", "regular", etc.
+function isRegSeasonValue(v) {
+  if (v == null) return true; // treat missing as REG
+  const s = String(v).trim().toUpperCase();
+  if (s === "") return true;
+  return s.startsWith("REG"); // "REG", "REGULAR", etc.
+}
+
+function offenseFromRow(r) {
+  const passY = Number(r.passing_yards ?? 0);
+  const rushY = Number(r.rushing_yards ?? 0);
+  const off_total_yds = passY + rushY;
+  const off_rush_yds  = rushY;
+  const off_pass_yds  = passY;
+  const off_1st_down  = Number(r.passing_first_downs ?? 0) + Number(r.rushing_first_downs ?? 0) + Number(r.receiving_first_downs ?? 0);
+  const off_turnovers = Number(r.passing_interceptions ?? 0)
+                      + Number(r.rushing_fumbles_lost ?? 0)
+                      + Number(r.receiving_fumbles_lost ?? 0)
+                      + Number(r.sack_fumbles_lost ?? 0);
+  return { off_total_yds, off_rush_yds, off_pass_yds, off_1st_down, off_turnovers };
+}
+
+function defenseAllowedFromPair(teamRowRaw, oppRowRaw) {
+  const oppOff = offenseFromRow(oppRowRaw);
+  const def_total_yds = oppOff.off_total_yds;
+  const def_rush_yds  = oppOff.off_rush_yds;
+  const def_pass_yds  = oppOff.off_pass_yds;
+  const def_1st_down  = oppOff.off_1st_down;
+  const def_turnovers = Number(teamRowRaw.def_interceptions ?? 0) + Number(teamRowRaw.fumble_recovery_opp ?? 0);
+  return { def_total_yds, def_rush_yds, def_pass_yds, def_1st_down, def_turnovers };
+}
+
+// ---------- Prior-season baselines (per-team per-game averages; prior "REG") ----------
+function buildPrevSeasonBaselines(prevTeamWeekly, prevSeason, schedulesAll) {
+  if (!Array.isArray(prevTeamWeekly) || !prevTeamWeekly.length) return { byTeam: {}, league: null };
+
+  const prevSchedByKey = {};
+  for (const g of schedulesAll) {
+    if (Number(g.season) !== Number(prevSeason)) continue;
+    if (!isRegSeasonValue(g.season_type)) continue;
+    prevSchedByKey[`${g.season}|${g.week}|${g.home_team}|${g.away_team}`] = g;
+  }
+
+  const prevByKeyRaw = {};
+  for (const r of prevTeamWeekly) {
+    if (Number(r.season) !== Number(prevSeason)) continue;
+    if (!isRegSeasonValue(r.season_type)) continue;
+    prevByKeyRaw[`${r.season}|${r.week}|${r.team}`] = r;
+  }
+
+  const rows = [];
+  for (const r of prevTeamWeekly) {
+    if (Number(r.season) !== Number(prevSeason)) continue;
+    if (!isRegSeasonValue(r.season_type)) continue;
+
+    const wk  = Number(r.week);
+    const tm  = r.team;
+    const opp = r.opponent_team;
+
+    const keyHome = `${prevSeason}|${wk}|${tm}|${opp}`;
+    const keyAway = `${prevSeason}|${wk}|${opp}|${tm}`;
+    const home = prevSchedByKey[keyHome] ? 1 : (prevSchedByKey[keyAway] ? 0 : 0);
+
+    const pointsFor     = Number(r.points_for ?? r.points ?? 0);
+    const pointsAgainst = Number(r.points_against ?? r.points_allowed ?? 0);
+    const win = pointsFor >= pointsAgainst ? 1 : 0;
+
+    const off = offenseFromRow(r);
+    const oppRaw = prevByKeyRaw[`${prevSeason}|${wk}|${opp}`];
+    if (!oppRaw) continue;
+    const def = defenseAllowedFromPair(r, oppRaw);
+
+    rows.push({ season: prevSeason, week: wk, team: tm, opponent: opp, home, win, points_for: pointsFor, points_against: pointsAgainst, ...off, ...def });
+  }
+
+  if (!rows.length) return { byTeam: {}, league: null };
+
+  const byTeamAgg = {};
+  for (const r of rows) {
+    const t = r.team;
+    if (!byTeamAgg[t]) byTeamAgg[t] = {
+      n:0, wins:0, losses:0,
+      off_1st_down:0, off_total_yds:0, off_rush_yds:0, off_pass_yds:0, off_turnovers:0,
+      def_1st_down:0, def_total_yds:0, def_rush_yds:0, def_pass_yds:0, def_turnovers:0
+    };
+    const a = byTeamAgg[t];
+    a.n += 1;
+    a.wins += r.win ? 1 : 0;
+    a.losses += r.win ? 0 : 1;
+
+    a.off_1st_down  += r.off_1st_down;
+    a.off_total_yds += r.off_total_yds;
+    a.off_rush_yds  += r.off_rush_yds;
+    a.off_pass_yds  += r.off_pass_yds;
+    a.off_turnovers += r.off_turnovers;
+
+    a.def_1st_down  += r.def_1st_down;
+    a.def_total_yds += r.def_total_yds;
+    a.def_rush_yds  += r.def_rush_yds;
+    a.def_pass_yds  += r.def_pass_yds;
+    a.def_turnovers += r.def_turnovers;
+  }
+
+  // League means (per game)
+  let league = null;
+  {
+    let nGames = 0;
+    const sum = {
+      off_1st_down:0, off_total_yds:0, off_rush_yds:0, off_pass_yds:0, off_turnovers:0,
+      def_1st_down:0, def_total_yds:0, def_rush_yds:0, def_pass_yds:0, def_turnovers:0
+    };
+    for (const t of Object.keys(byTeamAgg)) {
+      const a = byTeamAgg[t]; if (!a.n) continue;
+      nGames += a.n;
+      sum.off_1st_down  += a.off_1st_down;
+      sum.off_total_yds += a.off_total_yds;
+      sum.off_rush_yds  += a.off_rush_yds;
+      sum.off_pass_yds  += a.off_pass_yds;
+      sum.off_turnovers += a.off_turnovers;
+
+      sum.def_1st_down  += a.def_1st_down;
+      sum.def_total_yds += a.def_total_yds;
+      sum.def_rush_yds  += a.def_rush_yds;
+      sum.def_pass_yds  += a.def_pass_yds;
+      sum.def_turnovers += a.def_turnovers;
+    }
+    if (nGames > 0) {
+      league = {};
+      for (const k of Object.keys(sum)) league[k] = sum[k] / nGames;
+    }
+  }
+
+  const byTeam = {};
+  for (const t of Object.keys(byTeamAgg)) {
+    const a = byTeamAgg[t];
+    if (!a.n) continue;
+    byTeam[t] = {
+      off_1st_down_s2d:  a.off_1st_down  / a.n,
+      off_total_yds_s2d: a.off_total_yds / a.n,
+      off_rush_yds_s2d:  a.off_rush_yds  / a.n,
+      off_pass_yds_s2d:  a.off_pass_yds  / a.n,
+      off_turnovers_s2d: a.off_turnovers / a.n,
+      def_1st_down_s2d:  a.def_1st_down  / a.n,
+      def_total_yds_s2d: a.def_total_yds / a.n,
+      def_rush_yds_s2d:  a.def_rush_yds  / a.n,
+      def_pass_yds_s2d:  a.def_pass_yds  / a.n,
+      def_turnovers_s2d: a.def_turnovers / a.n,
+      wins_s2d: a.wins,
+      losses_s2d: a.losses
+    };
+  }
+
+  return { byTeam, league };
+}
+
+export function buildFeatures({ teamWeekly, schedules, season, prevTeamWeekly }) {
+  const prevSeason = Number(season) - 1;
+
+  // schedules index for current season REG only (schedules are well-formed)
   const schedByKey = {};
-  const weekGames = {}; // season|week -> [{home, away, date}]
+  const weekGames = {};
   for (const g of schedules) {
     if (Number(g.season) !== Number(season)) continue;
-    if (String(g.season_type).toUpperCase() !== "REG") continue;
-    const home = g.home_team;
-    const away = g.away_team;
+    if (!isRegSeasonValue(g.season_type)) continue;
+    const home = g.home_team, away = g.away_team;
     const key = `${g.season}|${g.week}|${home}|${away}`;
     schedByKey[key] = g;
-
     const wkKey = `${g.season}|${g.week}`;
     if (!weekGames[wkKey]) weekGames[wkKey] = [];
     const date = parseDate(g.gameday || g.game_date || g.game_datetime || g.game_time);
     weekGames[wkKey].push({ home, away, date });
   }
 
-  // ---------------- Quick index of raw team-week rows ----------------
+  // previous-season baselines
+  const { byTeam: prevBaseByTeam, league: prevLeagueMean } =
+    buildPrevSeasonBaselines(prevTeamWeekly || [], prevSeason, schedules);
+
+  // raw index (current season; RELAXED season_type check)
   const byKeyRaw = {};
   for (const r of teamWeekly) {
     if (Number(r.season) !== Number(season)) continue;
-    if (String(r.season_type).toUpperCase() !== "REG") continue;
+    if (!isRegSeasonValue(r.season_type)) continue; // relaxed (missing => true)
     byKeyRaw[`${r.season}|${r.week}|${r.team}`] = r;
   }
 
-  // ---------------- Helpers ----------------
-  function offenseFromRow(r) {
-    const passY = Number(r.passing_yards ?? 0);
-    const rushY = Number(r.rushing_yards ?? 0);
-    const off_total_yds = passY + rushY;
-    const off_rush_yds  = rushY;
-    const off_pass_yds  = passY;
-    const off_1st_down  = Number(r.passing_first_downs ?? 0) + Number(r.rushing_first_downs ?? 0) + Number(r.receiving_first_downs ?? 0);
-    const off_turnovers = Number(r.passing_interceptions ?? 0)
-                        + Number(r.rushing_fumbles_lost ?? 0)
-                        + Number(r.receiving_fumbles_lost ?? 0)
-                        + Number(r.sack_fumbles_lost ?? 0);
-    return { off_total_yds, off_rush_yds, off_pass_yds, off_1st_down, off_turnovers };
-  }
-  function defenseFromPair(teamRowRaw, oppRowRaw) {
-    const oppOff = offenseFromRow(oppRowRaw);
-    const def_total_yds = oppOff.off_total_yds;
-    const def_rush_yds  = oppOff.off_rush_yds;
-    const def_pass_yds  = oppOff.off_pass_yds;
-    const def_1st_down  = oppOff.off_1st_down;
-    const def_turnovers = Number(teamRowRaw.def_interceptions ?? 0) + Number(teamRowRaw.fumble_recovery_opp ?? 0);
-    return { def_total_yds, def_rush_yds, def_pass_yds, def_1st_down, def_turnovers };
-  }
-
-  // ---------------- Base rows: offense, label, home, points ----------------
+  // base rows: offense/label/home/date
   const base = [];
   for (const r of teamWeekly) {
     if (Number(r.season) !== Number(season)) continue;
-    if (String(r.season_type).toUpperCase() !== "REG") continue;
+    if (!isRegSeasonValue(r.season_type)) continue;
 
     const wk  = Number(r.week);
     const tm  = r.team;
@@ -99,7 +215,6 @@ export function buildFeatures({ teamWeekly, schedules, season }) {
 
     const off = offenseFromRow(r);
 
-    // rest-day date lookup
     const schedHome = schedByKey[keyHome] || null;
     const schedAway = schedByKey[keyAway] || null;
     const date = parseDate(
@@ -121,17 +236,17 @@ export function buildFeatures({ teamWeekly, schedules, season }) {
     });
   }
 
-  // ---------------- Add defense allowed (from opponent's offense) ----------------
+  // add defense allowed from opponent
   const out = [];
   for (const row of base) {
     const teamRowRaw = byKeyRaw[`${season}|${row.week}|${row.team}`];
     const oppRowRaw  = byKeyRaw[`${season}|${row.week}|${row.opponent}`];
     if (!teamRowRaw || !oppRowRaw) continue;
-    const def = defenseFromPair(teamRowRaw, oppRowRaw);
+    const def = defenseAllowedFromPair(teamRowRaw, oppRowRaw);
     out.push({ ...row, ...def });
   }
 
-  // ---------------- Season-to-date (pre-game) ----------------
+  // S2D with Week-1 carry-in
   const grouped = {};
   for (const r of out) {
     const k = `${r.season}|${r.team}`;
@@ -153,7 +268,6 @@ export function buildFeatures({ teamWeekly, schedules, season }) {
     for (const r of arr) {
       const hasHistory = n > 0;
 
-      // rest days (since last game)
       const curDate = r.game_date ? new Date(r.game_date) : null;
       let rest_days = null;
       if (hasHistory && lastDate && curDate) {
@@ -161,7 +275,7 @@ export function buildFeatures({ teamWeekly, schedules, season }) {
         rest_days = Math.max(0, Math.round(diffMs / (1000*60*60*24)));
       }
 
-      s2dRows.push({
+      let row = {
         ...r,
         off_1st_down_s2d: hasHistory ? cum.off_1st_down / n : null,
         off_total_yds_s2d: hasHistory ? cum.off_total_yds / n : null,
@@ -175,10 +289,40 @@ export function buildFeatures({ teamWeekly, schedules, season }) {
         def_turnovers_s2d: hasHistory ? cum.def_turnovers / n : null,
         wins_s2d: hasHistory ? wins : null,
         losses_s2d: hasHistory ? losses : null,
-        rest_days // may be null for first game
-      });
+        rest_days
+      };
 
-      // update cumulative AFTER (no leakage)
+      if (!hasHistory && r.week === 1) {
+        const teamBase = prevBaseByTeam[r.team];
+        const L = prevLeagueMean;
+        const fill = (k) => {
+          if (teamBase && Number.isFinite(teamBase[k])) return teamBase[k];
+          if (L) {
+            const rawKey = k.replace("_s2d",""); // e.g., off_total_yds
+            if (Number.isFinite(L[rawKey])) return L[rawKey];
+          }
+          return 0;
+        };
+        row = {
+          ...row,
+          off_1st_down_s2d:  fill("off_1st_down_s2d"),
+          off_total_yds_s2d: fill("off_total_yds_s2d"),
+          off_rush_yds_s2d:  fill("off_rush_yds_s2d"),
+          off_pass_yds_s2d:  fill("off_pass_yds_s2d"),
+          off_turnovers_s2d: fill("off_turnovers_s2d"),
+          def_1st_down_s2d:  fill("def_1st_down_s2d"),
+          def_total_yds_s2d: fill("def_total_yds_s2d"),
+          def_rush_yds_s2d:  fill("def_rush_yds_s2d"),
+          def_pass_yds_s2d:  fill("def_pass_yds_s2d"),
+          def_turnovers_s2d: fill("def_turnovers_s2d"),
+          wins_s2d: (teamBase && Number.isFinite(teamBase.wins_s2d)) ? teamBase.wins_s2d : 0,
+          losses_s2d: (teamBase && Number.isFinite(teamBase.losses_s2d)) ? teamBase.losses_s2d : 0
+        };
+      }
+
+      s2dRows.push(row);
+
+      // update cumulative
       n += 1;
       cum.off_1st_down += r.off_1st_down;
       cum.off_total_yds += r.off_total_yds;
@@ -196,14 +340,13 @@ export function buildFeatures({ teamWeekly, schedules, season }) {
     }
   }
 
-  // drop rows without S2D history
-  const finalRows = s2dRows.filter(r => r.off_total_yds_s2d != null);
+  const finalRows = s2dRows;
 
-  // ---------------- Index for opponent S2D ----------------
+  // opponent S2D index
   const s2dIndex = {};
   for (const r of finalRows) s2dIndex[`${r.season}|${r.week}|${r.team}`] = r;
 
-  // ---------------- Similar-opponent, same-venue features ----------------
+  // similar-opponent (same venue)
   const OPP_S2D = [
     "off_total_yds_s2d","off_rush_yds_s2d","off_pass_yds_s2d","off_turnovers_s2d",
     "def_total_yds_s2d","def_rush_yds_s2d","def_pass_yds_s2d","def_turnovers_s2d",
@@ -264,7 +407,7 @@ export function buildFeatures({ teamWeekly, schedules, season }) {
         wsum += w; wwins += w*c.win; wpdiff += w*c.pdiff; count += 1;
       }
       const sim_winrate = wsum > 0 ? (wwins/wsum) : 0;
-      const sim_pdiff = wsum > 0 ? (wpdiff/wsum) : 0;
+      const sim_pdiff   = wsum > 0 ? (wpdiff/wsum) : 0;
 
       withSimilar.push({
         ...cur,
@@ -275,10 +418,10 @@ export function buildFeatures({ teamWeekly, schedules, season }) {
     }
   }
 
-  // ---------------- Opponent-adjusted DIFFERENTIALS (team S2D minus opponent S2D) ----------------
+  // opponent-adjusted DIFFERENTIALS
   const withDiffs = withSimilar.map(r => {
     const opp = s2dIndex[`${r.season}|${r.week}|${r.opponent}`];
-    function diff(a,b){ const A=Number(a??0), B=Number(b??0); return (Number.isFinite(A)&&Number.isFinite(B))? (A-B):0; }
+    const diff = (a,b)=> (Number(a??0) - Number(b??0)) || 0;
     return {
       ...r,
       off_total_yds_s2d_minus_opp: diff(r.off_total_yds_s2d, opp?.off_total_yds_s2d),
@@ -289,62 +432,44 @@ export function buildFeatures({ teamWeekly, schedules, season }) {
     };
   });
 
-  // ---------------- Pre-game Elo ratings (no leakage) ----------------
-  // Process week by week; assign elo_pre for both teams before updating with result
-  const ELO_INIT = 1500;
-  const HFA = 55;      // home-field advantage in Elo points
-  const K = 20;        // base K
-  const teamElo = {};  // team -> current elo
+  // Elo (pre-game)
+  const ELO_INIT = 1500, HFA = 55, K = 20;
+  const teamElo = {};
+  const getElo = t => (t in teamElo ? teamElo[t] : (teamElo[t] = ELO_INIT));
+  const expected = (A,B) => 1/(1+Math.pow(10,(B-A)/400));
 
-  function getElo(t){ if (!(t in teamElo)) teamElo[t] = ELO_INIT; return teamElo[t]; }
-  function expected(eloA, eloB){ return 1/(1+Math.pow(10, (eloB - eloA)/400)); }
-
-  // Build quick map: (season|week|team) -> mutable row to attach elo_pre
   const idxRow = {};
   for (const r of withDiffs) idxRow[`${r.season}|${r.week}|${r.team}`] = r;
 
   const weeksSorted = [...new Set(withDiffs.map(r=> r.week))].sort((a,b)=> a-b);
   for (const wk of weeksSorted) {
     const games = (weekGames[`${season}|${wk}`] || []);
-    // assign pre-game elo
+    // assign pre-game Elo
     for (const g of games) {
       const home = g.home, away = g.away;
-      const homeRow = idxRow[`${season}|${wk}|${home}`];
-      const awayRow = idxRow[`${season}|${wk}|${away}`];
-      if (!homeRow || !awayRow) continue; // safety
+      const rh = idxRow[`${season}|${wk}|${home}`], ra = idxRow[`${season}|${wk}|${away}`];
+      if (!rh || !ra) continue;
       const eloH = getElo(home), eloA = getElo(away);
-      homeRow.elo_pre = eloH + HFA;
-      awayRow.elo_pre = eloA;
-      homeRow.elo_diff = (homeRow.elo_pre - (awayRow.elo_pre ?? eloA));
-      awayRow.elo_diff = (awayRow.elo_pre - (homeRow.elo_pre ?? eloH+HFA));
+      rh.elo_pre = eloH + HFA; ra.elo_pre = eloA;
+      rh.elo_diff = (rh.elo_pre - (ra.elo_pre ?? eloA));
+      ra.elo_diff = (ra.elo_pre - (rh.elo_pre ?? eloH+HFA));
     }
-    // update post-game using margin
+    // update post-game Elo using margin
     for (const g of games) {
       const home = g.home, away = g.away;
-      const homeRow = idxRow[`${season}|${wk}|${home}`];
-      const awayRow = idxRow[`${season}|${wk}|${away}`];
-      if (!homeRow || !awayRow) continue;
-      const ph = Number(homeRow.points_for ?? 0);
-      const pa = Number(homeRow.points_against ?? 0);
+      const rh = idxRow[`${season}|${wk}|${home}`], ra = idxRow[`${season}|${wk}|${away}`];
+      if (!rh || !ra) continue;
+      const ph = Number(rh.points_for ?? 0), pa = Number(rh.points_against ?? 0);
       const margin = ph - pa;
-
-      const eloH_before = getElo(home);
-      const eloA_before = getElo(away);
-      const expH = expected(eloH_before + HFA, eloA_before);
+      const eloH0 = getElo(home), eloA0 = getElo(away);
+      const expH = expected(eloH0 + HFA, eloA0);
       const scoreH = margin > 0 ? 1 : (margin < 0 ? 0 : 0.5);
-
-      const marginMult = Math.log(Math.abs(margin) + 1) * (2.2 / ((Math.abs((eloH_before - eloA_before))/1000) + 2.2));
+      const marginMult = Math.log(Math.abs(margin) + 1) * (2.2 / ((Math.abs((eloH0 - eloA0))/1000) + 2.2));
       const kAdj = K * (1 + marginMult);
-
-      const newH = eloH_before + kAdj * (scoreH - expH);
-      const newA = eloA_before + kAdj * ((1 - scoreH) - (1 - expH));
-
-      teamElo[home] = newH;
-      teamElo[away] = newA;
+      teamElo[home] = eloH0 + kAdj * (scoreH - expH);
+      teamElo[away] = eloA0 + kAdj * ((1 - scoreH) - (1 - expH));
     }
   }
-
-  // default elo_pre/diff if missing (early weeks)
   for (const r of withDiffs) {
     if (!Number.isFinite(r.elo_pre)) r.elo_pre = ELO_INIT;
     if (!Number.isFinite(r.elo_diff)) r.elo_diff = 0;

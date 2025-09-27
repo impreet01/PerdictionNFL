@@ -64,10 +64,12 @@ jobs:
           done
 
       - name: Commit artifacts
+        env:
+          RESOLVED_WEEK: ${{ steps.resolve.outputs.week }}
         run: |
           git config user.name "gh-actions"
           git config user.email "actions@github.com"
           mkdir -p artifacts
           git add artifacts/*.json || true
-          git commit -m "weekly model + predictions (S=${{ env.SEASON }}, W=${{ env.WEEK }})" || echo "no changes"
+          git commit -m "weekly model + predictions (S=2025, W=${RESOLVED_WEEK})" || echo "no changes"
           git push

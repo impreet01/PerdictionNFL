@@ -1,6 +1,8 @@
 // trainer/train_multi.js
-// Rolling artifacts W02..Wk, where k is derived from actual data availability.
-// If a week's team rows exist -> backtest; otherwise -> forecast from schedules + S2D through W-1.
+// Writes per-week artifacts ONLY up to the near-term:
+// - Backtest for all weeks that exist in teamWeekly data
+// - Forecast for exactly ONE upcoming week: lastCompletedWeek + 1
+// Also writes season summary/index and current aliases.
 
 import { loadSchedules, loadTeamWeekly } from "./dataSources.js";
 import { buildFeatures } from "./featureBuild.js";
@@ -13,7 +15,7 @@ const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
 
 const SEASON = Number(process.env.SEASON || new Date().getFullYear());
-const WEEK_ENV = Number(process.env.WEEK || 6); // resolver's suggestion; we'll reconcile below
+const WEEK_ENV = Number(process.env.WEEK || 6); // suggested target (from resolver); used as an upper bound, not to push far ahead
 
 // Keep in sync with featureBuild.js
 const FEATS = [
@@ -25,6 +27,12 @@ const FEATS = [
   "off_turnovers_s2d_minus_opp","def_turnovers_s2d_minus_opp",
   "elo_pre","elo_diff","rest_days","rest_diff"
 ];
+
+const isReg = (v) => {
+  if (v == null) return true;
+  const s = String(v).trim().toUpperCase();
+  return s === "" || s.startsWith("REG");
+};
 
 function Xy(rows) {
   const X = rows.map(r => FEATS.map(k => Number(r[k] ?? 0)));
@@ -66,11 +74,6 @@ function chooseHybridWeight(y, pL, pT){
 }
 const round3 = x => Math.round(Number(x)*1000)/1000;
 const mean = a => a.reduce((s,v)=>s+v,0)/a.length;
-const isReg = (v)=> {
-  if (v == null) return true;
-  const s = String(v).trim().toUpperCase();
-  return s === "" || s.startsWith("REG");
-};
 
 function addDelta(lines, r, means, key, betterLow, label){
   const v = Number(r[key]), m = Number(means[key]);
@@ -104,22 +107,34 @@ function explain(r, means, probs){
   return `Logistic: ${(probs.logit*100).toFixed(1)}%. Tree: ${(probs.tree*100).toFixed(1)}%. Hybrid: ${(probs.hybrid*100).toFixed(1)}%. ` + lines.join(" ");
 }
 
-/** Forecast test rows for week W using schedules + S2D through W-1 */
+/** Find last fully-completed regular-season week in schedules (all games have scores). */
+function computeLastCompletedWeek(schedules, season) {
+  const reg = schedules.filter(g => Number(g.season)===season && isReg(g.season_type));
+  const weeks = [...new Set(reg.map(g => Number(g.week)).filter(Number.isFinite))].sort((a,b)=>a-b);
+  let lastFull = 0;
+  for (const w of weeks) {
+    const games = reg.filter(g => Number(g.week)===w);
+    const allDone = games.every(g => {
+      const hs = Number(g.home_score ?? g.home_points ?? g.home_pts);
+      const as = Number(g.away_score ?? g.away_points ?? g.away_pts);
+      return Number.isFinite(hs) && Number.isFinite(as);
+    });
+    if (allDone) lastFull = w; else break;
+  }
+  return lastFull;
+}
+
+/** Forecast test rows for exactly week W from schedules + S2D through W-1. */
 function buildForecastRowsForWeek(featRows, schedules, season, W) {
-  // index latest per-team row <= W-1
-  const latestByTeam = new Map();
+  const latestByTeam = new Map(); // team -> last row before W
   for (const r of featRows) {
-    if (r.season !== season) continue;
-    if (r.week >= W) continue;
+    if (r.season !== season || r.week >= W) continue;
     const prev = latestByTeam.get(r.team);
     if (!prev || prev.week < r.week) latestByTeam.set(r.team, r);
   }
 
-  // schedule games for W
   const gamesW = schedules.filter(g =>
-    Number(g.season) === season &&
-    isReg(g.season_type) &&
-    Number(g.week) === W
+    Number(g.season) === season && isReg(g.season_type) && Number(g.week) === W
   );
 
   const rows = [];
@@ -136,7 +151,6 @@ function buildForecastRowsForWeek(featRows, schedules, season, W) {
     const lastAwayDate = tAway.game_date ? new Date(tAway.game_date) : null;
     const rest_days_home = (game_date && lastHomeDate) ? Math.max(0, Math.round((game_date - lastHomeDate)/(1000*60*60*24))) : 0;
     const rest_days_away = (game_date && lastAwayDate) ? Math.max(0, Math.round((game_date - lastAwayDate)/(1000*60*60*24))) : 0;
-
     const diff = (a,b)=> (Number(a??0) - Number(b??0)) || 0;
 
     const baseHome = {
@@ -194,22 +208,32 @@ function buildForecastRowsForWeek(featRows, schedules, season, W) {
   const schedWeeks = [...new Set(regSched.map(g => Number(g.week)).filter(Number.isFinite))].sort((a,b)=>a-b);
   const schedMaxWeek = schedWeeks.length ? schedWeeks[schedWeeks.length-1] : 18;
 
+  const lastCompletedWeek = computeLastCompletedWeek(schedules, SEASON);
+  const forecastWeek = Math.min(schedMaxWeek, Math.max(2, lastCompletedWeek + 1, WEEK_ENV)); // never earlier than 2
+
   const teamWeekly = await loadTeamWeekly(SEASON);
   const teamWeeks = [...new Set(teamWeekly.filter(r => Number(r.season)===SEASON).map(r => Number(r.week)).filter(Number.isFinite))].sort((a,b)=>a-b);
   const teamMaxWeek = teamWeeks.length ? teamWeeks[teamWeeks.length-1] : 1;
 
-  // Build season feature table once (handles Week-1 carry-in, Elo, similar, diffs)
-  const featRows = buildFeatures({ teamWeekly, schedules, season: SEASON, prevTeamWeekly: await safePrev(SEASON) });
+  const prevTeamWeekly = await (async()=>{ try { return await loadTeamWeekly(SEASON - 1); } catch { return []; } })();
+
+  // Full season feature table (handles Week-1 carry-in, Elo, similar-opponent, diffs)
+  const featRows = buildFeatures({ teamWeekly, schedules, season: SEASON, prevTeamWeekly });
   const featWeeks = [...new Set(featRows.filter(r => r.season===SEASON).map(r => r.week))].sort((a,b)=>a-b);
   const featMaxWeek = featWeeks.length ? featWeeks[featWeeks.length-1] : 1;
 
-  // Effective max: trust the largest indicator (resolver env, team data, feature data, schedules), up to 18
-  const MAX_WEEK = Math.min(18, Math.max(WEEK_ENV, teamMaxWeek, featMaxWeek, schedMaxWeek));
+  console.log(`Weeks in schedules: [${schedWeeks.join(", ")}], schedMax=${schedMaxWeek}`);
+  console.log(`Last fully-completed week: ${lastCompletedWeek}, forecastWeek candidate: ${forecastWeek}`);
+  console.log(`Weeks in teamWeekly: [${teamWeeks.join(", ")}], teamMax=${teamMaxWeek}`);
+  console.log(`Weeks in feature table: [${featWeeks.join(", ")}], featMax=${featMaxWeek}`);
 
-  console.log(`Weeks in schedules: [${schedWeeks.join(", ")}], max=${schedMaxWeek}`);
-  console.log(`Weeks in teamWeekly: [${teamWeeks.join(", ")}], max=${teamMaxWeek}`);
-  console.log(`Weeks in feature table: [${featWeeks.join(", ")}], max=${featMaxWeek}`);
-  console.log(`Effective MAX_WEEK for run = ${MAX_WEEK}`);
+  // We will:
+  // 1) Backtest all weeks 2..min(teamMaxWeek, featMaxWeek)
+  // 2) Forecast exactly week = min(forecastWeek, schedMaxWeek), IF it is > teamMaxWeek (i.e., upcoming)
+  const backtestMax = Math.max(2, Math.min(teamMaxWeek, featMaxWeek));
+  const doForecast = forecastWeek > backtestMax ? forecastWeek : null;
+
+  console.log(`Backtest weeks: 2..${backtestMax}${doForecast ? `; Forecast week: ${doForecast}` : ""}`);
 
   const seasonSummary = { season: SEASON, built_through_week: null, weeks: [], feature_names: FEATS };
   const seasonIndex = { season: SEASON, weeks: [] };
@@ -235,30 +259,17 @@ function buildForecastRowsForWeek(featRows, schedules, season, W) {
     return { logit, cart, wHybrid };
   }
 
-  // Loop weeks 2..MAX_WEEK
-  for (let W=2; W<=MAX_WEEK; W++) {
+  // ----- 1) BACKTEST 2..backtestMax -----
+  for (let W=2; W<=backtestMax; W++) {
     const { train, test } = splitTrainTest(featRows, SEASON, W);
-    const hasRealTest = test.length > 0;
-
-    if (!train.length) { 
-      console.log(`W${W}: skip (no training rows)`);
-      continue; 
+    if (!train.length || !test.length) {
+      console.log(`W${W}: skip backtest (train=${train.length}, test=${test.length})`);
+      continue;
     }
 
     const { logit, cart, wHybrid } = fitModels(train);
 
-    let testRows = test;
-    let forecastMode = false;
-    if (!hasRealTest) {
-      testRows = buildForecastRowsForWeek(featRows, schedules, SEASON, W);
-      forecastMode = true;
-      console.log(`W${W}: forecast mode; synthetic rows=${testRows.length}`);
-      if (!testRows.length) { console.log(`W${W}: no fixtures; skip`); continue; }
-    } else {
-      console.log(`W${W}: backtest mode; real rows=${testRows.length}`);
-    }
-
-    const { X: Xtest_raw } = Xy(testRows);
+    const { X: Xtest_raw } = Xy(test);
     const pL_test = vectorizeProba(logit.theta || logit.weights, Xtest_raw);
     const getProb1 = (pred) => Array.isArray(pred) ? pred[1] : Number(pred);
     const pT_test = cart.predict(Xtest_raw).map(getProb1);
@@ -266,7 +277,7 @@ function buildForecastRowsForWeek(featRows, schedules, season, W) {
 
     const leagueMeans = {}; for (const k of FEATS) leagueMeans[k] = mean(train.map(r=> Number(r[k])));
 
-    const results = testRows.map((r,i)=>{
+    const results = test.map((r,i)=>{
       const game_id = `${r.season}-W${String(r.week).padStart(2,"0")}-${r.team}-${r.opponent}`;
       const probs = { logit: pL_test[i], tree: pT_test[i], hybrid: pH_test[i] };
       const english = explain(r, leagueMeans, probs);
@@ -276,7 +287,7 @@ function buildForecastRowsForWeek(featRows, schedules, season, W) {
         away_team: r.home ? r.opponent : r.team,
         season: r.season,
         week: r.week,
-        forecast: forecastMode,
+        forecast: false,
         models: {
           logistic: { prob_win: round3(probs.logit) },
           decision_tree: { prob_win: round3(probs.tree) },
@@ -288,27 +299,78 @@ function buildForecastRowsForWeek(featRows, schedules, season, W) {
 
     const predPath  = `${ART_DIR}/predictions_${SEASON}_W${String(W).padStart(2,"0")}.json`;
     const modelPath = `${ART_DIR}/model_${SEASON}_W${String(W).padStart(2,"0")}.json`;
-
     writeFileSync(predPath, JSON.stringify(results, null, 2));
     writeFileSync(modelPath, JSON.stringify({
-      season: SEASON,
-      week: W,
-      features: FEATS,
+      season: SEASON, week: W, features: FEATS,
       hybrid_weight: wHybrid,
       logistic: (logit.theta && toArray1D(logit.theta)) || (logit.weights && toArray1D(logit.weights)) || null
     }, null, 2));
-
     console.log(`WROTE: ${predPath}`);
     console.log(`WROTE: ${modelPath}`);
 
-    seasonSummary.weeks.push({ week: W, train_rows: train.length, test_rows: testRows.length, forecast: !hasRealTest, hybrid_weight: wHybrid });
+    seasonSummary.weeks.push({ week: W, train_rows: train.length, test_rows: test.length, forecast: false, hybrid_weight: wHybrid });
     seasonSummary.built_through_week = W;
-    seasonIndex.weeks.push({
-      week: W,
-      predictions_file: `predictions_${SEASON}_W${String(W).padStart(2,"0")}.json`,
-      model_file:       `model_${SEASON}_W${String(W).padStart(2,"0")}.json`
-    });
+    seasonIndex.weeks.push({ week: W, predictions_file: `predictions_${SEASON}_W${String(W).padStart(2,"0")}.json`, model_file: `model_${SEASON}_W${String(W).padStart(2,"0")}.json` });
     latestWeekWritten = W;
+  }
+
+  // ----- 2) FORECAST exactly one upcoming week (optional) -----
+  if (doForecast) {
+    const W = doForecast;
+    const { train } = splitTrainTest(featRows, SEASON, W);
+    if (train.length) {
+      const { logit, cart, wHybrid } = fitModels(train);
+      const testRows = buildForecastRowsForWeek(featRows, schedules, SEASON, W);
+      if (testRows.length) {
+        const { X: Xtest_raw } = Xy(testRows);
+        const pL_test = vectorizeProba(logit.theta || logit.weights, Xtest_raw);
+        const getProb1 = (pred) => Array.isArray(pred) ? pred[1] : Number(pred);
+        const pT_test = cart.predict(Xtest_raw).map(getProb1);
+        const pH_test = pL_test.map((p,i)=> wHybrid*p + (1-wHybrid)*pT_test[i]);
+
+        const leagueMeans = {}; for (const k of FEATS) leagueMeans[k] = mean(train.map(r=> Number(r[k])));
+
+        const results = testRows.map((r,i)=>{
+          const game_id = `${r.season}-W${String(r.week).padStart(2,"0")}-${r.team}-${r.opponent}`;
+          const probs = { logit: pL_test[i], tree: pT_test[i], hybrid: pH_test[i] };
+          const english = explain(r, leagueMeans, probs);
+          return {
+            game_id,
+            home_team: r.home ? r.team : r.opponent,
+            away_team: r.home ? r.opponent : r.team,
+            season: r.season,
+            week: r.week,
+            forecast: true,
+            models: {
+              logistic: { prob_win: round3(probs.logit) },
+              decision_tree: { prob_win: round3(probs.tree) },
+              hybrid: { prob_win: round3(probs.hybrid), weights: { logistic: wHybrid, tree: Number((1-wHybrid).toFixed(2)) } }
+            },
+            natural_language: english
+          };
+        });
+
+        const predPath  = `${ART_DIR}/predictions_${SEASON}_W${String(W).padStart(2,"0")}.json`;
+        const modelPath = `${ART_DIR}/model_${SEASON}_W${String(W).padStart(2,"0")}.json`;
+        writeFileSync(predPath, JSON.stringify(results, null, 2));
+        writeFileSync(modelPath, JSON.stringify({
+          season: SEASON, week: W, features: FEATS,
+          hybrid_weight: wHybrid,
+          logistic: (logit.theta && toArray1D(logit.theta)) || (logit.weights && toArray1D(logit.weights)) || null
+        }, null, 2));
+        console.log(`WROTE (forecast): ${predPath}`);
+        console.log(`WROTE (forecast): ${modelPath}`);
+
+        seasonSummary.weeks.push({ week: W, train_rows: train.length, test_rows: testRows.length, forecast: true, hybrid_weight: wHybrid });
+        seasonSummary.built_through_week = W;
+        seasonIndex.weeks.push({ week: W, predictions_file: `predictions_${SEASON}_W${String(W).padStart(2,"0")}.json`, model_file: `model_${SEASON}_W${String(W).padStart(2,"0")}.json` });
+        latestWeekWritten = W;
+      } else {
+        console.log(`Forecast W${W}: no fixtures built; skipping.`);
+      }
+    } else {
+      console.log(`Forecast W${W}: no training rows; skipping.`);
+    }
   }
 
   // Write summary/index + "current" aliases
@@ -338,8 +400,3 @@ function buildForecastRowsForWeek(featRows, schedules, season, W) {
     console.log("No weekly artifacts written; skipping current aliases.");
   }
 })().catch(e=>{ console.error(e); process.exit(1); });
-
-async function safePrev(season){
-  try { return await loadTeamWeekly(season - 1); }
-  catch { return []; }
-}

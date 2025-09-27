@@ -18,27 +18,37 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install deps
-        run: npm install --no-audit --no-fund
+      # Clean install to avoid stale lockfiles that reference old deps
+      - name: Clean install deps
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install --no-audit --no-fund
 
+      # ---- If you already have scripts/resolveWeek.js from earlier steps ----
       - name: Resolve NFL week (auto)
         id: resolve
         env:
-          # Optional: pin season; omit to auto-infer
           SEASON: 2025
         run: |
           WEEK=$(node scripts/resolveWeek.js)
           echo "Resolved WEEK=${WEEK}"
           echo "week=${WEEK}" >> "$GITHUB_OUTPUT"
 
-      - name: Debug data availability
-        env:
-          SEASON: 2025
-          WEEK: ${{ steps.resolve.outputs.week }}
-        run: |
-          echo "SEASON=$SEASON WEEK=$WEEK"
-          node scripts/debugData.js
+      # Optional debug (requires scripts/debugData.js present)
+      # - name: Debug data availability
+      #   env:
+      #     SEASON: 2025
+      #     WEEK: ${{ steps.resolve.outputs.week }}
+      #   run: node scripts/debugData.js
 
+      # Train single week:
+      # - name: Train for season/week
+      #   env:
+      #     SEASON: 2025
+      #     WEEK: ${{ steps.resolve.outputs.week }}
+      #   run: npm run train
+
+      # Or train rolling (if you added trainer/train_multi.js and package.json script)
       - name: Train for season/week (rolling up to resolved week)
         env:
           SEASON: 2025
@@ -47,11 +57,10 @@ jobs:
 
       - name: List artifacts
         run: |
-          echo "Listing artifacts directory:"
+          echo "Artifacts directory:"
           ls -la artifacts || true
-          echo "Preview a few bytes if present:"
           for f in artifacts/*.json; do
-            [ -e "$f" ] && echo "--- $f ---" && head -n 5 "$f";
+            [ -e "$f" ] && echo "--- $f ---" && head -n 20 "$f";
           done
 
       - name: Commit artifacts

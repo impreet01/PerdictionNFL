@@ -4,7 +4,7 @@
 
 import axios from "axios";
 import Papa from "papaparse";
-import { gunzipSync } from "zlib";
+import { gunzipSync } from "node:zlib"; // <-- use Node built-in zlib
 
 const NFLVERSE_RELEASE = "https://github.com/nflverse/nflverse-data/releases/download";
 const STATS_TEAM_TAG = "stats_team";
@@ -14,10 +14,12 @@ function parseCSV(text) {
   const parsed = Papa.parse(text, { header: true, dynamicTyping: true, skipEmptyLines: true });
   return parsed.data;
 }
+
 async function fetchText(url) {
   const { data } = await axios.get(url, { responseType: "text" });
   return data;
 }
+
 async function fetchCSVMaybeGz(url) {
   if (url.endsWith(".csv")) {
     const text = await fetchText(url);
@@ -27,8 +29,11 @@ async function fetchCSVMaybeGz(url) {
     const { data, headers } = await axios.get(url, { responseType: "arraybuffer" });
     let buf = Buffer.from(data);
     const enc = (headers["content-encoding"] || "").toLowerCase();
-    if (enc.includes("gzip")) buf = gunzipSync(buf);
-    else { try { buf = gunzipSync(buf); } catch (_) {} }
+    if (enc.includes("gzip")) {
+      buf = gunzipSync(buf);
+    } else {
+      try { buf = gunzipSync(buf); } catch (_) { /* not gzipped, ignore */ }
+    }
     const text = buf.toString("utf8");
     return parseCSV(text);
   }
@@ -43,7 +48,7 @@ export async function loadSchedules() {
 export async function loadTeamWeekly(season) {
   const candidates = [
     `${NFLVERSE_RELEASE}/${STATS_TEAM_TAG}/stats_team_week_${season}.csv`,
-    `${NFLVERSE_RELEASE}/${STATS_TEAM_TAG}/stats_team_week_${season}.csv.gz`,
+    `${NFLVERSE_RELEASE}/${STATS_TEAM_TAG}/stats_team_week_${season}.csv.gz`
   ];
   let lastErr = null;
   for (const url of candidates) {

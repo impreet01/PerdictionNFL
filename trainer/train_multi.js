@@ -1,13 +1,19 @@
 // trainer/train_multi.js
-// Uses leaf distributions from ml-cart JSON to produce tree probabilities.
-// Also: logistic weights extraction fixed; partial-week forecasting retained.
+//
+// Fixes:
+//  • Logistic regression: implement our own GD trainer with intercept (no more null weights).
+//  • Decision tree probabilities: derive from leaf class frequencies using the training set.
+//  • Partial-week handling stays: backtest existing rows and forecast missing fixtures.
+//
+// Outputs per week W:
+//   artifacts/predictions_<season>_WXX.json
+//   artifacts/model_<season>_WXX.json
+// Also writes season_index_<season>.json, season_summary_<season>_to_WXX.json, and *_current.json.
 
 import { loadSchedules, loadTeamWeekly } from "./dataSources.js";
 import { buildFeatures } from "./featureBuild.js";
 import { writeFileSync, mkdirSync } from "fs";
-import LogisticRegression from "ml-logistic-regression";
 import { DecisionTreeClassifier as CART } from "ml-cart";
-import { Matrix } from "ml-matrix";
 
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
@@ -15,7 +21,7 @@ mkdirSync(ART_DIR, { recursive: true });
 const SEASON = Number(process.env.SEASON || new Date().getFullYear());
 const WEEK_ENV = Number(process.env.WEEK || 6); // upper bound suggestion
 
-// Keep in sync with featureBuild.js
+// Keep this in sync with featureBuild.js
 const FEATS = [
   "off_1st_down_s2d","off_total_yds_s2d","off_rush_yds_s2d","off_pass_yds_s2d","off_turnovers_s2d",
   "def_1st_down_s2d","def_total_yds_s2d","def_rush_yds_s2d","def_pass_yds_s2d","def_turnovers_s2d",
@@ -26,96 +32,126 @@ const FEATS = [
   "elo_pre","elo_diff","rest_days","rest_diff"
 ];
 
-function isReg(v){ if (v == null) return true; const s=String(v).trim().toUpperCase(); return s==="" || s.startsWith("REG"); }
-
 function Xy(rows){
   const X = rows.map(r => FEATS.map(k => Number(r[k] ?? 0)));
   const y = rows.map(r => Number(r.win));
   return { X, y };
 }
 
+function isReg(v){ if (v == null) return true; const s=String(v).trim().toUpperCase(); return s==="" || s.startsWith("REG"); }
 function splitTrainTest(all, season, week){
-  const train = all.filter(r => r.season===season && r.week < week);
+  const train = all.filter(r => r.season===season && r.week <  week);
   const test  = all.filter(r => r.season===season && r.week === week);
   return { train, test };
 }
 
-// ---- probabilities helpers ----
 const sigmoid = (z)=> 1/(1+Math.exp(-z));
-const dot = (a,b)=> { let s=0; for (let i=0;i<a.length;i++) s += (a[i]||0)*(b[i]||0); return s; };
+const round3  = (x)=> Math.round(Number(x)*1000)/1000;
+const mean    = (a)=> a.reduce((s,v)=>s+v,0)/a.length;
 
-function getLogitWeights(model){
-  try {
-    if (typeof model.toJSON === "function") {
-      const j = model.toJSON();
-      if (j && Array.isArray(j.theta)) return j.theta.map(Number);
-      if (j && Array.isArray(j.weights)) return j.weights.map(Number);
+// ---------------------------
+// LOGISTIC REGRESSION (GD)
+// ---------------------------
+function trainLogisticGD(X, y, { steps=3000, lr=5e-3, l2=1e-4 } = {}){
+  const n = X.length;
+  const d = X[0]?.length || 0;
+  let w = new Array(d).fill(0);
+  let b = 0;
+
+  for (let t=0; t<steps; t++){
+    let gb = 0;
+    const gw = new Array(d).fill(0);
+    for (let i=0;i<n;i++){
+      const z = dot(w, X[i]) + b;
+      const p = sigmoid(z);
+      const err = p - y[i];  // derivative of log loss wrt z
+      gb += err;
+      for (let j=0;j<d;j++) gw[j] += err * X[i][j];
     }
-  } catch {}
-  const cand = model.theta || model.weights || null;
-  if (cand) {
-    if (Array.isArray(cand)) return cand.map(Number);
-    if (typeof cand.to1DArray === "function") return cand.to1DArray().map(Number);
-    if (typeof cand.toJSON === "function") return cand.toJSON().map(Number);
-    try { return Array.from(cand).map(Number); } catch {}
+    // L2
+    for (let j=0;j<d;j++) gw[j] += l2 * w[j];
+
+    // Update
+    b -= lr * (gb / n);
+    for (let j=0;j<d;j++) w[j] -= lr * (gw[j] / n);
   }
-  return null;
+  return { w, b };
+}
+function predictLogisticProba(X, params){
+  const { w, b } = params;
+  return X.map(x => sigmoid(dot(w, x) + b));
 }
 
-function vectorizeProbaWithWeights(w, X){
-  if (!Array.isArray(w) || !w.length) return X.map(()=> 0.5);
-  return X.map(x => sigmoid(dot(w, x)));
-}
+// ---------------------------
+// CART PROBABILITIES VIA LEAVES
+// ---------------------------
 
-// ---- derive tree probabilities from ml-cart JSON ----
-function treeProbas(cart, X) {
-  let json;
-  try { json = cart.toJSON(); } catch { json = null; }
-  if (!json) {
-    // fallback: hard 0.5 (should not happen)
-    return X.map(() => 0.5);
-  }
-  // ml-cart JSON can be { root: <node>, ... } or a node directly
-  const root = json.root || json;
+/** Walk JSON node with robust field names and return leaf path like "L-R-L". */
+function leafPathForSample(root, x){
+  let node = root;
+  let path = "";
+  // Defensive limit
+  for (let guard=0; guard<200; guard++){
+    // Leaf?
+    const isLeaf = (!node.left && !node.right) || node.type === "leaf";
+    if (isLeaf) return path || "ROOT";
 
-  function probaAtNode(node, x) {
-    if (!node) return 0.5;
-
-    // Leaf detection: distribution present or no children
-    const dist = node.distribution || node.classHistogram || node.probabilities;
-    if (!node.left && !node.right && dist) {
-      const d0 = Number(dist[0] ?? 0);
-      const d1 = Number(dist[1] ?? 0);
-      const tot = d0 + d1;
-      return tot > 0 ? d1 / tot : 0.5;
-    }
-    if (node.type === "leaf" && dist) {
-      const d0 = Number(dist[0] ?? 0);
-      const d1 = Number(dist[1] ?? 0);
-      const tot = d0 + d1;
-      return tot > 0 ? d1 / tot : 0.5;
-    }
-
-    // Decision node: find column & threshold keys robustly
     const col = node.splitColumn ?? node.attribute ?? node.index ?? node.feature ?? null;
-    const thr = node.splitValue  ?? node.threshold ?? node.split ?? null;
+    const thr = node.splitValue  ?? node.threshold ?? node.split  ?? null;
 
     if (col == null || thr == null) {
-      // Unexpected shape: try children anyway
-      const leftP = node.left ? probaAtNode(node.left, x) : null;
-      const rightP = node.right ? probaAtNode(node.right, x) : null;
-      if (leftP != null && rightP == null) return leftP;
-      if (rightP != null && leftP == null) return rightP;
-      return 0.5;
+      // If structure is odd, stop here
+      return path || "ROOT";
     }
-
     const val = Number(x[col] ?? 0);
     const goLeft = val <= Number(thr);
-    return probaAtNode(goLeft ? node.left : node.right, x);
+    path += goLeft ? "L" : "R";
+    node = goLeft ? node.left : node.right;
+    if (!node) return path;
   }
-
-  return X.map(x => probaAtNode(root, x));
+  return path || "ROOT";
 }
+
+/** Build leaf frequency table by pushing TRAIN samples through the trained tree. */
+function buildLeafFrequencies(cart, Xtrain, ytrain){
+  let json;
+  try { json = cart.toJSON(); } catch { json = null; }
+  const root = json?.root || json;
+  const freq = new Map(); // path -> { n0, n1 }
+  if (!root) {
+    // fall back: one bucket with global class freq
+    let n1 = ytrain.reduce((s,v)=>s+(v?1:0),0);
+    freq.set("ROOT", { n0: ytrain.length - n1, n1 });
+    return { root: null, freq };
+  }
+  for (let i=0;i<Xtrain.length;i++){
+    const p = leafPathForSample(root, Xtrain[i]);
+    const cur = freq.get(p) || { n0:0, n1:0 };
+    if (ytrain[i] === 1) cur.n1++; else cur.n0++;
+    freq.set(p, cur);
+  }
+  return { root, freq };
+}
+
+function predictTreeProba(cart, leafStats, X){
+  const { root, freq } = leafStats;
+  if (!root) {
+    // only ROOT bucket exists
+    const f = freq.get("ROOT") || { n0:0, n1:0 };
+    const tot = f.n0 + f.n1;
+    const p1 = tot>0 ? f.n1/tot : 0.5;
+    return X.map(()=> p1);
+  }
+  return X.map(x=>{
+    const p = leafPathForSample(root, x);
+    const f = freq.get(p);
+    if (!f) return 0.5;
+    const tot = f.n0 + f.n1;
+    return tot>0 ? f.n1/tot : 0.5;
+  });
+}
+
+// ---------------------------
 
 function safeLog(x, eps=1e-12){ return Math.log(Math.max(x, eps)); }
 function logLoss(y, p){
@@ -123,10 +159,9 @@ function logLoss(y, p){
   for(let i=0;i<y.length;i++) s += -(y[i]*safeLog(p[i],eps) + (1-y[i])*safeLog(1-p[i],eps));
   return s/y.length;
 }
-
 function chooseHybridWeight(y, pL, pT){
-  let bestW=0.6, bestLL=1e9;
-  for(let w=0; w<=1.0001; w+=0.05){
+  let bestW=0.5, bestLL=Infinity;
+  for (let w=0; w<=1.0001; w+=0.05){
     const ph = pL.map((p,i)=> w*p + (1-w)*pT[i]);
     const ll = logLoss(y, ph);
     if (ll < bestLL) { bestLL = ll; bestW = Number(w.toFixed(2)); }
@@ -134,43 +169,6 @@ function chooseHybridWeight(y, pL, pT){
   return bestW;
 }
 
-const round3 = x => Math.round(Number(x)*1000)/1000;
-const mean = a => a.reduce((s,v)=>s+v,0)/a.length;
-
-// ---- natural language explainer ----
-function addDelta(lines, r, means, key, betterLow, label){
-  const v = Number(r[key]), m = Number(means[key]);
-  if (!Number.isFinite(v) || !Number.isFinite(m)) return;
-  const d = v - m;
-  const dir = d>=0 ? "higher" : "lower";
-  const good = betterLow ? d<0 : d>0;
-  lines.push(`${label} is ${dir} than league average by ${Math.abs(d).toFixed(1)} (${good ? "good" : "needs attention"}).`);
-}
-function explain(r, means, probs){
-  const lines = [];
-  addDelta(lines, r, means, "def_turnovers_s2d", false, "Defensive takeaways");
-  addDelta(lines, r, means, "off_turnovers_s2d", true,  "Offensive giveaways");
-  addDelta(lines, r, means, "off_total_yds_s2d", false, "Offensive total yards");
-  addDelta(lines, r, means, "def_total_yds_s2d", true,  "Yards allowed");
-  if (r.home) lines.push("Home-field advantage applies.");
-  if (Number(r.sim_count_same_loc_s2d) > 0) {
-    const wr = Number(r.sim_winrate_same_loc_s2d) * 100;
-    const pd = Number(r.sim_pointdiff_same_loc_s2d);
-    const cnt = Number(r.sim_count_same_loc_s2d);
-    lines.push(`History vs similar opponents (same venue): win rate ${wr.toFixed(0)}% over ${cnt} games, avg point diff ${pd.toFixed(1)}.`);
-  }
-  addDelta(lines, r, means, "off_total_yds_s2d_minus_opp", false, "Offense vs opp (S2D differential)");
-  addDelta(lines, r, means, "def_total_yds_s2d_minus_opp", true,  "Defense vs opp (S2D differential)");
-  addDelta(lines, r, means, "off_turnovers_s2d_minus_opp", true,  "Giveaways vs opp (S2D differential)");
-  addDelta(lines, r, means, "def_turnovers_s2d_minus_opp", false, "Takeaways vs opp (S2D differential)");
-  const eloDiff = Number(r.elo_diff);
-  if (Number.isFinite(eloDiff) && Math.abs(eloDiff) >= 25) lines.push(`Elo edge: ${eloDiff >= 0 ? "favorable" : "unfavorable"} by ${Math.abs(eloDiff).toFixed(0)} pts.`);
-  const restDiff = Number(r.rest_diff);
-  if (Number.isFinite(restDiff) && Math.abs(restDiff) >= 2) lines.push(`Rest edge: ${restDiff >= 0 ? "+" : ""}${restDiff} day(s) vs opponent.`);
-  return `Logistic: ${(probs.logit*100).toFixed(1)}%. Tree: ${(probs.tree*100).toFixed(1)}%. Hybrid: ${(probs.hybrid*100).toFixed(1)}%. ` + lines.join(" ");
-}
-
-// ---- week plumbing ----
 function computeLastCompletedWeek(schedules, season){
   const reg = schedules.filter(g => Number(g.season)===season && isReg(g.season_type));
   const weeks = [...new Set(reg.map(g => Number(g.week)).filter(Number.isFinite))].sort((a,b)=>a-b);
@@ -189,7 +187,6 @@ function computeLastCompletedWeek(schedules, season){
 
 function keyPair(home, away){ return `${home}@${away}`; }
 
-/** Build synthetic rows for scheduled games in week W that are missing from teamWeekly (forecast rest of week). */
 function buildMissingFixtureRows(featRows, schedules, season, W){
   const latestByTeam = new Map();
   for (const r of featRows) {
@@ -234,6 +231,10 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
   return rows;
 }
 
+function dot(a,b){ let s=0; for (let i=0;i<a.length;i++) s += (a[i]||0)*(b[i]||0); return s; }
+
+// --------------------------- MAIN ---------------------------
+
 (async function main(){
   console.log(`Rolling train for SEASON=${SEASON} (env WEEK=${WEEK_ENV})`);
   const schedules = await loadSchedules();
@@ -244,12 +245,15 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
   const teamWeekly = await loadTeamWeekly(SEASON);
   const prevTeamWeekly = await (async()=>{ try { return await loadTeamWeekly(SEASON-1); } catch { return []; } })();
 
-  // Feature table (S2D, diffs, elo, similar-opp, etc.)
   const featRows = buildFeatures({ teamWeekly, schedules, season: SEASON, prevTeamWeekly });
+
   const featWeeks = [...new Set(featRows.filter(r=>r.season===SEASON).map(r=>r.week))].sort((a,b)=>a-b);
   const featMaxWeek = featWeeks.length ? featWeeks[featWeeks.length-1] : 1;
 
-  const MAX_WEEK = Math.min( Math.max(2, WEEK_ENV, featMaxWeek, computeLastCompletedWeek(schedules, SEASON)+1), schedMaxWeek );
+  const MAX_WEEK = Math.min(
+    Math.max(2, WEEK_ENV, featMaxWeek, computeLastCompletedWeek(schedules, SEASON)+1),
+    schedMaxWeek
+  );
   console.log(`schedWeeks=[${schedWeeks.join(",")}], featWeeks=[${featWeeks.join(",")}], MAX_WEEK=${MAX_WEEK}`);
 
   const seasonSummary = { season: SEASON, built_through_week: null, weeks: [], feature_names: FEATS };
@@ -257,38 +261,86 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
   let latestWeekWritten = null;
 
   function fitModels(train){
-    const { X: XL_raw, y: yL_raw } = Xy(train);
-    const XL = new Matrix(XL_raw);
-    const yL = Matrix.columnVector(yL_raw);
+    const { X: Xtr, y: ytr } = Xy(train);
 
-    const logit = new LogisticRegression({ numSteps: 2500, learningRate: 5e-3 });
-    logit.train(XL, yL);
-    const wLogit = getLogitWeights(logit);
+    // logistic via our GD
+    const logit = trainLogisticGD(Xtr, ytr, { steps: 3000, lr: 5e-3, l2: 1e-4 });
+    const pL_train = predictLogisticProba(Xtr, logit);
 
-    const cart = new CART({ maxDepth: 4, minNumSamples: 30, gainFunction: "gini" });
-    cart.train(XL_raw, yL_raw);
+    // CART
+    const cart = new CART({ maxDepth: 4, minNumSamples: 20, gainFunction: "gini" });
+    cart.train(Xtr, ytr);
+    const leafStats = buildLeafFrequencies(cart, Xtr, ytr);
+    const pT_train = predictTreeProba(cart, leafStats, Xtr);
 
-    const pL_train = vectorizeProbaWithWeights(wLogit, XL_raw);
-    const pT_train = treeProbas(cart, XL_raw);
+    // blend weight
+    const wHybrid = chooseHybridWeight(ytr, pL_train, pT_train);
+    return { logit, cart, leafStats, wHybrid };
+  }
 
-    const wHybrid = chooseHybridWeight(yL_raw, pL_train, pT_train);
-    return { wLogit, cart, wHybrid };
+  const leagueMeansByWeek = new Map(); // week -> means object for NL text
+
+  function leagueMeans(rows){
+    const m = {};
+    for (const k of FEATS){
+      const vals = rows.map(r => Number(r[k]));
+      m[k] = mean(vals);
+    }
+    return m;
+  }
+
+  function explain(r, means, probs){
+    const lines = [];
+    const addDelta = (key, betterLow, label)=>{
+      const v = Number(r[key]), m = Number(means[key]);
+      if (!Number.isFinite(v) || !Number.isFinite(m)) return;
+      const d = v - m;
+      const dir = d>=0 ? "higher" : "lower";
+      const good = betterLow ? d<0 : d>0;
+      lines.push(`${label} is ${dir} than league average by ${Math.abs(d).toFixed(1)} (${good ? "good" : "needs attention"}).`);
+    };
+    addDelta("def_turnovers_s2d", false, "Defensive takeaways");
+    addDelta("off_turnovers_s2d", true,  "Offensive giveaways");
+    addDelta("off_total_yds_s2d", false, "Offensive total yards");
+    addDelta("def_total_yds_s2d", true,  "Yards allowed");
+    if (r.home) lines.push("Home-field advantage applies.");
+    if (Number(r.sim_count_same_loc_s2d) > 0) {
+      const wr = Number(r.sim_winrate_same_loc_s2d) * 100;
+      const pd = Number(r.sim_pointdiff_same_loc_s2d);
+      const cnt = Number(r.sim_count_same_loc_s2d);
+      lines.push(`History vs similar opponents (same venue): win rate ${wr.toFixed(0)}% over ${cnt} games, avg point diff ${pd.toFixed(1)}.`);
+    }
+    addDelta("off_total_yds_s2d_minus_opp", false, "Offense vs opp (S2D differential)");
+    addDelta("def_total_yds_s2d_minus_opp", true,  "Defense vs opp (S2D differential)");
+    addDelta("off_turnovers_s2d_minus_opp", true,  "Giveaways vs opp (S2D differential)");
+    addDelta("def_turnovers_s2d_minus_opp", false, "Takeaways vs opp (S2D differential)");
+
+    const eloDiff = Number(r.elo_diff);
+    if (Number.isFinite(eloDiff) && Math.abs(eloDiff) >= 25) lines.push(`Elo edge: ${eloDiff >= 0 ? "favorable" : "unfavorable"} by ${Math.abs(eloDiff).toFixed(0)} pts.`);
+    const restDiff = Number(r.rest_diff);
+    if (Number.isFinite(restDiff) && Math.abs(restDiff) >= 2) lines.push(`Rest edge: ${restDiff >= 0 ? "+" : ""}${restDiff} day(s) vs opponent.`);
+
+    return `Logistic: ${(probs.logit*100).toFixed(1)}%. Tree: ${(probs.tree*100).toFixed(1)}%. Hybrid: ${(probs.hybrid*100).toFixed(1)}%. ` + lines.join(" ");
   }
 
   for (let W=2; W<=MAX_WEEK; W++){
     const { train, test } = splitTrainTest(featRows, SEASON, W);
     if (!train.length) { console.log(`W${W}: no training rows, skipping.`); continue; }
 
-    const { wLogit, cart, wHybrid } = fitModels(train);
+    // Fit
+    const { logit, cart, leafStats, wHybrid } = fitModels(train);
 
-    // Backtest rows present in data
-    const { X: Xtest_raw } = Xy(test);
-    const back_pL = vectorizeProbaWithWeights(wLogit, Xtest_raw);
-    const back_pT = treeProbas(cart, Xtest_raw);
-    const back_pH = back_pL.map((p,i)=> wHybrid*p + (1-wHybrid)*back_pT[i]);
+    // Means cache for NL explanations
+    leagueMeansByWeek.set(W, leagueMeans(train));
 
-    // Forecast missing fixtures in the SAME week
-    const schedPairs = new Set(regSched.filter(g=>Number(g.week)===W).map(g => keyPair(g.home_team, g.away_team)));
+    // Backtest probs
+    const { X: Xtest } = Xy(test);
+    const pL_back = predictLogisticProba(Xtest, logit);
+    const pT_back = predictTreeProba(cart, leafStats, Xtest);
+    const pH_back = pL_back.map((p,i)=> wHybrid*p + (1-wHybrid)*pT_back[i]);
+
+    // Forecast missing fixtures in same week
+    const regPairs = new Set(regSched.filter(g=>Number(g.week)===W).map(g => keyPair(g.home_team, g.away_team)));
     const presentPairs = new Set();
     for (let i=0;i<test.length;i+=2){
       const r = test[i];
@@ -297,29 +349,29 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
       const away = r.home ? r.opponent : r.team;
       presentPairs.add(keyPair(home, away));
     }
-    const missingPairs = [...schedPairs].filter(k => !presentPairs.has(k));
+    const missingPairs = [...regPairs].filter(k => !presentPairs.has(k));
 
     let forecastRows = [];
     if (missingPairs.length){
-      const allForecastForWeek = buildMissingFixtureRows(featRows, schedules, SEASON, W);
+      const allF = buildMissingFixtureRows(featRows, schedules, SEASON, W);
       const isPair = (r)=>{
         const home = r.home ? r.team : r.opponent;
         const away = r.home ? r.opponent : r.team;
         return missingPairs.includes(keyPair(home, away));
       };
-      forecastRows = allForecastForWeek.filter(isPair);
+      forecastRows = allF.filter(isPair);
     }
 
-    const { X: Xf_raw } = Xy(forecastRows);
-    const fore_pL = vectorizeProbaWithWeights(wLogit, Xf_raw);
-    const fore_pT = treeProbas(cart, Xf_raw);
-    const fore_pH = fore_pL.map((p,i)=> wHybrid*p + (1-wHybrid)*fore_pT[i]);
+    const { X: Xf } = Xy(forecastRows);
+    const pL_fore = predictLogisticProba(Xf, logit);
+    const pT_fore = predictTreeProba(cart, leafStats, Xf);
+    const pH_fore = pL_fore.map((p,i)=> wHybrid*p + (1-wHybrid)*pT_fore[i]);
 
-    const leagueMeans = {}; for (const k of FEATS) leagueMeans[k] = mean(train.map(r=>Number(r[k])));
-
+    // Build outputs
+    const means = leagueMeansByWeek.get(W);
     const toResult = (r, probs, forecastFlag) => {
       const game_id = `${r.season}-W${String(r.week).padStart(2,"0")}-${r.team}-${r.opponent}`;
-      const english = explain(r, leagueMeans, probs);
+      const english = explain(r, means, probs);
       return {
         game_id,
         home_team: r.home ? r.team : r.opponent,
@@ -328,25 +380,16 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
         week: r.week,
         forecast: forecastFlag,
         models: {
-          logistic: { prob_win: round3(probs.logit) },
+          logistic:      { prob_win: round3(probs.logit) },
           decision_tree: { prob_win: round3(probs.tree) },
-          hybrid: { prob_win: round3(probs.hybrid), weights: { logistic: wHybrid, tree: Number((1-wHybrid).toFixed(2)) } }
+          hybrid:        { prob_win: round3(probs.hybrid), weights: { logistic: wHybrid, tree: Number((1-wHybrid).toFixed(2)) } }
         },
         natural_language: english
       };
     };
 
-    const backResults = test.map((r,i)=> toResult(r, {
-      logit: back_pL[i],
-      tree:  back_pT[i],
-      hybrid:back_pH[i]
-    }, false));
-
-    const foreResults = forecastRows.map((r,i)=> toResult(r, {
-      logit: fore_pL[i],
-      tree:  fore_pT[i],
-      hybrid:fore_pH[i]
-    }, true));
+    const backResults = test.map((r,i)=> toResult(r, { logit: pL_back[i], tree: pT_back[i], hybrid: pH_back[i] }, false));
+    const foreResults = forecastRows.map((r,i)=> toResult(r, { logit: pL_fore[i], tree: pT_fore[i], hybrid: pH_fore[i] }, true));
 
     const results = [...backResults, ...foreResults];
     if (!results.length){
@@ -354,6 +397,7 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
       continue;
     }
 
+    // Write artifacts
     const predPath  = `${ART_DIR}/predictions_${SEASON}_W${String(W).padStart(2,"0")}.json`;
     const modelPath = `${ART_DIR}/model_${SEASON}_W${String(W).padStart(2,"0")}.json`;
     writeFileSync(predPath, JSON.stringify(results, null, 2));
@@ -362,12 +406,13 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
       week: W,
       features: FEATS,
       hybrid_weight: wHybrid,
-      logistic: wLogit
+      logistic: { weights: logit.w, intercept: logit.b }
     }, null, 2));
 
     console.log(`WROTE: ${predPath}`);
     console.log(`WROTE: ${modelPath}`);
 
+    // Summary + index
     seasonSummary.weeks.push({
       week: W,
       train_rows: train.length,
@@ -379,11 +424,12 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
     seasonIndex.weeks.push({
       week: W,
       predictions_file: `predictions_${SEASON}_W${String(W).padStart(2,"0")}.json`,
-      model_file: `model_${SEASON}_W${String(W).padStart(2,"0")}.json`
+      model_file:       `model_${SEASON}_W${String(W).padStart(2,"0")}.json`
     });
     latestWeekWritten = W;
   }
 
+  // Season summary & index
   const summaryPath = `${ART_DIR}/season_summary_${SEASON}_to_W${String(seasonSummary.built_through_week || 0).padStart(2,"0")}.json`;
   writeFileSync(summaryPath, JSON.stringify(seasonSummary, null, 2));
   console.log(`WROTE: ${summaryPath}`);
@@ -392,19 +438,13 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
   writeFileSync(indexPath, JSON.stringify(seasonIndex, null, 2));
   console.log(`WROTE: ${indexPath}`);
 
+  // Current aliases
   if (latestWeekWritten != null) {
-    const predCurrentPath  = `${ART_DIR}/predictions_current.json`;
-    const modelCurrentPath = `${ART_DIR}/model_current.json`;
-    const predLatestPath   = `${ART_DIR}/predictions_${SEASON}_W${String(latestWeekWritten).padStart(2,"0")}.json`;
-    const modelLatestPath  = `${ART_DIR}/model_${SEASON}_W${String(latestWeekWritten).padStart(2,"0")}.json`;
-
     const fs = await import("fs/promises");
-    const predBuf  = await fs.readFile(predLatestPath,  { encoding: "utf8" });
-    const modelBuf = await fs.readFile(modelLatestPath, { encoding: "utf8" });
-    writeFileSync(predCurrentPath,  predBuf);
-    writeFileSync(modelCurrentPath, modelBuf);
-
-    console.log(`WROTE: ${predCurrentPath} (alias of ${predLatestPath})`);
-    console.log(`WROTE: ${modelCurrentPath} (alias of ${modelLatestPath})`);
+    const predSrc  = `${ART_DIR}/predictions_${SEASON}_W${String(latestWeekWritten).padStart(2,"0")}.json`;
+    const modelSrc = `${ART_DIR}/model_${SEASON}_W${String(latestWeekWritten).padStart(2,"0")}.json`;
+    writeFileSync(`${ART_DIR}/predictions_current.json`, await fs.readFile(predSrc,  "utf8"));
+    writeFileSync(`${ART_DIR}/model_current.json`,      await fs.readFile(modelSrc, "utf8"));
+    console.log(`WROTE: artifacts/*_current.json aliases`);
   }
 })().catch(e=>{ console.error(e); process.exit(1); });

@@ -1,13 +1,6 @@
 // trainer/train_multi.js
-// Fixes:
-//  - logistic weights: read from model.toJSON().theta so probs ≠ 0.5
-//  - tree probs: use cart.predictProba(...)[1] so probs ≠ 1.0
-//  - partial weeks: backtest existing games and ALSO forecast missing scheduled fixtures in same week
-//
-// Outputs per week W:
-//   - predictions_<season>_WXX.json  (rows: backtested + forecasted missing fixtures; each row has forecast: true|false)
-//   - model_<season>_WXX.json        (stores logistic weights and hybrid weight)
-// Also writes season_index_<season>.json, season_summary_<season>_to_WXX.json, *_current.json aliases.
+// Uses leaf distributions from ml-cart JSON to produce tree probabilities.
+// Also: logistic weights extraction fixed; partial-week forecasting retained.
 
 import { loadSchedules, loadTeamWeekly } from "./dataSources.js";
 import { buildFeatures } from "./featureBuild.js";
@@ -20,9 +13,9 @@ const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
 
 const SEASON = Number(process.env.SEASON || new Date().getFullYear());
-const WEEK_ENV = Number(process.env.WEEK || 6); // an upper bound suggestion; we will not exceed actual schedule
+const WEEK_ENV = Number(process.env.WEEK || 6); // upper bound suggestion
 
-// Keep this in sync with featureBuild.js
+// Keep in sync with featureBuild.js
 const FEATS = [
   "off_1st_down_s2d","off_total_yds_s2d","off_rush_yds_s2d","off_pass_yds_s2d","off_turnovers_s2d",
   "def_1st_down_s2d","def_total_yds_s2d","def_rush_yds_s2d","def_pass_yds_s2d","def_turnovers_s2d",
@@ -52,7 +45,6 @@ const sigmoid = (z)=> 1/(1+Math.exp(-z));
 const dot = (a,b)=> { let s=0; for (let i=0;i<a.length;i++) s += (a[i]||0)*(b[i]||0); return s; };
 
 function getLogitWeights(model){
-  // Prefer serialized weights; fallback to direct properties if present.
   try {
     if (typeof model.toJSON === "function") {
       const j = model.toJSON();
@@ -73,6 +65,56 @@ function getLogitWeights(model){
 function vectorizeProbaWithWeights(w, X){
   if (!Array.isArray(w) || !w.length) return X.map(()=> 0.5);
   return X.map(x => sigmoid(dot(w, x)));
+}
+
+// ---- derive tree probabilities from ml-cart JSON ----
+function treeProbas(cart, X) {
+  let json;
+  try { json = cart.toJSON(); } catch { json = null; }
+  if (!json) {
+    // fallback: hard 0.5 (should not happen)
+    return X.map(() => 0.5);
+  }
+  // ml-cart JSON can be { root: <node>, ... } or a node directly
+  const root = json.root || json;
+
+  function probaAtNode(node, x) {
+    if (!node) return 0.5;
+
+    // Leaf detection: distribution present or no children
+    const dist = node.distribution || node.classHistogram || node.probabilities;
+    if (!node.left && !node.right && dist) {
+      const d0 = Number(dist[0] ?? 0);
+      const d1 = Number(dist[1] ?? 0);
+      const tot = d0 + d1;
+      return tot > 0 ? d1 / tot : 0.5;
+    }
+    if (node.type === "leaf" && dist) {
+      const d0 = Number(dist[0] ?? 0);
+      const d1 = Number(dist[1] ?? 0);
+      const tot = d0 + d1;
+      return tot > 0 ? d1 / tot : 0.5;
+    }
+
+    // Decision node: find column & threshold keys robustly
+    const col = node.splitColumn ?? node.attribute ?? node.index ?? node.feature ?? null;
+    const thr = node.splitValue  ?? node.threshold ?? node.split ?? null;
+
+    if (col == null || thr == null) {
+      // Unexpected shape: try children anyway
+      const leftP = node.left ? probaAtNode(node.left, x) : null;
+      const rightP = node.right ? probaAtNode(node.right, x) : null;
+      if (leftP != null && rightP == null) return leftP;
+      if (rightP != null && leftP == null) return rightP;
+      return 0.5;
+    }
+
+    const val = Number(x[col] ?? 0);
+    const goLeft = val <= Number(thr);
+    return probaAtNode(goLeft ? node.left : node.right, x);
+  }
+
+  return X.map(x => probaAtNode(root, x));
 }
 
 function safeLog(x, eps=1e-12){ return Math.log(Math.max(x, eps)); }
@@ -147,9 +189,8 @@ function computeLastCompletedWeek(schedules, season){
 
 function keyPair(home, away){ return `${home}@${away}`; }
 
-/** Build synthetic test rows for scheduled games in week W that are *missing* from teamWeekly (i.e., forecast the rest). */
+/** Build synthetic rows for scheduled games in week W that are missing from teamWeekly (forecast rest of week). */
 function buildMissingFixtureRows(featRows, schedules, season, W){
-  // latest stats through W-1
   const latestByTeam = new Map();
   for (const r of featRows) {
     if (r.season!==season || r.week>=W) continue;
@@ -162,15 +203,12 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
     const home = g.home_team, away = g.away_team;
     const tHome = latestByTeam.get(home);
     const tAway = latestByTeam.get(away);
-    if (!tHome || !tAway) continue; // cannot build
+    if (!tHome || !tAway) continue;
 
-    // Build both perspectives using stats through W-1
     const diff = (a,b)=> (Number(a??0) - Number(b??0)) || 0;
-    const base = (team, opp, homeFlag)=>{
-      const me = homeFlag ? tHome : tAway;
-      const op = homeFlag ? tAway : tHome;
+    const base = (me, op, isHome)=>{
       return {
-        season, week: W, team, opponent: opp, home: homeFlag ? 1 : 0,
+        season, week: W, team: isHome ? home : away, opponent: isHome ? away : home, home: isHome ? 1 : 0,
         off_1st_down_s2d: me.off_1st_down_s2d, off_total_yds_s2d: me.off_total_yds_s2d,
         off_rush_yds_s2d: me.off_rush_yds_s2d, off_pass_yds_s2d: me.off_pass_yds_s2d,
         off_turnovers_s2d: me.off_turnovers_s2d, def_1st_down_s2d: me.def_1st_down_s2d,
@@ -184,14 +222,14 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
         def_total_yds_s2d_minus_opp: diff(me.def_total_yds_s2d, op.def_total_yds_s2d),
         off_turnovers_s2d_minus_opp:  diff(me.off_turnovers_s2d,  op.off_turnovers_s2d),
         def_turnovers_s2d_minus_opp:  diff(me.def_turnovers_s2d,  op.def_turnovers_s2d),
-        rest_days: 0, rest_diff: 0, // not known precisely here
+        rest_days: 0, rest_diff: 0,
         elo_pre: me.elo_pre ?? 1500,
         elo_diff: (me.elo_pre ?? 1500) - (op.elo_pre ?? 1500),
         game_date: null,
         win: 0
       };
     };
-    rows.push(base(home, away, true), base(away, home, false));
+    rows.push(base(tHome, tAway, true), base(tAway, tHome, false));
   }
   return rows;
 }
@@ -206,14 +244,11 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
   const teamWeekly = await loadTeamWeekly(SEASON);
   const prevTeamWeekly = await (async()=>{ try { return await loadTeamWeekly(SEASON-1); } catch { return []; } })();
 
-  // Build season features once (handles S2D, diffs, elo, similar-opp, etc.)
+  // Feature table (S2D, diffs, elo, similar-opp, etc.)
   const featRows = buildFeatures({ teamWeekly, schedules, season: SEASON, prevTeamWeekly });
-
-  // Find last week that appears in features for this season
   const featWeeks = [...new Set(featRows.filter(r=>r.season===SEASON).map(r=>r.week))].sort((a,b)=>a-b);
   const featMaxWeek = featWeeks.length ? featWeeks[featWeeks.length-1] : 1;
 
-  // Upper bound for our loop
   const MAX_WEEK = Math.min( Math.max(2, WEEK_ENV, featMaxWeek, computeLastCompletedWeek(schedules, SEASON)+1), schedMaxWeek );
   console.log(`schedWeeks=[${schedWeeks.join(",")}], featWeeks=[${featWeeks.join(",")}], MAX_WEEK=${MAX_WEEK}`);
 
@@ -226,18 +261,15 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
     const XL = new Matrix(XL_raw);
     const yL = Matrix.columnVector(yL_raw);
 
-    // train logistic
     const logit = new LogisticRegression({ numSteps: 2500, learningRate: 5e-3 });
     logit.train(XL, yL);
-    const wLogit = getLogitWeights(logit); // <-- robust extraction
+    const wLogit = getLogitWeights(logit);
 
-    // train tree
     const cart = new CART({ maxDepth: 4, minNumSamples: 30, gainFunction: "gini" });
     cart.train(XL_raw, yL_raw);
 
-    // train-time probabilities
     const pL_train = vectorizeProbaWithWeights(wLogit, XL_raw);
-    const pT_train = cart.predictProba(XL_raw).map(row => Array.isArray(row) ? Number(row[1]) : Number(row)); // <-- proba
+    const pT_train = treeProbas(cart, XL_raw);
 
     const wHybrid = chooseHybridWeight(yL_raw, pL_train, pT_train);
     return { wLogit, cart, wHybrid };
@@ -252,11 +284,10 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
     // Backtest rows present in data
     const { X: Xtest_raw } = Xy(test);
     const back_pL = vectorizeProbaWithWeights(wLogit, Xtest_raw);
-    const back_pT = cart.predictProba(Xtest_raw).map(row => Array.isArray(row) ? Number(row[1]) : Number(row));
+    const back_pT = treeProbas(cart, Xtest_raw);
     const back_pH = back_pL.map((p,i)=> wHybrid*p + (1-wHybrid)*back_pT[i]);
 
     // Forecast missing fixtures in the SAME week
-    // Determine which scheduled pairings are already present in 'test'
     const schedPairs = new Set(regSched.filter(g=>Number(g.week)===W).map(g => keyPair(g.home_team, g.away_team)));
     const presentPairs = new Set();
     for (let i=0;i<test.length;i+=2){
@@ -267,10 +298,10 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
       presentPairs.add(keyPair(home, away));
     }
     const missingPairs = [...schedPairs].filter(k => !presentPairs.has(k));
+
     let forecastRows = [];
     if (missingPairs.length){
       const allForecastForWeek = buildMissingFixtureRows(featRows, schedules, SEASON, W);
-      // keep only the missing pairings
       const isPair = (r)=>{
         const home = r.home ? r.team : r.opponent;
         const away = r.home ? r.opponent : r.team;
@@ -279,13 +310,11 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
       forecastRows = allForecastForWeek.filter(isPair);
     }
 
-    // Compute probs for missing fixtures
     const { X: Xf_raw } = Xy(forecastRows);
     const fore_pL = vectorizeProbaWithWeights(wLogit, Xf_raw);
-    const fore_pT = cart.predictProba(Xf_raw).map(row => Array.isArray(row) ? Number(row[1]) : Number(row));
+    const fore_pT = treeProbas(cart, Xf_raw);
     const fore_pH = fore_pL.map((p,i)=> wHybrid*p + (1-wHybrid)*fore_pT[i]);
 
-    // League means (from train) for NL text
     const leagueMeans = {}; for (const k of FEATS) leagueMeans[k] = mean(train.map(r=>Number(r[k])));
 
     const toResult = (r, probs, forecastFlag) => {
@@ -319,10 +348,9 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
       hybrid:fore_pH[i]
     }, true));
 
-    // Write artifacts
     const results = [...backResults, ...foreResults];
     if (!results.length){
-      console.log(`W${W}: nothing to write (no backtest rows, no missing fixtures).`);
+      console.log(`W${W}: nothing to write.`);
       continue;
     }
 
@@ -334,7 +362,7 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
       week: W,
       features: FEATS,
       hybrid_weight: wHybrid,
-      logistic: wLogit // <-- now stored
+      logistic: wLogit
     }, null, 2));
 
     console.log(`WROTE: ${predPath}`);
@@ -344,7 +372,7 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
       week: W,
       train_rows: train.length,
       test_rows: results.length,
-      forecast: foreResults.length > 0, // week includes any forecasted fixtures
+      forecast: foreResults.length > 0,
       hybrid_weight: wHybrid
     });
     seasonSummary.built_through_week = W;
@@ -356,7 +384,6 @@ function buildMissingFixtureRows(featRows, schedules, season, W){
     latestWeekWritten = W;
   }
 
-  // Summary + index + current aliases
   const summaryPath = `${ART_DIR}/season_summary_${SEASON}_to_W${String(seasonSummary.built_through_week || 0).padStart(2,"0")}.json`;
   writeFileSync(summaryPath, JSON.stringify(seasonSummary, null, 2));
   console.log(`WROTE: ${summaryPath}`);

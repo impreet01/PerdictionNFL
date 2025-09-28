@@ -1,75 +1,88 @@
-name: Train weekly
+name: weekly model + predictions
 
 on:
-  workflow_dispatch:
+  # Run daily during NFL season (Thu–Mon) to catch new data and late posts
   schedule:
-    - cron: "0 10 * * 2"   # Tuesdays 10:00 UTC
-
-permissions:
-  contents: write
+    # Every day at 11:10 UTC (03:10 PT), adjust if you like
+    - cron: '10 11 * 9-12 *'
+    - cron: '10 11 * 1 *'
+  # Manual run with optional overrides
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'Season override (default: current year)'
+        required: false
+      week:
+        description: 'Week override (default: auto via resolveWeek.js)'
+        required: false
 
 jobs:
   train:
     runs-on: ubuntu-latest
+
+    env:
+      NODE_VERSION: 20.x
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Use Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
 
-      # Clean install to avoid stale lockfiles that reference old deps
-      - name: Clean install deps
+      - name: Install
         run: |
-          rm -rf node_modules package-lock.json
           npm install --no-audit --no-fund
 
-      # ---- If you already have scripts/resolveWeek.js from earlier steps ----
-      - name: Resolve NFL week (auto)
-        id: resolve
-        env:
-          SEASON: 2025
+      - name: Resolve season (auto unless override)
         run: |
-          WEEK=$(node scripts/resolveWeek.js)
-          echo "Resolved WEEK=${WEEK}"
-          echo "week=${WEEK}" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ github.event.inputs.season }}" ]; then
+            echo "SEASON=${{ github.event.inputs.season }}" >> $GITHUB_ENV
+          else
+            echo "SEASON=$(node -e 'console.log(new Date().getFullYear())')" >> $GITHUB_ENV
+          fi
+          echo "Resolved SEASON=$SEASON"
 
-      # Optional debug (requires scripts/debugData.js present)
-      # - name: Debug data availability
-      #   env:
-      #     SEASON: 2025
-      #     WEEK: ${{ steps.resolve.outputs.week }}
-      #   run: node scripts/debugData.js
+      - name: Resolve week (auto unless override)
+        run: |
+          if [ -n "${{ github.event.inputs.week }}" ]; then
+            echo "WEEK=${{ github.event.inputs.week }}" >> $GITHUB_ENV
+            echo "Resolved WEEK=$WEEK (manual override)"
+          else
+            # uses scripts/resolveWeek.js to detect (maxWeekInData + 1)
+            WEEK=$(node scripts/resolveWeek.js | sed -n 's/Resolved WEEK=\(.*\)$/\1/p')
+            if [ -z "$WEEK" ]; then
+              # Fallback to 2 if resolver cannot determine (early preseason)
+              WEEK=2
+            fi
+            echo "WEEK=$WEEK" >> $GITHUB_ENV
+            echo "Resolved WEEK=$WEEK (auto)"
+          fi
 
-      # Train single week:
-      # - name: Train for season/week
-      #   env:
-      #     SEASON: 2025
-      #     WEEK: ${{ steps.resolve.outputs.week }}
-      #   run: npm run train
+      - name: Train + Predict (auto week)
+        run: |
+          echo "Training SEASON=$SEASON WEEK=$WEEK"
+          SEASON=$SEASON WEEK=$WEEK npm run train:multi
 
-      # Or train rolling (if you added trainer/train_multi.js and package.json script)
-      - name: Train for season/week (rolling up to resolved week)
-        env:
-          SEASON: 2025
-          WEEK: ${{ steps.resolve.outputs.week }}
-        run: npm run train:multi
-
-      - name: List artifacts
+      - name: Show artifacts
         run: |
           echo "Artifacts directory:"
-          ls -la artifacts || true
-          for f in artifacts/*.json; do
-            [ -e "$f" ] && echo "--- $f ---" && head -n 20 "$f";
+          ls -lah artifacts || true
+          for f in artifacts/season_index_*.json artifacts/season_summary_*.json; do
+            [ -f "$f" ] && echo "--- $f ---" && cat "$f"
           done
 
-      - name: Commit artifacts
-        env:
-          RESOLVED_WEEK: ${{ steps.resolve.outputs.week }}
+      - name: Commit artifacts (skip if no changes)
         run: |
           git config user.name "gh-actions"
-          git config user.email "actions@github.com"
-          mkdir -p artifacts
+          git config user.email "actions@users.noreply.github.com"
           git add artifacts/*.json || true
-          git commit -m "weekly model + predictions (S=2025, W=${RESOLVED_WEEK})" || echo "no changes"
-          git push
+          if git diff --cached --quiet; then
+            echo "No artifact changes to commit."
+          else
+            git commit -m "weekly model + predictions (S=$SEASON, W=$WEEK)"
+            git push
+          fi

@@ -1,6 +1,7 @@
 // trainer/train_multi.js
 // Training + forecasting pipeline with early-season-stable hybrid,
 // per-game explanations, and home-view de-duplicated outputs.
+// IMPORTANT: capped at lastFullWeek + 1 (current week), not beyond.
 
 import { loadSchedules, loadTeamWeekly } from "./dataSources.js";
 import { buildFeatures, FEATS } from "./featureBuild.js";
@@ -211,7 +212,7 @@ function forecastMissingForWeek(W, regSched, SEASON, trainRows, testRows){
       me.off_total_yds_s2d_minus_opp = Number(me.off_total_yds_s2d) - Number(op.off_total_yds_s2d);
       me.def_total_yds_s2d_minus_opp = Number(me.def_total_yds_s2d) - Number(op.def_total_yds_s2d);
       me.off_turnovers_s2d_minus_opp = Number(me.off_turnovers_s2d)  - Number(op.off_turnovers_s2d);
-      me.def_turnovers_s2d_minus_opp = Number(me.def_turnovers_s2d)  - Number(op.def_turnovers_s2d);
+      me.def_turnovers_s2d_minus_opp = Number(me.def_turnovers_s2d)  - Number(op.off_turnovers_s2d);
       return r;
     };
     rows.push(clone(hPrev, home, away, true));
@@ -242,14 +243,28 @@ function dedupeToHomeView(items) {
   const schedWeeks = [...new Set(regSched.map(g => Number(g.week)).filter(Number.isFinite))].sort((a,b)=>a-b);
   const maxSchedWeek = schedWeeks.length ? schedWeeks[schedWeeks.length-1] : 18;
 
-  const twWeeks = [...new Set((teamWeekly||[]).filter(r=>Number(r.season)===SEASON).map(r=>Number(r.week)).filter(Number.isFinite))].sort((a,b)=>a-b);
-  const maxWeekAvail = twWeeks.length ? twWeeks[twWeeks.length-1] : 1;
+  // compute last full regular-season week (all games final)
+  function hasFinalScore(g){
+    const hs = Number(g.home_score ?? g.home_points ?? g.home_pts);
+    const as = Number(g.away_score ?? g.away_points ?? g.away_pts);
+    return Number.isFinite(hs) && Number.isFinite(as);
+  }
+  let lastFull = 0;
+  for (const w of schedWeeks){
+    const games = regSched.filter(g=>Number(g.week)===w);
+    const allFinal = games.length>0 && games.every(hasFinalScore);
+    if (allFinal) lastFull = w; else break;
+  }
 
+  // Build features from actual data (contains weeks that exist in team-week CSV)
   const featRows = buildFeatures({ teamWeekly, schedules, season: SEASON, prevTeamWeekly });
-  console.log(`Built feature rows: ${featRows.length} | data weeks: ${JSON.stringify(twWeeks)}`);
+  const dataWeeks = [...new Set(featRows.map(r=>r.week))].sort((a,b)=>a-b);
+  console.log(`Built feature rows: ${featRows.length} | data weeks: ${JSON.stringify(dataWeeks)}`);
 
-  const MAX_WEEK = Math.min(WEEK_ENV, Math.max(2, maxWeekAvail + 1), maxSchedWeek);
-  console.log(`Train/predict through WEEK ${MAX_WEEK} (cap env=${WEEK_ENV}, data+1=${maxWeekAvail+1}, sched=${maxSchedWeek})`);
+  // Cap through current week (lastFull + 1), never beyond WEEK_ENV or schedule cap.
+  const CURRENT_WEEK = Math.min(lastFull + 1, maxSchedWeek);
+  const MAX_WEEK = Math.min(WEEK_ENV, CURRENT_WEEK);
+  console.log(`Train/predict through WEEK ${MAX_WEEK} (env=${WEEK_ENV}, current=${CURRENT_WEEK}, lastFull=${lastFull}, schedMax=${maxSchedWeek})`);
 
   const seasonSummary = { season: SEASON, built_through_week: null, weeks: [], feature_names: FEATS };
   const seasonIndex = { season: SEASON, weeks: [] };
@@ -300,7 +315,7 @@ function dedupeToHomeView(items) {
     const pH_back = pL_back.map((p,i)=> wHybrid*p + (1-wHybrid)*pT_back[i]);
     const back = test.map((r,i)=> toResult(r, { logit:pL_back[i], tree:pT_back[i], hybrid:pH_back[i] }, false, wHybrid, train));
 
-    // forecast rest of week W
+    // forecast rest of week W (use last known S2D snapshots)
     const foreRows = forecastMissingForWeek(W, regSched, SEASON, train, test);
     const { X: XfRaw } = Xy(foreRows);
     const Xf = applyScaler(XfRaw, scaler);

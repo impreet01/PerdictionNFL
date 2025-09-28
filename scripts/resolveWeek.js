@@ -1,41 +1,45 @@
 // scripts/resolveWeek.js
-// Decide which WEEK to train/predict:
-// WEEK = min( maxWeekInTeamWeekly + 1, maxWeekInSchedule ), and >= 2.
-// Prints: "Resolved WEEK=<n>"
+// Resolve WEEK = max(2, min(maxSchedWeek, lastFullWeek + 1))
+// "lastFullWeek" = latest regular-season week where ALL scheduled games have final scores.
 
-import { loadSchedules, loadTeamWeekly } from "../trainer/dataSources.js";
+import { loadSchedules } from "../trainer/dataSources.js";
+
+function isReg(v) {
+  if (v == null) return true;
+  const s = String(v).trim().toUpperCase();
+  return s === "" || s.startsWith("REG");
+}
+
+function hasFinalScore(g) {
+  const hs = Number(g.home_score ?? g.home_points ?? g.home_pts);
+  const as = Number(g.away_score ?? g.away_points ?? g.away_pts);
+  return Number.isFinite(hs) && Number.isFinite(as);
+}
 
 async function main() {
   const SEASON = Number(process.env.SEASON || new Date().getFullYear());
-
   const schedules = await loadSchedules();
-  const regWeeks = [...new Set(
-    schedules
-      .filter(g => Number(g.season) === SEASON && String(g.season_type || "").toUpperCase().startsWith("REG"))
-      .map(g => Number(g.week))
-      .filter(Number.isFinite)
-  )].sort((a,b)=>a-b);
-  const maxSchedWeek = regWeeks.length ? regWeeks[regWeeks.length - 1] : 18;
 
-  let maxWeekInData = 1;
-  try {
-    const teamWeekly = await loadTeamWeekly(SEASON);
-    const twWeeks = [...new Set(
-      (teamWeekly || [])
-        .filter(r => Number(r.season) === SEASON)
-        .map(r => Number(r.week))
-        .filter(Number.isFinite)
-    )].sort((a,b)=>a-b);
-    if (twWeeks.length) maxWeekInData = twWeeks[twWeeks.length - 1];
-  } catch {
-    // fall back to 1 if teamWeekly not yet published
+  const reg = schedules.filter(
+    (g) => Number(g.season) === SEASON && isReg(g.season_type)
+  );
+
+  const weeks = [...new Set(reg.map((g) => Number(g.week)).filter(Number.isFinite))].sort((a, b) => a - b);
+  const maxSchedWeek = weeks.length ? weeks[weeks.length - 1] : 18;
+
+  // compute last full week (all games have final scores)
+  let lastFull = 0;
+  for (const w of weeks) {
+    const games = reg.filter((g) => Number(g.week) === w);
+    const allFinal = games.length > 0 && games.every(hasFinalScore);
+    if (allFinal) lastFull = w; else break;
   }
 
-  let WEEK = Math.min(maxSchedWeek, Math.max(2, maxWeekInData + 1));
+  let WEEK = Math.max(2, Math.min(maxSchedWeek, lastFull + 1));
   console.log(`Resolved WEEK=${WEEK}`);
 }
 
-main().catch(e => {
-  console.log("Resolved WEEK="); // keep workflow tolerant
-  process.exit(0);
+main().catch(() => {
+  // Be tolerant; let the workflow continue even if resolution fails
+  console.log("Resolved WEEK=");
 });

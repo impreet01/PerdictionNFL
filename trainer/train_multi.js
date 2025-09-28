@@ -1,7 +1,8 @@
 // trainer/train_multi.js
-// Training + forecasting pipeline with early-season-stable hybrid,
-// per-game explanations, and home-view de-duplicated outputs.
-// IMPORTANT: capped at lastFullWeek + 1 (current week), not beyond.
+// Dynamic, data-adaptive training + forecasting:
+// - hybrid weight clamp widens as more weeks of data arrive
+// - tree smoothing/complexity adapt to sample size
+// - per-game explanations; de-duplicated (home view); forecasts only for current week
 
 import { loadSchedules, loadTeamWeekly } from "./dataSources.js";
 import { buildFeatures, FEATS } from "./featureBuild.js";
@@ -48,7 +49,7 @@ function trainLogisticGD(X, y, { steps=3000, lr=5e-3, l2=2e-4 } = {}){
 }
 const predictLogit = (X,{w,b}) => X.map(x => sigmoid(dot(w,x)+b));
 
-// CART leaf probabilities with Laplace smoothing
+// ---- Decision tree helpers (adaptive smoothing / complexity) ----
 function leafPath(root, x){
   let node=root, path="";
   for (let guard=0; guard<200; guard++){
@@ -62,7 +63,7 @@ function leafPath(root, x){
   }
   return path||"ROOT";
 }
-function buildLeafFreq(cart, Xtr, ytr, alpha=4){
+function buildLeafFreq(cart, Xtr, ytr, alpha){
   let json; try { json=cart.toJSON(); } catch { json=null; }
   const root = json?.root || json; const freq=new Map();
   if (!root){
@@ -89,7 +90,7 @@ function predictTree(cart, leafStats, X){
   });
 }
 
-// 5-fold CV for hybrid weight with early-season clamp
+// ---- Hybrid weight via CV, with adaptive clamp based on #weeks ----
 function kfoldIndices(n, k=5){
   const idx = Array.from({length:n}, (_,i)=>i);
   const folds = Array.from({length:k}, ()=>[]);
@@ -100,7 +101,6 @@ function chooseHybridCV(X, y){
   const folds = kfoldIndices(X.length, Math.min(5, Math.max(2, Math.floor(X.length/8))));
   const weights = Array.from({length:21}, (_,i)=> i*0.05);
   const losses = new Array(weights.length).fill(0);
-
   for (const valIdx of folds){
     const trainIdx = new Set(Array.from({length:X.length},(_,i)=>i).filter(i=>!valIdx.includes(i)));
     const Xtr = [], ytr = [], Xva = [], yva = [];
@@ -120,9 +120,19 @@ function chooseHybridCV(X, y){
     } else {
       logit = trainLogisticGD(XtrS, ytr, { steps: 3000, lr: 5e-3, l2: 2e-4 });
     }
-    const cart = new CART({ maxDepth: 5, minNumSamples: 10, gainFunction: "gini" });
+
+    // Adaptive tree complexity: deeper with more data; more conservative early
+    const depth = Math.min(6, Math.max(4, Math.floor(2 + Math.log2(Math.max(16, XtrS.length))))); // ~4..6
+    const minSamples = Math.min(24, Math.max(8, Math.floor(XtrS.length / 20))); // ~8..24
+    const cart = new CART({ maxDepth: depth, minNumSamples: minSamples, gainFunction: "gini" });
+
     cart.train(XtrS, ytr);
-    const leafStats = buildLeafFreq(cart, XtrS, ytr, 4);
+
+    // Adaptive Laplace α: higher when fewer weeks (stronger smoothing early)
+    // α ≈ 6 at 2 weeks, ≈4 at 3 weeks, → 2 by 5+ weeks
+    const approxWeeks = Math.max(2, Math.min(8, Math.round(XtrS.length / 32)));
+    const alpha = Math.max(2, Math.round(10 - 2*approxWeeks));
+    const leafStats = buildLeafFreq(cart, XtrS, ytr, alpha);
 
     const pL = predictLogit(XvaS, logit);
     const pT = predictTree(cart, leafStats, XvaS);
@@ -141,7 +151,7 @@ function chooseHybridCV(X, y){
   return Number(bestW.toFixed(2));
 }
 
-// helpers: league means & per-game NL explanation
+// ---- NL helpers ----
 function leagueMeans(rows){ const m={}; for (const k of FEATS){ m[k]=mean(rows.map(r=>Number(r[k]||0))); } return m; }
 function gamesPlayed(r){ const w=Number(r.wins_s2d||0), l=Number(r.losses_s2d||0); return Math.max(1, w+l); }
 function explain(r, probs, means){
@@ -179,7 +189,7 @@ function toResult(r, probs, forecast, wHybrid, trainRows){
   };
 }
 
-// forecast missing fixtures in a target week W using last known S2D snapshots
+// ---- Forecast missing fixtures in target week using last known S2D ----
 function forecastMissingForWeek(W, regSched, SEASON, trainRows, testRows){
   const presentPairs = new Set(testRows.map(r => (r.home ? `${r.team}@${r.opponent}` : `${r.opponent}@${r.team}`)));
   const regPairs = regSched.filter(g=>Number(g.week)===W).map(g => `${g.home_team}@${g.away_team}`);
@@ -189,9 +199,8 @@ function forecastMissingForWeek(W, regSched, SEASON, trainRows, testRows){
   const lastByTeam = new Map();
   for (const r of trainRows){
     if (r.season!==SEASON) continue;
-    const key = r.team;
-    const prev = lastByTeam.get(key);
-    if (!prev || r.week > prev.week) lastByTeam.set(key, r);
+    const prev = lastByTeam.get(r.team);
+    if (!prev || r.week > prev.week) lastByTeam.set(r.team, r);
   }
 
   const rows = [];
@@ -207,7 +216,6 @@ function forecastMissingForWeek(W, regSched, SEASON, trainRows, testRows){
         if (f === "home") { r.home = isHome?1:0; continue; }
         r[f] = Number(src[f] ?? 0);
       }
-      // refresh opponent-diff features
       const me = r, op = isHome ? aPrev : hPrev;
       me.off_total_yds_s2d_minus_opp = Number(me.off_total_yds_s2d) - Number(op.off_total_yds_s2d);
       me.def_total_yds_s2d_minus_opp = Number(me.def_total_yds_s2d) - Number(op.def_total_yds_s2d);
@@ -221,10 +229,9 @@ function forecastMissingForWeek(W, regSched, SEASON, trainRows, testRows){
   return rows;
 }
 
-// de-dupe to one row per matchup (home view)
+// ---- De-duplicate to one row per matchup (home view) ----
 function dedupeToHomeView(items) {
-  const seen = new Set();
-  const out = [];
+  const seen = new Set(); const out = [];
   for (const r of items) {
     const key = `${r.season}-W${String(r.week).padStart(2,'0')}-${r.home_team}-${r.away_team}`;
     if (!seen.has(key)) { seen.add(key); out.push(r); }
@@ -243,7 +250,7 @@ function dedupeToHomeView(items) {
   const schedWeeks = [...new Set(regSched.map(g => Number(g.week)).filter(Number.isFinite))].sort((a,b)=>a-b);
   const maxSchedWeek = schedWeeks.length ? schedWeeks[schedWeeks.length-1] : 18;
 
-  // compute last full regular-season week (all games final)
+  // last full regular-season week (all games final)
   function hasFinalScore(g){
     const hs = Number(g.home_score ?? g.home_points ?? g.home_pts);
     const as = Number(g.away_score ?? g.away_points ?? g.away_pts);
@@ -256,7 +263,7 @@ function dedupeToHomeView(items) {
     if (allFinal) lastFull = w; else break;
   }
 
-  // Build features from actual data (contains weeks that exist in team-week CSV)
+  // Build features from actual data (weeks that exist in team-week CSV)
   const featRows = buildFeatures({ teamWeekly, schedules, season: SEASON, prevTeamWeekly });
   const dataWeeks = [...new Set(featRows.map(r=>r.week))].sort((a,b)=>a-b);
   console.log(`Built feature rows: ${featRows.length} | data weeks: ${JSON.stringify(dataWeeks)}`);
@@ -272,9 +279,10 @@ function dedupeToHomeView(items) {
 
   function runWeek(W){
     const { train, test } = splitTrainTest(featRows, SEASON, W);
+    const weeksSeen = [...new Set(train.map(r=>r.week))].length;
     const pos = train.reduce((s,r)=> s+(r.win?1:0),0);
     const neg = train.length - pos;
-    console.log(`W${W}: train rows=${train.length} pos=${pos} neg=${neg} pos_rate=${train.length?(pos/train.length).toFixed(3):"n/a"}`);
+    console.log(`W${W}: train rows=${train.length} weeks_seen=${weeksSeen} pos=${pos} neg=${neg} pos_rate=${train.length?(pos/train.length).toFixed(3):"n/a"}`);
     if (!train.length) return null;
 
     const { X: XtrRaw } = Xy(train);
@@ -293,19 +301,26 @@ function dedupeToHomeView(items) {
       logit = trainLogisticGD(Xtr, ytr, { steps: 3500, lr: 4e-3, l2: 2e-4 });
     }
 
-    // tree (richer + smoothed)
-    const cart = new CART({ maxDepth: 5, minNumSamples: 10, gainFunction: "gini" });
+    // Adaptive tree complexity
+    const depth = Math.min(6, Math.max(4, 3 + Math.ceil(weeksSeen/2)));      // 4..6
+    const minSamples = Math.min(24, Math.max(8, Math.floor(Xtr.length/20))); // 8..24
+    const cart = new CART({ maxDepth: depth, minNumSamples: minSamples, gainFunction: "gini" });
     cart.train(Xtr, ytr);
-    const leafStats = buildLeafFreq(cart, Xtr, ytr, 4);
 
-    // hybrid by CV, then clamp early-season for stability
+    // Adaptive Laplace α (strong early, lighter later)
+    const alpha = weeksSeen <= 3 ? 6 : (weeksSeen === 4 ? 3 : 2);
+    const leafStats = buildLeafFreq(cart, Xtr, ytr, alpha);
+
+    // hybrid by CV, then adaptive clamp based on weeks seen
     const wCV = chooseHybridCV(Xtr, ytr);
-    let wHybrid = wCV;
-    if (ytr.length < 96) { // < ~3 weeks of full slate
-      if (wHybrid < 0.35) wHybrid = 0.35;
-      if (wHybrid > 0.65) wHybrid = 0.65;
-    }
+    let [lo, hi] = (()=>{
+      if (weeksSeen <= 3) return [0.35, 0.65];
+      if (weeksSeen === 4) return [0.25, 0.75];
+      return [0.0, 1.0]; // 5+ weeks: no clamp
+    })();
+    let wHybrid = Math.min(hi, Math.max(lo, wCV));
     wHybrid = Number(wHybrid.toFixed(2));
+    console.log(`W${W}: hybrid_cv=${wCV.toFixed(2)} clamp=[${lo.toFixed(2)},${hi.toFixed(2)}] -> hybrid=${wHybrid.toFixed(2)} depth=${depth} minSamples=${minSamples} alpha=${alpha}`);
 
     // backtest on observed rows of W
     const { X: XteRaw } = Xy(test);
@@ -315,7 +330,7 @@ function dedupeToHomeView(items) {
     const pH_back = pL_back.map((p,i)=> wHybrid*p + (1-wHybrid)*pT_back[i]);
     const back = test.map((r,i)=> toResult(r, { logit:pL_back[i], tree:pT_back[i], hybrid:pH_back[i] }, false, wHybrid, train));
 
-    // forecast rest of week W (use last known S2D snapshots)
+    // forecast rest of week W
     const foreRows = forecastMissingForWeek(W, regSched, SEASON, train, test);
     const { X: XfRaw } = Xy(foreRows);
     const Xf = applyScaler(XfRaw, scaler);

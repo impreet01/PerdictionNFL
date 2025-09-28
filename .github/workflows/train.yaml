@@ -1,12 +1,9 @@
 name: weekly model + predictions
 
 on:
-  # Run daily during NFL season (Thu–Mon) to catch new data and late posts
   schedule:
-    # Every day at 11:10 UTC (03:10 PT), adjust if you like
     - cron: '10 11 * 9-12 *'
     - cron: '10 11 * 1 *'
-  # Manual run with optional overrides
   workflow_dispatch:
     inputs:
       season:
@@ -19,7 +16,6 @@ on:
 jobs:
   train:
     runs-on: ubuntu-latest
-
     env:
       NODE_VERSION: 20.x
 
@@ -27,15 +23,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Do NOT enable cache here (it forces a lockfile). Keep it simple/stable.
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
 
-      - name: Install
+      # Create a lockfile if missing so installs are deterministic
+      - name: Ensure lockfile
         run: |
-          npm install --no-audit --no-fund
+          if [ ! -f package-lock.json ]; then
+            echo "No package-lock.json found; generating one…"
+            npm install --package-lock-only
+          else
+            echo "Found existing package-lock.json"
+          fi
+
+      # Prefer deterministic install; fall back to npm install if needed
+      - name: Install deps
+        run: |
+          npm ci || npm install --no-audit --no-fund
 
       - name: Resolve season (auto unless override)
         run: |
@@ -52,12 +59,8 @@ jobs:
             echo "WEEK=${{ github.event.inputs.week }}" >> $GITHUB_ENV
             echo "Resolved WEEK=$WEEK (manual override)"
           else
-            # uses scripts/resolveWeek.js to detect (maxWeekInData + 1)
             WEEK=$(node scripts/resolveWeek.js | sed -n 's/Resolved WEEK=\(.*\)$/\1/p')
-            if [ -z "$WEEK" ]; then
-              # Fallback to 2 if resolver cannot determine (early preseason)
-              WEEK=2
-            fi
+            if [ -z "$WEEK" ]; then WEEK=2; fi
             echo "WEEK=$WEEK" >> $GITHUB_ENV
             echo "Resolved WEEK=$WEEK (auto)"
           fi

@@ -16,20 +16,27 @@ on:
 jobs:
   train:
     runs-on: ubuntu-latest
+
+    # <-- IMPORTANT: request write permission for repo contents
+    permissions:
+      contents: write
+      pull-requests: write
+
     env:
       NODE_VERSION: 20.x
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Use the workflow token explicitly
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Do NOT enable cache here (it forces a lockfile). Keep it simple/stable.
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # Create a lockfile if missing so installs are deterministic
       - name: Ensure lockfile
         run: |
           if [ ! -f package-lock.json ]; then
@@ -39,7 +46,6 @@ jobs:
             echo "Found existing package-lock.json"
           fi
 
-      # Prefer deterministic install; fall back to npm install if needed
       - name: Install deps
         run: |
           npm ci || npm install --no-audit --no-fund
@@ -78,14 +84,35 @@ jobs:
             [ -f "$f" ] && echo "--- $f ---" && cat "$f"
           done
 
-      - name: Commit artifacts (skip if no changes)
+      # --- Commit directly; if blocked by branch protection, open PR fallback ---
+      - name: Commit artifacts (try main)
+        id: commit_main
+        continue-on-error: true
         run: |
-          git config user.name "gh-actions"
-          git config user.email "actions@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Ensure origin uses token (avoids 403)
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+
           git add artifacts/*.json || true
           if git diff --cached --quiet; then
+            echo "no_changes=true" >> $GITHUB_OUTPUT
             echo "No artifact changes to commit."
-          else
-            git commit -m "weekly model + predictions (S=$SEASON, W=$WEEK)"
-            git push
+            exit 0
           fi
+          git commit -m "weekly model + predictions (S=$SEASON, W=$WEEK)" || true
+          git pull --rebase || true
+          git push
+          echo "no_changes=false" >> $GITHUB_OUTPUT
+
+      - name: Create PR (fallback if push failed or branch protected)
+        if: steps.commit_main.outcome == 'failure'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "weekly model + predictions (S=${{ env.SEASON }}, W=${{ env.WEEK }})"
+          title: "Artifacts: S=${{ env.SEASON }}, W=${{ env.WEEK }}"
+          body: "Automated artifacts update. Merge to publish."
+          branch: "bot/artifacts-S${{ env.SEASON }}-W${{ env.WEEK }}"
+          add-paths: |
+            artifacts/*.json

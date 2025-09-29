@@ -8,6 +8,7 @@ import { gunzipSync } from "node:zlib"; // <-- use Node built-in zlib
 
 const NFLVERSE_RELEASE = "https://github.com/nflverse/nflverse-data/releases/download";
 const STATS_TEAM_TAG = "stats_team";
+const TEAM_GAME_TAG = "team_game";
 const SCHEDULES_URL = "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv";
 
 function parseCSV(text) {
@@ -60,4 +61,37 @@ export async function loadTeamWeekly(season) {
     }
   }
   throw new Error(`Could not fetch team weekly stats for ${season}: ${lastErr?.message || "no candidates succeeded"}`);
+}
+
+export async function loadTeamGameAdvanced(season) {
+  const suffixes = [
+    `team_game_${season}.csv`,
+    `team_game_${season}.csv.gz`,
+    `team_games_${season}.csv`,
+    `team_games_${season}.csv.gz`
+  ];
+  const rawBases = [
+    "https://raw.githubusercontent.com/nflverse/nflverse-data/main/data/team_game",
+    "https://raw.githubusercontent.com/nflverse/nflverse-data/master/data/team_game",
+    "https://raw.githubusercontent.com/nflverse/nflverse-data/main/data/team_games",
+    "https://raw.githubusercontent.com/nflverse/nflverse-data/master/data/team_games",
+    "https://raw.githubusercontent.com/nflverse/nfldata/master/data/team_game",
+    "https://raw.githubusercontent.com/nflverse/nfldata/master/data/team_games"
+  ];
+  const releaseCandidates = suffixes.map((s) => `${NFLVERSE_RELEASE}/${TEAM_GAME_TAG}/${s}`);
+  const rawCandidates = rawBases.flatMap((base) => suffixes.map((s) => `${base}/${s}`));
+  const candidates = [...releaseCandidates, ...rawCandidates];
+  let lastErr = null;
+  for (const url of candidates) {
+    try {
+      const rows = await fetchCSVMaybeGz(url);
+      if (Array.isArray(rows)) return rows;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (lastErr) {
+    console.warn(`loadTeamGameAdvanced(${season}) fell back to empty dataset: ${lastErr?.message}`);
+  }
+  return [];
 }

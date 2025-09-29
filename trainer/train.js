@@ -1,6 +1,6 @@
 // trainer/train.js
-import { loadSchedules, loadTeamWeekly } from "./dataSources.js";
-import { buildFeatures } from "./featureBuild.js";
+import { loadSchedules, loadTeamWeekly, loadTeamGameAdvanced } from "./dataSources.js";
+import { buildFeatures, FEATS } from "./featureBuild.js";
 import { writeFileSync, mkdirSync } from "fs";
 import LogisticRegression from "ml-logistic-regression";
 import { DecisionTreeClassifier as CART } from "ml-cart";
@@ -11,16 +11,6 @@ mkdirSync(ART_DIR, { recursive: true });
 
 const TARGET_SEASON = Number(process.env.SEASON || new Date().getFullYear());
 const TARGET_WEEK = Number(process.env.WEEK || 6);
-
-const FEATS = [
-  "off_1st_down_s2d","off_total_yds_s2d","off_rush_yds_s2d","off_pass_yds_s2d","off_turnovers_s2d",
-  "def_1st_down_s2d","def_total_yds_s2d","def_rush_yds_s2d","def_pass_yds_s2d","def_turnovers_s2d",
-  "wins_s2d","losses_s2d","home",
-  "sim_winrate_same_loc_s2d","sim_pointdiff_same_loc_s2d","sim_count_same_loc_s2d",
-  "off_total_yds_s2d_minus_opp","def_total_yds_s2d_minus_opp",
-  "off_turnovers_s2d_minus_opp","def_turnovers_s2d_minus_opp",
-  "elo_pre","elo_diff","rest_days","rest_diff"
-];
 
 function Xy(rows) {
   const X = rows.map(r => FEATS.map(k => Number(r[k] ?? 0)));
@@ -68,10 +58,18 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
 
   const schedules = await loadSchedules();
   const teamWeekly = await loadTeamWeekly(TARGET_SEASON);
+  let teamGame = [];
+  try { teamGame = await loadTeamGameAdvanced(TARGET_SEASON); } catch (_) {}
   let prevTeamWeekly = [];
   try { prevTeamWeekly = await loadTeamWeekly(TARGET_SEASON - 1); } catch (_) {}
 
-  const featRows = buildFeatures({ teamWeekly, schedules, season: TARGET_SEASON, prevTeamWeekly });
+  const featRows = buildFeatures({
+    teamWeekly,
+    teamGame,
+    schedules,
+    season: TARGET_SEASON,
+    prevTeamWeekly
+  });
   const { train, test } = splitTrainTest(featRows, TARGET_SEASON, TARGET_WEEK);
 
   console.log(`DEBUG: featRows=${featRows.length}, train=${train.length}, test=${test.length}`);
@@ -146,6 +144,10 @@ function explain(r, means, probs){
   addDelta(lines, r, means, "off_turnovers_s2d", true,  "Offensive giveaways");
   addDelta(lines, r, means, "off_total_yds_s2d", false, "Offensive total yards");
   addDelta(lines, r, means, "def_total_yds_s2d", true,  "Yards allowed");
+  addRate(lines, r, means, "off_third_down_pct_s2d", true, "3rd-down conversion", 0.03);
+  addRate(lines, r, means, "off_red_zone_td_pct_s2d", true, "Red-zone TD rate", 0.03);
+  addRate(lines, r, means, "off_sack_rate_s2d", false, "Sack rate", 0.015);
+  addNeutralPass(lines, r, means, "off_neutral_pass_rate_s2d", 0.05);
   if (r.home) lines.push("Home-field advantage applies.");
   if (Number(r.sim_count_same_loc_s2d) > 0) {
     const wr = Number(r.sim_winrate_same_loc_s2d) * 100;
@@ -170,4 +172,26 @@ function addDelta(lines, r, means, key, betterLow, label){
   const dir = d>=0 ? "higher" : "lower";
   const good = betterLow ? d<0 : d>0;
   lines.push(`${label} is ${dir} than league average by ${Math.abs(d).toFixed(1)} (${good ? "good" : "needs attention"}).`);
+}
+
+function addRate(lines, r, means, key, higherIsGood, label, threshold){
+  const v = Number(r[key]);
+  const m = Number(means[key]);
+  if (!Number.isFinite(v) || !Number.isFinite(m)) return;
+  const diff = v - m;
+  if (Math.abs(diff) < threshold) return;
+  const direction = diff > 0 ? "higher" : "lower";
+  const sentiment = diff > 0 === higherIsGood ? "good" : "needs attention";
+  lines.push(`${label} is ${direction} than league average by ${(Math.abs(diff) * 100).toFixed(1)}% (${sentiment}).`);
+}
+
+function addNeutralPass(lines, r, means, key, threshold){
+  const v = Number(r[key]);
+  const m = Number(means[key]);
+  if (!Number.isFinite(v) || !Number.isFinite(m)) return;
+  const diff = v - m;
+  if (Math.abs(diff) < threshold) return;
+  const orientation = diff > 0 ? "pass-heavy" : "run-leaning";
+  const direction = diff > 0 ? "above" : "below";
+  lines.push(`Neutral pass rate is ${(Math.abs(diff) * 100).toFixed(1)}% ${direction} league average (${orientation}).`);
 }

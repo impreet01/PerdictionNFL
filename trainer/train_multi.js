@@ -1,7 +1,7 @@
 // trainer/train_multi.js
 // Multi-model ensemble trainer with logistic+CART, Bradley-Terry, and ANN committee.
 
-import { loadSchedules, loadTeamWeekly } from "./dataSources.js";
+import { loadSchedules, loadTeamWeekly, loadTeamGameAdvanced } from "./dataSources.js";
 import { buildFeatures, FEATS } from "./featureBuild.js";
 import { buildBTFeatures, BT_FEATURES } from "./featureBuild_bt.js";
 import { trainBTModel, predictBT, predictBTDeterministic } from "./model_bt.js";
@@ -298,16 +298,71 @@ const FEATURE_LABELS = {
   off_total_yds_s2d: "offense yards",
   def_total_yds_s2d: "yards allowed",
   rest_diff: "rest advantage",
+  off_third_down_pct_s2d: "3rd-down conversion rate",
+  off_red_zone_td_pct_s2d: "red-zone TD rate",
+  off_sack_rate_s2d: "sack rate",
+  off_neutral_pass_rate_s2d: "neutral pass rate",
+  off_third_down_pct_s2d_minus_opp: "3rd-down rate vs opp",
+  off_red_zone_td_pct_s2d_minus_opp: "red-zone TD rate vs opp",
+  off_sack_rate_s2d_minus_opp: "sack rate vs opp",
+  off_neutral_pass_rate_s2d_minus_opp: "neutral pass rate vs opp",
   diff_total_yards: "total yards differential",
   diff_penalty_yards: "penalty yards differential",
   diff_turnovers: "turnover differential",
   diff_possession_seconds: "possession differential",
   diff_r_ratio: "r-ratio differential",
-  delta_power_rank: "power rating delta"
+  diff_elo_pre: "Elo differential"
 };
 
 function humanizeFeature(key) {
   return FEATURE_LABELS[key] || key;
+}
+
+const gamesPlayed = (row) => Math.max(1, Number(row.wins_s2d ?? 0) + Number(row.losses_s2d ?? 0));
+
+function computeLeagueMeans(rows) {
+  if (!rows?.length) return {};
+  const sums = {
+    off_total_yds_pg: 0,
+    off_turnovers_pg: 0,
+    off_third_down_pct_s2d: 0,
+    off_red_zone_td_pct_s2d: 0,
+    off_sack_rate_s2d: 0,
+    off_neutral_pass_rate_s2d: 0
+  };
+  let count = 0;
+  for (const row of rows) {
+    const gp = gamesPlayed(row);
+    sums.off_total_yds_pg += Number(row.off_total_yds_s2d ?? 0) / gp;
+    sums.off_turnovers_pg += Number(row.off_turnovers_s2d ?? 0) / gp;
+    sums.off_third_down_pct_s2d += Number(row.off_third_down_pct_s2d ?? 0);
+    sums.off_red_zone_td_pct_s2d += Number(row.off_red_zone_td_pct_s2d ?? 0);
+    sums.off_sack_rate_s2d += Number(row.off_sack_rate_s2d ?? 0);
+    sums.off_neutral_pass_rate_s2d += Number(row.off_neutral_pass_rate_s2d ?? 0);
+    count += 1;
+  }
+  if (!count) return {};
+  return Object.fromEntries(Object.entries(sums).map(([k, v]) => [k, v / count]));
+}
+
+function describeRateDeviation(value, baseline, label, higherIsGood, threshold = 0.03) {
+  if (!Number.isFinite(value) || !Number.isFinite(baseline)) return null;
+  const diff = value - baseline;
+  if (Math.abs(diff) < threshold) return null;
+  const direction = diff > 0 ? "higher" : "lower";
+  const diffPct = Math.abs(diff) * 100;
+  const sentiment = diff > 0 === higherIsGood ? "favorable" : "needs attention";
+  return `${label} is ${direction} than league average by ${diffPct.toFixed(1)}% (${sentiment}).`;
+}
+
+function describeNeutralPassRate(value, baseline, threshold = 0.05) {
+  if (!Number.isFinite(value) || !Number.isFinite(baseline)) return null;
+  const diff = value - baseline;
+  if (Math.abs(diff) < threshold) return null;
+  const orientation = diff > 0 ? "pass-heavy" : "run-leaning";
+  const direction = diff > 0 ? "above" : "below";
+  const diffPct = Math.abs(diff) * 100;
+  return `Neutral pass rate is ${diffPct.toFixed(1)}% ${direction} league average (${orientation}).`;
 }
 
 function describeDiff(value, label, goodHigh = true, unit = "") {
@@ -320,17 +375,40 @@ function describeDiff(value, label, goodHigh = true, unit = "") {
   return `${label} ${direction} ${sign}${suffix} (${framing})`;
 }
 
-function buildNarrative(game, probs, btFeatures) {
+function buildNarrative(game, probs, btFeatures, row, leagueMeans) {
   const items = [
     { key: "diff_turnovers", label: "Turnovers", goodHigh: true },
     { key: "diff_r_ratio", label: "R-ratio", goodHigh: true },
     { key: "diff_penalty_yards", label: "Penalty yards", goodHigh: false },
     { key: "diff_total_yards", label: "Total yards", goodHigh: true },
-    { key: "diff_possession_seconds", label: "Possession time", goodHigh: true }
+    { key: "diff_possession_seconds", label: "Possession time", goodHigh: true },
+    { key: "diff_elo_pre", label: "Elo edge", goodHigh: true }
   ];
   items.sort((a, b) => Math.abs(btFeatures[b.key] ?? 0) - Math.abs(btFeatures[a.key] ?? 0));
-  const statements = items.slice(0, 3).map((item) => describeDiff(btFeatures[item.key], item.label, item.goodHigh));
-  return `${game.home_team} vs ${game.away_team}: logistic ${round3(probs.logistic * 100)}%, tree ${round3(probs.tree * 100)}%, BT ${round3(probs.bt * 100)}%, ANN ${round3(probs.ann * 100)}%, blended ${round3(probs.blended * 100)}%. Key drivers: ${statements.join("; ")}.`;
+  const diffClauses = items
+    .slice(0, 3)
+    .map((item) => describeDiff(btFeatures[item.key], item.label, item.goodHigh));
+
+  const advClauses = [];
+  const league = leagueMeans || {};
+  const third = Number(row.off_third_down_pct_s2d ?? 0);
+  const red = Number(row.off_red_zone_td_pct_s2d ?? 0);
+  const sackRate = Number(row.off_sack_rate_s2d ?? 0);
+  const neutralPass = Number(row.off_neutral_pass_rate_s2d ?? 0);
+  const thirdStmt = describeRateDeviation(third, league.off_third_down_pct_s2d, "Offensive 3rd-down conversion", true, 0.03);
+  if (thirdStmt) advClauses.push(thirdStmt);
+  const redStmt = describeRateDeviation(red, league.off_red_zone_td_pct_s2d, "Red-zone TD rate", true, 0.03);
+  if (redStmt) advClauses.push(redStmt);
+  const sackStmt = describeRateDeviation(sackRate, league.off_sack_rate_s2d, "Sack rate", false, 0.015);
+  if (sackStmt) advClauses.push(sackStmt);
+  const neutralStmt = describeNeutralPassRate(neutralPass, league.off_neutral_pass_rate_s2d, 0.05);
+  if (neutralStmt) advClauses.push(neutralStmt);
+
+  const header = `${game.home_team} vs ${game.away_team}: logistic ${round3(probs.logistic * 100)}%, tree ${round3(probs.tree * 100)}%, BT ${round3(probs.bt * 100)}%, ANN ${round3(probs.ann * 100)}%, blended ${round3(probs.blended * 100)}%.`;
+  const sections = [];
+  if (diffClauses.length) sections.push(`Key differentials: ${diffClauses.join("; ")}.`);
+  if (advClauses.length) sections.push(`Trend watch: ${advClauses.join(" ")}`);
+  return `${header} ${sections.join(" ")}`.trim();
 }
 
 function buildTopDrivers({ logisticContribs, treeInfo, btContribs, annGrad }) {
@@ -382,6 +460,16 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
 
   const schedules = data.schedules ?? (await loadSchedules());
   const teamWeekly = data.teamWeekly ?? (await loadTeamWeekly(resolvedSeason));
+  let teamGame;
+  if (data.teamGame !== undefined) {
+    teamGame = data.teamGame;
+  } else {
+    try {
+      teamGame = await loadTeamGameAdvanced(resolvedSeason);
+    } catch (e) {
+      teamGame = [];
+    }
+  }
   let prevTeamWeekly;
   if (data.prevTeamWeekly !== undefined) {
     prevTeamWeekly = data.prevTeamWeekly;
@@ -393,8 +481,20 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     }
   }
 
-  const featureRows = buildFeatures({ teamWeekly, schedules, season: resolvedSeason, prevTeamWeekly });
-  const btRows = buildBTFeatures({ teamWeekly, schedules, season: resolvedSeason, prevTeamWeekly });
+  const featureRows = buildFeatures({
+    teamWeekly,
+    teamGame,
+    schedules,
+    season: resolvedSeason,
+    prevTeamWeekly
+  });
+  const btRows = buildBTFeatures({
+    teamWeekly,
+    teamGame,
+    schedules,
+    season: resolvedSeason,
+    prevTeamWeekly
+  });
 
   const btTrainRowsRaw = btRows.filter(
     (r) => r.season === resolvedSeason && r.week < resolvedWeek && (r.label_win === 0 || r.label_win === 1)
@@ -422,6 +522,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const btTrainRows = trainGames.map((g) => g.bt);
   const testRows = testGames.map((g) => g.row);
   const btTestRows = testGames.map((g) => g.bt);
+  const leagueMeans = computeLeagueMeans(trainRows);
 
   const labels = trainRows.map((r) => Number(r.win));
   const weeksSeen = new Set(trainRows.map((r) => r.week)).size;
@@ -651,7 +752,13 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       ci: {
         bt90: btInfo.ci90?.map((v) => round3(v)) ?? [0.25, 0.75]
       },
-      natural_language: buildNarrative({ home_team: row.team, away_team: row.opponent }, probs, btRow.features),
+      natural_language: buildNarrative(
+        { home_team: row.team, away_team: row.opponent },
+        probs,
+        btRow.features,
+        row,
+        leagueMeans
+      ),
       top_drivers: drivers,
       actual: btRow.label_win
     });

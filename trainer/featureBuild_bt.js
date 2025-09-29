@@ -5,11 +5,11 @@
 
 const BT_FEATURES = [
   "diff_total_yards",
-  "diff_penalty_yards",
   "diff_turnovers",
+  "diff_penalty_yards",
   "diff_possession_seconds",
   "diff_r_ratio",
-  "delta_power_rank"
+  "diff_elo_pre"
 ];
 
 const num = (v, d = 0) => {
@@ -53,26 +53,38 @@ const isReg = (v) => {
   return s === "" || s.startsWith("REG");
 };
 
-function baseStats(row = {}) {
-  const pass = num(row.passing_yards ?? row.pass_yards ?? row.pass_yds);
-  const rush = num(row.rushing_yards ?? row.rush_yards ?? row.rush_yds);
-  const totalRaw = row.total_yards ?? row.total_yards_gained ?? row.total_yds;
+const normTeam = (value) => {
+  if (!value) return null;
+  const s = String(value).trim().toUpperCase();
+  return s || null;
+};
+
+const pick = (primary, fallback, keys = []) => {
+  for (const key of keys) {
+    if (primary && primary[key] != null && primary[key] !== "") return primary[key];
+    if (fallback && fallback[key] != null && fallback[key] !== "") return fallback[key];
+  }
+  return undefined;
+};
+
+function baseStats(row = {}, gameRow = {}) {
+  const pass = num(pick(gameRow, row, ["passing_yards", "pass_yards", "pass_yds"]));
+  const rush = num(pick(gameRow, row, ["rushing_yards", "rush_yards", "rush_yds"]));
+  const totalRaw = pick(gameRow, row, ["total_yards", "total_yards_gained", "total_yds"]);
   const total = num(totalRaw, pass + rush);
-  const penalties = num(row.penalty_yards ?? row.penalties_yards ?? row.penalty_yards_y);
+  const penalties = num(pick(gameRow, row, ["penalty_yards", "penalties_yards", "penalty_yards_y"]));
   const turnovers = num(
-    row.turnovers ??
-      row.turnover ??
-      row.turnovers_total ??
-      (row.interceptions ?? row.passing_interceptions ?? 0) +
-        (row.fumbles_lost ?? row.rushing_fumbles_lost ?? 0) +
-        (row.receiving_fumbles_lost ?? 0) +
-        (row.sack_fumbles_lost ?? 0)
+    pick(gameRow, row, ["turnovers", "turnover", "turnovers_total"]) ??
+      (pick(gameRow, row, ["interceptions", "passing_interceptions"]) || 0) +
+        (pick(gameRow, row, ["fumbles_lost", "rushing_fumbles_lost"]) || 0) +
+        (pick(gameRow, row, ["receiving_fumbles_lost"]) || 0) +
+        (pick(gameRow, row, ["sack_fumbles_lost"]) || 0)
   );
   const poss = parsePossession(
-    row.possession_time ?? row.time_of_possession ?? row.time_possession ?? row.possession_seconds
+    pick(gameRow, row, ["possession_seconds", "time_of_possession", "time_possession", "possession_time"])
   );
-  const sacks = num(row.sacks ?? row.sack_total ?? row.qb_sacked ?? row.sacks_taken);
-  const plays = num(row.offensive_plays ?? row.offensive_plays_run ?? 0);
+  const sacks = num(pick(gameRow, row, ["sacks_taken", "qb_sacked", "sacks", "sack_total", "times_sacked"]));
+  const plays = num(pick(gameRow, row, ["offensive_plays", "offensive_plays_run", "plays_run"]));
   return {
     total_yards: total,
     pass_yards: pass,
@@ -86,20 +98,20 @@ function baseStats(row = {}) {
 }
 
 function blend(currentAvg, prevAvg, week) {
-  const prevWeight = Math.max(0, 0.8 - 0.2 * (week - 1));
+  const weekNum = Number(week) || 0;
+  const prevWeight = Math.max(0, (6 - weekNum) / 5);
   const currWeight = 1 - prevWeight;
-  const blendField = (k) => prevWeight * num(prevAvg?.[k]) + currWeight * num(currentAvg?.[k]);
-  const total = blendField("total_yards");
-  const pass = blendField("pass_yards");
-  const ratio = total ? pass / total : 0;
+  const mix = (key) => prevWeight * num(prevAvg?.[key]) + currWeight * num(currentAvg?.[key]);
+  const total = mix("total_yards");
+  const pass = mix("pass_yards");
   return {
     total_yards: total,
-    penalty_yards: blendField("penalty_yards"),
-    turnovers: blendField("turnovers"),
-    possession_seconds: blendField("possession_seconds"),
-    r_ratio: ratio,
-    sacks: blendField("sacks"),
-    offensive_plays: blendField("offensive_plays")
+    penalty_yards: mix("penalty_yards"),
+    turnovers: mix("turnovers"),
+    possession_seconds: mix("possession_seconds"),
+    r_ratio: total ? pass / total : 0,
+    sacks: mix("sacks"),
+    offensive_plays: mix("offensive_plays")
   };
 }
 
@@ -125,10 +137,21 @@ function enrichWithRatio(avg) {
 function seedPrevAverages(prevTeamWeekly) {
   const byTeam = new Map();
   for (const row of prevTeamWeekly || []) {
-    const team = row.team || row.team_abbr || row.team_code;
+    const team = normTeam(row.team || row.team_abbr || row.team_code);
     if (!team) continue;
     const stats = baseStats(row);
-    const prev = byTeam.get(team) || { games: 0, total_yards: 0, penalty_yards: 0, turnovers: 0, possession_seconds: 0, pass_yards: 0, sacks: 0, offensive_plays: 0 };
+    const prev =
+      byTeam.get(team) ||
+      {
+        games: 0,
+        total_yards: 0,
+        penalty_yards: 0,
+        turnovers: 0,
+        possession_seconds: 0,
+        pass_yards: 0,
+        sacks: 0,
+        offensive_plays: 0
+      };
     prev.games += 1;
     prev.total_yards += stats.total_yards;
     prev.penalty_yards += stats.penalty_yards;
@@ -150,7 +173,20 @@ function mkGameId(season, week, home, away) {
   return `${season}-W${String(week).padStart(2, "0")}-${home}-${away}`;
 }
 
-export function buildBTFeatures({ schedules, teamWeekly, season, prevTeamWeekly }) {
+function indexTeamGame(rows = [], season) {
+  const idx = new Map();
+  for (const row of rows || []) {
+    if (Number(row.season) !== Number(season)) continue;
+    const team = normTeam(row.team || row.team_abbr || row.team_code || row.posteam);
+    if (!team) continue;
+    const week = Number(row.week ?? row.game_week ?? row.week_number);
+    if (!Number.isFinite(week)) continue;
+    idx.set(`${season}-${week}-${team}`, row);
+  }
+  return idx;
+}
+
+export function buildBTFeatures({ schedules, teamWeekly, teamGame = [], season, prevTeamWeekly }) {
   const regSched = (schedules || []).filter(
     (g) => Number(g.season) === Number(season) && isReg(g.season_type)
   );
@@ -161,18 +197,20 @@ export function buildBTFeatures({ schedules, teamWeekly, season, prevTeamWeekly 
   const twSeason = (teamWeekly || []).filter((r) => Number(r.season) === Number(season));
   const twIdx = new Map();
   for (const row of twSeason) {
-    const team = row.team || row.team_abbr || row.team_code;
+    const team = normTeam(row.team || row.team_abbr || row.team_code);
     if (!team) continue;
-    const week = Number(row.week);
+    const week = Number(row.week ?? row.game_week ?? row.week_number);
+    if (!Number.isFinite(week)) continue;
     const key = `${season}-${week}-${team}`;
     twIdx.set(key, row);
   }
+  const tgIdx = indexTeamGame(teamGame, season);
 
   const prevMap = seedPrevAverages(prevTeamWeekly);
   const rolling = new Map();
   const out = [];
 
-  for (const team of new Set(regSched.flatMap((g) => [g.home_team, g.away_team]).filter(Boolean))) {
+  for (const team of new Set(regSched.flatMap((g) => [normTeam(g.home_team), normTeam(g.away_team)]).filter(Boolean))) {
     rolling.set(team, {
       games: 0,
       total_yards: 0,
@@ -190,15 +228,17 @@ export function buildBTFeatures({ schedules, teamWeekly, season, prevTeamWeekly 
     if (!games.length) continue;
 
     for (const g of games) {
-      const home = g.home_team;
-      const away = g.away_team;
+      const home = normTeam(g.home_team);
+      const away = normTeam(g.away_team);
       if (!home || !away) continue;
       const hKeyPrev = `${season}-${W}-${home}`;
       const aKeyPrev = `${season}-${W}-${away}`;
       const hRow = twIdx.get(hKeyPrev) || {};
       const aRow = twIdx.get(aKeyPrev) || {};
-      const hActual = baseStats(hRow);
-      const aActual = baseStats(aRow);
+      const hGameRow = tgIdx.get(hKeyPrev) || {};
+      const aGameRow = tgIdx.get(aKeyPrev) || {};
+      const hActual = baseStats(hRow, hGameRow);
+      const aActual = baseStats(aRow, aGameRow);
 
       const hTotals = rolling.get(home) || { games: 0 };
       const aTotals = rolling.get(away) || { games: 0 };
@@ -224,25 +264,25 @@ export function buildBTFeatures({ schedules, teamWeekly, season, prevTeamWeekly 
         offensive_plays: 0
       });
 
-      const hBlend = blend({ ...hAvg, r_ratio: hAvg.r_ratio }, hPrev, W);
-      const aBlend = blend({ ...aAvg, r_ratio: aAvg.r_ratio }, aPrev, W);
+      const hBlend = blend(hAvg, hPrev, W);
+      const aBlend = blend(aAvg, aPrev, W);
 
-      const hPower = num(
+      const hEloPre = num(
         g.elo1_pre ?? g.elo1_post ?? g.elo1 ?? g.elo ?? g.elo_prob1 ?? g.elo_home ?? 1500,
         1500
       );
-      const aPower = num(
+      const aEloPre = num(
         g.elo2_pre ?? g.elo2_post ?? g.elo2 ?? g.elo ?? g.elo_prob2 ?? g.elo_away ?? 1500,
         1500
       );
 
       const features = {
         diff_total_yards: num(hBlend.total_yards) - num(aBlend.total_yards),
-        diff_penalty_yards: num(hBlend.penalty_yards) - num(aBlend.penalty_yards),
         diff_turnovers: num(hBlend.turnovers) - num(aBlend.turnovers),
+        diff_penalty_yards: num(hBlend.penalty_yards) - num(aBlend.penalty_yards),
         diff_possession_seconds: num(hBlend.possession_seconds) - num(aBlend.possession_seconds),
         diff_r_ratio: num(hBlend.r_ratio) - num(aBlend.r_ratio),
-        delta_power_rank: hPower - aPower
+        diff_elo_pre: hEloPre - aEloPre
       };
 
       const label = winLabel(g);
@@ -256,8 +296,8 @@ export function buildBTFeatures({ schedules, teamWeekly, season, prevTeamWeekly 
         away_team: away,
         features,
         label_win: label,
-        home_context: { ...hBlend, power_rank: hPower },
-        away_context: { ...aBlend, power_rank: aPower },
+        home_context: { ...hBlend, elo_pre: hEloPre },
+        away_context: { ...aBlend, elo_pre: aEloPre },
         home_actual: { ...hActual, r_ratio: hActual.total_yards ? hActual.pass_yards / hActual.total_yards : 0 },
         away_actual: { ...aActual, r_ratio: aActual.total_yards ? aActual.pass_yards / aActual.total_yards : 0 }
       });

@@ -4,6 +4,12 @@
 
 import { loadSchedules } from "../trainer/dataSources.js";
 
+function readOpt(name) {
+  const prefix = `${name}=`;
+  const entry = process.argv.slice(2).find((arg) => arg.startsWith(prefix));
+  return entry ? entry.slice(prefix.length) : undefined;
+}
+
 function isReg(v) {
   if (v == null) return true;
   const s = String(v).trim().toUpperCase();
@@ -18,7 +24,10 @@ function hasFinalScore(g) {
 
 async function main() {
   const SEASON = Number(process.env.SEASON || new Date().getFullYear());
-  const schedules = await loadSchedules();
+  const schedules = await loadSchedules({
+    localPath: readOpt("--local"),
+    cachePath: readOpt("--cache") || process.env.NFLVERSE_SCHEDULES_CACHE,
+  });
 
   const reg = schedules.filter(
     (g) => Number(g.season) === SEASON && isReg(g.season_type)

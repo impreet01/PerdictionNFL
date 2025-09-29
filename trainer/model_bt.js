@@ -190,7 +190,7 @@ export function predictBT({
         Number(hAvg.turnovers ?? 0) - Number(aAvg.turnovers ?? 0),
         Number(hAvg.possession_seconds ?? 0) - Number(aAvg.possession_seconds ?? 0),
         Number(hAvg.r_ratio ?? 0) - Number(aAvg.r_ratio ?? 0),
-        Number(row.features?.delta_power_rank ?? 0)
+        Number(row.features?.diff_elo_pre ?? 0)
       ];
       const std = applyScaler([featVec], scaler)[0];
       const prob = sigmoid(std.reduce((s, v, idx) => s + v * coeffs[idx], 0) + model.b);

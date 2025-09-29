@@ -34,6 +34,21 @@ function makeTeamRow(season, week, team, opponent, totalYards, passYards, penalt
   };
 }
 
+function makeTeamGameRow(season, week, team, thirdAtt, thirdConv, redAtt, redTd, passAtt, rushAtt, sacksTaken) {
+  return {
+    season,
+    week,
+    team,
+    third_down_att: thirdAtt,
+    third_down_conv: thirdConv,
+    red_zone_att: redAtt,
+    red_zone_td: redTd,
+    pass_att: passAtt,
+    rush_att: rushAtt,
+    sacks_taken: sacksTaken
+  };
+}
+
 async function main() {
   const season = 2023;
   const schedules = [
@@ -45,6 +60,7 @@ async function main() {
     makeGame(season, 3, "B", "C", 24, 17)
   ];
   const teamWeekly = [];
+  const teamGame = [];
   for (const game of schedules) {
     const base = 350 + (game.week * 10);
     teamWeekly.push(
@@ -53,12 +69,18 @@ async function main() {
     teamWeekly.push(
       makeTeamRow(season, game.week, game.away_team, game.home_team, base - 30, base - 150, 45, 2, "29:30")
     );
+    const thirdAttHome = 12 + game.week;
+    const thirdAttAway = 11 + game.week;
+    teamGame.push(
+      makeTeamGameRow(season, game.week, game.home_team, thirdAttHome, Math.floor(thirdAttHome * 0.5), 5 + game.week, 3 + game.week, 32 + game.week, 28 + game.week, 2),
+      makeTeamGameRow(season, game.week, game.away_team, thirdAttAway, Math.floor(thirdAttAway * 0.45), 4 + game.week, 2 + game.week, 30 + game.week, 30 + game.week, 3)
+    );
   }
 
   const result = await runTraining({
     season,
     week: 3,
-    data: { schedules, teamWeekly, prevTeamWeekly: [] },
+    data: { schedules, teamWeekly, teamGame, prevTeamWeekly: [] },
     options: {
       btBootstrapSamples: 20,
       annSeeds: 3,

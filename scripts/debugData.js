@@ -1,5 +1,5 @@
 // scripts/debugData.js
-import { loadSchedules, loadTeamWeekly } from "../trainer/dataSources.js";
+import { loadSchedules, loadTeamWeekly, loadTeamGameAdvanced } from "../trainer/dataSources.js";
 import { buildFeatures } from "../trainer/featureBuild.js";
 
 const SEASON = Number(process.env.SEASON || new Date().getFullYear());
@@ -32,6 +32,14 @@ function counts(arr, key) {
     console.log(`loadTeamWeekly(${SEASON}) failed: ${e?.message || e}`);
   }
 
+  let teamGame = [];
+  try {
+    teamGame = await loadTeamGameAdvanced(SEASON);
+    console.log(`teamGame rows (season ${SEASON}): ${teamGame.length}`);
+  } catch (e) {
+    console.log(`loadTeamGameAdvanced(${SEASON}) failed: ${e?.message || e}`);
+  }
+
   let prevTeamWeekly = [];
   try {
     prevTeamWeekly = await loadTeamWeekly(SEASON - 1);
@@ -40,7 +48,7 @@ function counts(arr, key) {
     console.log(`loadTeamWeekly(${SEASON - 1}) failed: ${e?.message || e}`);
   }
 
-  const featRows = buildFeatures({ teamWeekly, schedules, season: SEASON, prevTeamWeekly });
+  const featRows = buildFeatures({ teamWeekly, teamGame, schedules, season: SEASON, prevTeamWeekly });
   console.log(`feature rows (REG relaxed): ${featRows.length}`);
   const train = featRows.filter(r => r.season === SEASON && r.week < WEEK);
   const test  = featRows.filter(r => r.season === SEASON && r.week === WEEK);

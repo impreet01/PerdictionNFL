@@ -5,23 +5,82 @@
     "away_team": "SEA",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.047
-      },
-      "decision_tree": {
-        "prob_win": 0.5
-      },
-      "hybrid": {
-        "prob_win": 0.206,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.279,
+    "probs": {
+      "logistic": 0.14,
+      "tree": 0.429,
+      "bt": 0.344,
+      "ann": 0.505,
+      "blended": 0.279
     },
-    "natural_language": "Logistic: 4.7%. Tree: 50.0%. Hybrid: 20.6%. Defensive takeaways per game is higher than league average by 0.2 (good). Offensive giveaways per game is higher than league average by 0.3 (needs attention). Offensive total yards per game is higher than league average by 124.1 (good). Yards allowed per game is higher than league average by 195.9 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.241,
+      "post": 0.279
+    },
+    "ci": {
+      "bt90": [
+        0.045,
+        0.758
+      ]
+    },
+    "natural_language": "ARI vs SEA: logistic 14.026%, tree 42.857%, BT 34.43%, ANN 50.462%, blended 27.916%. Key drivers: Total yards deficit 20.42 (needs attention); Penalty yards edge +16.54 (needs attention); Turnovers deficit 1.05 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "def_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 2.039029242712462,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 1.4911786614133973,
+        "source": "logit"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 1.2457685713161357,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RR",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "negative",
+        "magnitude": 0.9734328070803926,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "positive",
+        "magnitude": 0.24953658290690447,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.0000840073927161832,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.00007428728936483651,
+        "source": "ann"
+      }
+    ],
+    "actual": 0
   },
   {
     "game_id": "2025-W04-PIT-MIN",
@@ -29,23 +88,82 @@
     "away_team": "MIN",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.916
-      },
-      "decision_tree": {
-        "prob_win": 0.261
-      },
-      "hybrid": {
-        "prob_win": 0.687,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.81,
+    "probs": {
+      "logistic": 0.965,
+      "tree": 0.429,
+      "bt": 0.837,
+      "ann": 0.505,
+      "blended": 0.81
     },
-    "natural_language": "Logistic: 91.6%. Tree: 26.1%. Hybrid: 68.7%. Defensive takeaways per game is higher than league average by 0.9 (good). Offensive giveaways per game is higher than league average by 0.3 (needs attention). Offensive total yards per game is higher than league average by 112.4 (good). Yards allowed per game is higher than league average by 237.6 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.777,
+      "post": 0.81
+    },
+    "ci": {
+      "bt90": [
+        0.63,
+        0.956
+      ]
+    },
+    "natural_language": "PIT vs MIN: logistic 96.509%, tree 42.857%, BT 83.662%, ANN 50.457%, blended 80.965%. Key drivers: Penalty yards deficit 28.01 (favorable); Total yards deficit 27.83 (needs attention); Turnovers deficit 0.34 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 2.574588380720014,
+        "source": "logit"
+      },
+      {
+        "feature": "defensive takeaways",
+        "direction": "positive",
+        "magnitude": 0.7259169092277495,
+        "source": "logit"
+      },
+      {
+        "feature": "def_1st_down_s2d",
+        "direction": "negative",
+        "magnitude": 0.6941856518178023,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RR",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "positive",
+        "magnitude": 1.8224648753996433,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.4221989012960542,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008447854500538716,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.00007983305274333076,
+        "source": "ann"
+      }
+    ],
+    "actual": 1
   },
   {
     "game_id": "2025-W04-ATL-WAS",
@@ -53,23 +171,82 @@
     "away_team": "WAS",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.896
-      },
-      "decision_tree": {
-        "prob_win": 0.656
-      },
-      "hybrid": {
-        "prob_win": 0.812,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.936,
+    "probs": {
+      "logistic": 0.966,
+      "tree": 0.842,
+      "bt": 0.785,
+      "ann": 0.504,
+      "blended": 0.936
     },
-    "natural_language": "Logistic: 89.6%. Tree: 65.6%. Hybrid: 81.2%. Defensive takeaways per game is higher than league average by 0.4 (good). Offensive giveaways per game is higher than league average by 0.8 (needs attention). Offensive total yards per game is higher than league average by 206.1 (good). Yards allowed per game is higher than league average by 92.4 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.923,
+      "post": 0.936
+    },
+    "ci": {
+      "bt90": [
+        0.621,
+        0.905
+      ]
+    },
+    "natural_language": "ATL vs WAS: logistic 96.623%, tree 84.211%, BT 78.531%, ANN 50.45%, blended 93.575%. Key drivers: Penalty yards deficit 18.57 (favorable); Total yards deficit 17.10 (needs attention); Turnovers edge +0.89 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 1.4911786614133973,
+        "source": "logit"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 1.2457685713161357,
+        "source": "logit"
+      },
+      {
+        "feature": "off_rush_yds_s2d",
+        "direction": "positive",
+        "magnitude": 1.0058792923080286,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLRR",
+        "direction": "positive",
+        "magnitude": 0.3421052631578947,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "positive",
+        "magnitude": 1.2298579555580338,
+        "source": "bt"
+      },
+      {
+        "feature": "turnover differential",
+        "direction": "negative",
+        "magnitude": 0.18968991399811447,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008283386660027899,
+        "source": "ann"
+      },
+      {
+        "feature": "off_total_yds_s2d_minus_opp",
+        "direction": "positive",
+        "magnitude": 0.0000731109641695915,
+        "source": "ann"
+      }
+    ],
+    "actual": 1
   },
   {
     "game_id": "2025-W04-BUF-NO",
@@ -77,23 +254,82 @@
     "away_team": "NO",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.993
-      },
-      "decision_tree": {
-        "prob_win": 0.864
-      },
-      "hybrid": {
-        "prob_win": 0.947,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.954,
+    "probs": {
+      "logistic": 0.999,
+      "tree": 0.842,
+      "bt": 0.971,
+      "ann": 0.505,
+      "blended": 0.954
     },
-    "natural_language": "Logistic: 99.3%. Tree: 86.4%. Hybrid: 94.7%. Defensive takeaways per game is higher than league average by 0.4 (good). Offensive giveaways per game is lower than league average by 0.2 (good). Offensive total yards per game is higher than league average by 245.4 (good). Yards allowed per game is higher than league average by 138.1 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.944,
+      "post": 0.954
+    },
+    "ci": {
+      "bt90": [
+        0.927,
+        0.992
+      ]
+    },
+    "natural_language": "BUF vs NO: logistic 99.918%, tree 84.211%, BT 97.066%, ANN 50.483%, blended 95.375%. Key drivers: Total yards edge +94.21 (favorable); Penalty yards deficit 20.84 (favorable); Turnovers deficit 0.65 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 3.903408190123892,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 1.4028467837302478,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_diff",
+        "direction": "negative",
+        "magnitude": 1.3590194878615023,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLRR",
+        "direction": "positive",
+        "magnitude": 0.3421052631578947,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "positive",
+        "magnitude": 1.3723991439095327,
+        "source": "bt"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 1.3447750798095375,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008055032280625633,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.00007601403304649622,
+        "source": "ann"
+      }
+    ],
+    "actual": 1
   },
   {
     "game_id": "2025-W04-DET-CLE",
@@ -101,23 +337,82 @@
     "away_team": "CLE",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.946
-      },
-      "decision_tree": {
-        "prob_win": 0.5
-      },
-      "hybrid": {
-        "prob_win": 0.79,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.826,
+    "probs": {
+      "logistic": 0.994,
+      "tree": 0.429,
+      "bt": 0.935,
+      "ann": 0.505,
+      "blended": 0.826
     },
-    "natural_language": "Logistic: 94.6%. Tree: 50.0%. Hybrid: 79.0%. Defensive takeaways per game is higher than league average by 0.4 (good). Offensive giveaways per game is higher than league average by 0.0 (needs attention). Offensive total yards per game is higher than league average by 204.1 (good). Yards allowed per game is higher than league average by 150.4 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.796,
+      "post": 0.826
+    },
+    "ci": {
+      "bt90": [
+        0.789,
+        0.994
+      ]
+    },
+    "natural_language": "DET vs CLE: logistic 99.421%, tree 42.857%, BT 93.538%, ANN 50.493%, blended 82.644%. Key drivers: Total yards edge +100.95 (favorable); Penalty yards deficit 12.69 (favorable); Turnovers deficit 1.22 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 2.574588380720014,
+        "source": "logit"
+      },
+      {
+        "feature": "off_turnovers_s2d_minus_opp",
+        "direction": "positive",
+        "magnitude": 1.3491835933465144,
+        "source": "logit"
+      },
+      {
+        "feature": "off_rush_yds_s2d",
+        "direction": "positive",
+        "magnitude": 1.0369209574943379,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RR",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 1.435375768279013,
+        "source": "bt"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "positive",
+        "magnitude": 0.8607046227048133,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008163441380919816,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.00007991202628561601,
+        "source": "ann"
+      }
+    ],
+    "actual": 1
   },
   {
     "game_id": "2025-W04-HOU-TEN",
@@ -125,23 +420,82 @@
     "away_team": "TEN",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.432
-      },
-      "decision_tree": {
-        "prob_win": 0.656
-      },
-      "hybrid": {
-        "prob_win": 0.51,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.641,
+    "probs": {
+      "logistic": 0.461,
+      "tree": 0.842,
+      "bt": 0.851,
+      "ann": 0.505,
+      "blended": 0.641
     },
-    "natural_language": "Logistic: 43.2%. Tree: 65.6%. Hybrid: 51.0%. Defensive takeaways per game is higher than league average by 0.2 (good). Offensive giveaways per game is higher than league average by 0.8 (needs attention). Offensive total yards per game is higher than league average by 144.4 (good). Yards allowed per game is higher than league average by 132.6 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.594,
+      "post": 0.641
+    },
+    "ci": {
+      "bt90": [
+        0.568,
+        0.988
+      ]
+    },
+    "natural_language": "HOU vs TEN: logistic 46.108%, tree 84.211%, BT 85.059%, ANN 50.453%, blended 64.107%. Key drivers: Total yards edge +36.02 (favorable); Penalty yards deficit 18.69 (favorable); Turnovers edge +0.11 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 2.8946409309789476,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_pre",
+        "direction": "positive",
+        "magnitude": 1.3672052280668858,
+        "source": "logit"
+      },
+      {
+        "feature": "off_rush_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.5961293118487468,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLRR",
+        "direction": "positive",
+        "magnitude": 0.3421052631578947,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "positive",
+        "magnitude": 1.2374365505266163,
+        "source": "bt"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.562333991224477,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.0000837645170830505,
+        "source": "ann"
+      },
+      {
+        "feature": "off_total_yds_s2d_minus_opp",
+        "direction": "positive",
+        "magnitude": 0.00007339279120521042,
+        "source": "ann"
+      }
+    ],
+    "actual": 1
   },
   {
     "game_id": "2025-W04-NE-CAR",
@@ -149,23 +503,82 @@
     "away_team": "CAR",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.45
-      },
-      "decision_tree": {
-        "prob_win": 0.656
-      },
-      "hybrid": {
-        "prob_win": 0.522,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.679,
+    "probs": {
+      "logistic": 0.746,
+      "tree": 0.429,
+      "bt": 0.631,
+      "ann": 0.505,
+      "blended": 0.679
     },
-    "natural_language": "Logistic: 45.0%. Tree: 65.6%. Hybrid: 52.2%. Defensive takeaways per game is higher than league average by 0.4 (good). Offensive giveaways per game is higher than league average by 1.0 (needs attention). Offensive total yards per game is higher than league average by 181.1 (good). Yards allowed per game is higher than league average by 166.4 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.635,
+      "post": 0.679
+    },
+    "ci": {
+      "bt90": [
+        0.46,
+        0.791
+      ]
+    },
+    "natural_language": "NE vs CAR: logistic 74.605%, tree 42.857%, BT 63.139%, ANN 50.47%, blended 67.943%. Key drivers: Total yards edge +56.54 (favorable); Penalty yards edge +6.57 (needs attention); Turnovers edge +0.28 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 1.4911786614133973,
+        "source": "logit"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 1.2457685713161357,
+        "source": "logit"
+      },
+      {
+        "feature": "def_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 0.7469711087164466,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RR",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.8382001111155398,
+        "source": "bt"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "negative",
+        "magnitude": 0.34779229807665774,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008317257744204285,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.000073538241441306,
+        "source": "ann"
+      }
+    ],
+    "actual": 1
   },
   {
     "game_id": "2025-W04-NYG-LAC",
@@ -173,23 +586,82 @@
     "away_team": "LAC",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.38
-      },
-      "decision_tree": {
-        "prob_win": 0.656
-      },
-      "hybrid": {
-        "prob_win": 0.477,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.558,
+    "probs": {
+      "logistic": 0.551,
+      "tree": 0.429,
+      "bt": 0.048,
+      "ann": 0.505,
+      "blended": 0.558
     },
-    "natural_language": "Logistic: 38.0%. Tree: 65.6%. Hybrid: 47.7%. Defensive takeaways per game is higher than league average by 0.4 (good). Offensive giveaways per game is higher than league average by 0.3 (needs attention). Offensive total yards per game is higher than league average by 169.4 (good). Yards allowed per game is higher than league average by 241.1 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.508,
+      "post": 0.558
+    },
+    "ci": {
+      "bt90": [
+        0.008,
+        0.129
+      ]
+    },
+    "natural_language": "NYG vs LAC: logistic 55.131%, tree 42.857%, BT 4.753%, ANN 50.48%, blended 55.751%. Key drivers: Penalty yards edge +48.16 (needs attention); Total yards deficit 24.03 (needs attention); Turnovers edge +0.39 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 2.8946409309789476,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_pre",
+        "direction": "positive",
+        "magnitude": 1.373865128607751,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_diff",
+        "direction": "positive",
+        "magnitude": 1.327754621162639,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RR",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "negative",
+        "magnitude": 2.9582375322741155,
+        "source": "bt"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "negative",
+        "magnitude": 0.2452271893614909,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008017029204555809,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.00007699422555158891,
+        "source": "ann"
+      }
+    ],
+    "actual": 1
   },
   {
     "game_id": "2025-W04-TB-PHI",
@@ -197,23 +669,82 @@
     "away_team": "PHI",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.656
-      },
-      "decision_tree": {
-        "prob_win": 0.5
-      },
-      "hybrid": {
-        "prob_win": 0.602,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.779,
+    "probs": {
+      "logistic": 0.913,
+      "tree": 0.429,
+      "bt": 0.628,
+      "ann": 0.505,
+      "blended": 0.779
     },
-    "natural_language": "Logistic: 65.6%. Tree: 50.0%. Hybrid: 60.2%. Defensive takeaways per game is lower than league average by 0.1 (needs attention). Offensive giveaways per game is higher than league average by 0.0 (needs attention). Offensive total yards per game is higher than league average by 182.9 (good). Yards allowed per game is higher than league average by 125.9 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.743,
+      "post": 0.779
+    },
+    "ci": {
+      "bt90": [
+        0.189,
+        0.924
+      ]
+    },
+    "natural_language": "TB vs PHI: logistic 91.262%, tree 42.857%, BT 62.8%, ANN 50.476%, blended 77.909%. Key drivers: Total yards edge +47.38 (favorable); Penalty yards edge +6.50 (needs attention); Turnovers deficit 0.12 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 2.574588380720014,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 1.402858804970725,
+        "source": "logit"
+      },
+      {
+        "feature": "off_rush_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.8506709663764825,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RR",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.7150972690728824,
+        "source": "bt"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "negative",
+        "magnitude": 0.3435847947472142,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008585766362072104,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.0000753480425880462,
+        "source": "ann"
+      }
+    ],
+    "actual": 0
   },
   {
     "game_id": "2025-W04-LA-IND",
@@ -221,23 +752,82 @@
     "away_team": "IND",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.935
-      },
-      "decision_tree": {
-        "prob_win": 0.5
-      },
-      "hybrid": {
-        "prob_win": 0.783,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.823,
+    "probs": {
+      "logistic": 0.989,
+      "tree": 0.429,
+      "bt": 0.41,
+      "ann": 0.505,
+      "blended": 0.823
     },
-    "natural_language": "Logistic: 93.5%. Tree: 50.0%. Hybrid: 78.3%. Defensive takeaways per game is higher than league average by 0.4 (good). Offensive giveaways per game is higher than league average by 0.5 (needs attention). Offensive total yards per game is higher than league average by 232.1 (good). Yards allowed per game is higher than league average by 144.1 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.793,
+      "post": 0.823
+    },
+    "ci": {
+      "bt90": [
+        0.154,
+        0.699
+      ]
+    },
+    "natural_language": "LA vs IND: logistic 98.885%, tree 42.857%, BT 41.045%, ANN 50.474%, blended 82.336%. Key drivers: Total yards deficit 41.94 (needs attention); Turnovers edge +0.63 (favorable); Penalty yards edge +0.07 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 2.574588380720014,
+        "source": "logit"
+      },
+      {
+        "feature": "off_1st_down_s2d",
+        "direction": "positive",
+        "magnitude": 0.8372977513631165,
+        "source": "logit"
+      },
+      {
+        "feature": "off_rush_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.8103168016342804,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RR",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "negative",
+        "magnitude": 0.4860660610123311,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.14290929543281433,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008330355061998892,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.00007537515158655142,
+        "source": "ann"
+      }
+    ],
+    "actual": 1
   },
   {
     "game_id": "2025-W04-SF-JAX",
@@ -245,23 +835,82 @@
     "away_team": "JAX",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.054
-      },
-      "decision_tree": {
-        "prob_win": 0.261
-      },
-      "hybrid": {
-        "prob_win": 0.126,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.389,
+    "probs": {
+      "logistic": 0.296,
+      "tree": 0.429,
+      "bt": 0.725,
+      "ann": 0.505,
+      "blended": 0.389
     },
-    "natural_language": "Logistic: 5.4%. Tree: 26.1%. Hybrid: 12.6%. Defensive takeaways per game is lower than league average by 0.1 (needs attention). Offensive giveaways per game is higher than league average by 1.5 (needs attention). Offensive total yards per game is higher than league average by 208.1 (good). Yards allowed per game is higher than league average by 120.9 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.343,
+      "post": 0.389
+    },
+    "ci": {
+      "bt90": [
+        0.52,
+        0.877
+      ]
+    },
+    "natural_language": "SF vs JAX: logistic 29.648%, tree 42.857%, BT 72.468%, ANN 50.472%, blended 38.852%. Key drivers: Total yards edge +16.89 (favorable); Penalty yards deficit 12.15 (favorable); R-ratio edge +0.11 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "def_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 2.68505830971047,
+        "source": "logit"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 2.574588380720014,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 1.4095183638124398,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLL",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "positive",
+        "magnitude": 0.8271910968815742,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.3980242147201173,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008237061602010016,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.00007092179191084444,
+        "source": "ann"
+      }
+    ],
+    "actual": 0
   },
   {
     "game_id": "2025-W04-KC-BAL",
@@ -269,23 +918,82 @@
     "away_team": "BAL",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.974
-      },
-      "decision_tree": {
-        "prob_win": 0.656
-      },
-      "hybrid": {
-        "prob_win": 0.863,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.944,
+    "probs": {
+      "logistic": 0.982,
+      "tree": 0.842,
+      "bt": 0.114,
+      "ann": 0.505,
+      "blended": 0.944
     },
-    "natural_language": "Logistic: 97.4%. Tree: 65.6%. Hybrid: 86.3%. Defensive takeaways per game is higher than league average by 0.4 (good). Offensive giveaways per game is lower than league average by 0.2 (good). Offensive total yards per game is higher than league average by 178.1 (good). Yards allowed per game is higher than league average by 154.4 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.933,
+      "post": 0.944
+    },
+    "ci": {
+      "bt90": [
+        0.039,
+        0.245
+      ]
+    },
+    "natural_language": "KC vs BAL: logistic 98.19%, tree 84.211%, BT 11.438%, ANN 50.453%, blended 94.433%. Key drivers: Total yards deficit 45.56 (needs attention); Penalty yards edge +27.02 (needs attention); Turnovers deficit 0.23 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 1.4911786614133973,
+        "source": "logit"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 1.2457685713161357,
+        "source": "logit"
+      },
+      {
+        "feature": "off_1st_down_s2d",
+        "direction": "positive",
+        "magnitude": 0.7137735231653725,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLRR",
+        "direction": "positive",
+        "magnitude": 0.3421052631578947,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "negative",
+        "magnitude": 1.6311636559109295,
+        "source": "bt"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "negative",
+        "magnitude": 0.5346358556196354,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008185559708071543,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.000074807518051382,
+        "source": "ann"
+      }
+    ],
+    "actual": 1
   },
   {
     "game_id": "2025-W04-LV-CHI",
@@ -293,23 +1001,82 @@
     "away_team": "CHI",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.009
-      },
-      "decision_tree": {
-        "prob_win": 0.656
-      },
-      "hybrid": {
-        "prob_win": 0.235,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.198,
+    "probs": {
+      "logistic": 0.028,
+      "tree": 0.429,
+      "bt": 0.622,
+      "ann": 0.504,
+      "blended": 0.198
     },
-    "natural_language": "Logistic: 0.9%. Tree: 65.6%. Hybrid: 23.5%. Defensive takeaways per game is higher than league average by 0.2 (good). Offensive giveaways per game is higher than league average by 1.5 (needs attention). Offensive total yards per game is higher than league average by 184.1 (good). Yards allowed per game is higher than league average by 172.6 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.168,
+      "post": 0.198
+    },
+    "ci": {
+      "bt90": [
+        0.208,
+        0.928
+      ]
+    },
+    "natural_language": "LV vs CHI: logistic 2.841%, tree 42.857%, BT 62.22%, ANN 50.448%, blended 19.8%. Key drivers: Penalty yards deficit 11.37 (favorable); Total yards deficit 6.85 (needs attention); Turnovers edge +0.71 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 2.8946409309789476,
+        "source": "logit"
+      },
+      {
+        "feature": "def_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 1.7160147092134583,
+        "source": "logit"
+      },
+      {
+        "feature": "off_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 1.2225454221298744,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RR",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "positive",
+        "magnitude": 0.7782129453112587,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.3577335982478686,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008324938584572645,
+        "source": "ann"
+      },
+      {
+        "feature": "off_total_yds_s2d_minus_opp",
+        "direction": "positive",
+        "magnitude": 0.00007061797265914046,
+        "source": "ann"
+      }
+    ],
+    "actual": 0
   },
   {
     "game_id": "2025-W04-DAL-GB",
@@ -317,23 +1084,82 @@
     "away_team": "GB",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.01
-      },
-      "decision_tree": {
-        "prob_win": 0.656
-      },
-      "hybrid": {
-        "prob_win": 0.236,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.232,
+    "probs": {
+      "logistic": 0.075,
+      "tree": 0.429,
+      "bt": 0.816,
+      "ann": 0.505,
+      "blended": 0.232
     },
-    "natural_language": "Logistic: 1.0%. Tree: 65.6%. Hybrid: 23.6%. Defensive takeaways per game is lower than league average by 0.1 (needs attention). Offensive giveaways per game is higher than league average by 1.0 (needs attention). Offensive total yards per game is higher than league average by 245.9 (good). Yards allowed per game is higher than league average by 265.4 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.199,
+      "post": 0.232
+    },
+    "ci": {
+      "bt90": [
+        0.589,
+        0.954
+      ]
+    },
+    "natural_language": "DAL vs GB: logistic 7.485%, tree 42.857%, BT 81.627%, ANN 50.498%, blended 23.2%. Key drivers: Total yards edge +62.22 (favorable); Penalty yards deficit 4.46 (favorable); Turnovers edge +1.41 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 2.8946409309789476,
+        "source": "logit"
+      },
+      {
+        "feature": "off_1st_down_s2d",
+        "direction": "positive",
+        "magnitude": 1.0169693560143802,
+        "source": "logit"
+      },
+      {
+        "feature": "off_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 0.9887518752683845,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RR",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.9146454856870126,
+        "source": "bt"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "positive",
+        "magnitude": 0.34467016143632623,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008069179243050459,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.00007648174570209444,
+        "source": "ann"
+      }
+    ],
+    "actual": null
   },
   {
     "game_id": "2025-W04-MIA-NYJ",
@@ -341,23 +1167,82 @@
     "away_team": "NYJ",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.034
-      },
-      "decision_tree": {
-        "prob_win": 0.136
-      },
-      "hybrid": {
-        "prob_win": 0.07,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.111,
+    "probs": {
+      "logistic": 0.023,
+      "tree": 0.222,
+      "bt": 0.722,
+      "ann": 0.504,
+      "blended": 0.111
     },
-    "natural_language": "Logistic: 3.4%. Tree: 13.6%. Hybrid: 7.0%. Defensive takeaways per game is lower than league average by 0.4 (needs attention). Offensive giveaways per game is higher than league average by 1.0 (needs attention). Offensive total yards per game is higher than league average by 69.2 (good). Yards allowed per game is higher than league average by 160.5 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.093,
+      "post": 0.111
+    },
+    "ci": {
+      "bt90": [
+        0.528,
+        0.88
+      ]
+    },
+    "natural_language": "MIA vs NYJ: logistic 2.35%, tree 22.222%, BT 72.17%, ANN 50.43%, blended 11.113%. Key drivers: Penalty yards deficit 16.58 (favorable); Total yards edge +2.19 (favorable); Turnovers edge +0.55 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 2.8946409309789476,
+        "source": "logit"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "negative",
+        "magnitude": 1.4118710474916205,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_pre",
+        "direction": "positive",
+        "magnitude": 1.3672055722423497,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf L",
+        "direction": "negative",
+        "magnitude": 0.2777777777777778,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "positive",
+        "magnitude": 1.1050621175995983,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.3282540341454974,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008709960645171286,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.00007448834262487272,
+        "source": "ann"
+      }
+    ],
+    "actual": null
   },
   {
     "game_id": "2025-W04-DEN-CIN",
@@ -365,22 +1250,81 @@
     "away_team": "CIN",
     "season": 2025,
     "week": 4,
-    "forecast": false,
-    "models": {
-      "logistic": {
-        "prob_win": 0.476
-      },
-      "decision_tree": {
-        "prob_win": 0.656
-      },
-      "hybrid": {
-        "prob_win": 0.539,
-        "weights": {
-          "logistic": 0.65,
-          "tree": 0.35
-        }
-      }
+    "forecast": 0.592,
+    "probs": {
+      "logistic": 0.606,
+      "tree": 0.429,
+      "bt": 0.472,
+      "ann": 0.504,
+      "blended": 0.592
     },
-    "natural_language": "Logistic: 47.6%. Tree: 65.6%. Hybrid: 53.9%. Defensive takeaways per game is higher than league average by 0.2 (good). Offensive giveaways per game is higher than league average by 0.7 (needs attention). Offensive total yards per game is higher than league average by 84.5 (good). Yards allowed per game is higher than league average by 134.5 (needs attention). Home-field advantage applies."
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.544,
+      "post": 0.592
+    },
+    "ci": {
+      "bt90": [
+        0.18,
+        0.768
+      ]
+    },
+    "natural_language": "DEN vs CIN: logistic 60.557%, tree 42.857%, BT 47.19%, ANN 50.443%, blended 59.209%. Key drivers: Total yards edge +44.45 (favorable); Penalty yards edge +31.18 (needs attention); Turnovers deficit 1.08 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 1.4911786614133973,
+        "source": "logit"
+      },
+      {
+        "feature": "off_turnovers_s2d_minus_opp",
+        "direction": "positive",
+        "magnitude": 0.8815964996235348,
+        "source": "logit"
+      },
+      {
+        "feature": "def_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 0.7469711087164466,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLL",
+        "direction": "negative",
+        "magnitude": 0.07142857142857145,
+        "source": "tree"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "negative",
+        "magnitude": 1.89236794232178,
+        "source": "bt"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.6756064769959431,
+        "source": "bt"
+      },
+      {
+        "feature": "off_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.00008707653233865127,
+        "source": "ann"
+      },
+      {
+        "feature": "rest_days",
+        "direction": "negative",
+        "magnitude": 0.00007519894358900699,
+        "source": "ann"
+      }
+    ],
+    "actual": null
   }
 ]

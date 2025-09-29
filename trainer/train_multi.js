@@ -14,6 +14,11 @@ mkdirSync(ART_DIR, { recursive: true });
 
 const SEASON = Number(process.env.SEASON || new Date().getFullYear());
 const WEEK_ENV = Number(process.env.WEEK || 6);
+const readOpt = (name) => {
+  const prefix = `${name}=`;
+  const arg = process.argv.slice(2).find((v) => v.startsWith(prefix));
+  return arg ? arg.slice(prefix.length) : undefined;
+};
 
 function isReg(v){ if (v == null) return true; const s=String(v).trim().toUpperCase(); return s==="" || s.startsWith("REG"); }
 const sigmoid = z => 1/(1+Math.exp(-z));
@@ -242,7 +247,10 @@ function dedupeToHomeView(items) {
 (async function main(){
   console.log(`Rolling train for SEASON=${SEASON} (env WEEK=${WEEK_ENV})`);
 
-  const schedules = await loadSchedules();
+  const schedules = await loadSchedules({
+    localPath: readOpt("--local") ?? process.env.NFLVERSE_SCHEDULES_FILE,
+    cachePath: readOpt("--cache") ?? process.env.NFLVERSE_SCHEDULES_CACHE,
+  });
   const teamWeekly = await loadTeamWeekly(SEASON);
   const prevTeamWeekly = await (async()=>{ try { return await loadTeamWeekly(SEASON-1); } catch { return []; } })();
 

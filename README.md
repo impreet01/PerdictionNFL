@@ -24,3 +24,12 @@ Train and serve **logistic**, **decision-tree**, and **hybrid** NFL win probabil
 ## Notes
 - After first run, open an `artifacts/predictions_YYYY_WWW.json` to verify outputs.
 - If a column name mismatch occurs (nflverse schema drift), adjust the `map` object in `trainer/featureBuild.js`.
+
+## Offline-friendly schedules
+- `trainer/dataSources.loadSchedules` now checks multiple sources in order: a local override (`NFLVERSE_SCHEDULES_FILE` or `./data/games.csv`), a cached copy (`NFLVERSE_SCHEDULES_CACHE` or `artifacts/cache/games.csv`), the main GitHub raw file, and finally a CDN mirror.
+- Successful remote downloads are saved to the cache path so that subsequent runs can stay offline.
+- `npm run train:multi` and helper scripts accept `--cache=/path/to/games.csv` (and `--local=...`) to exercise the offline branch. For example:
+  ```bash
+  NO_PROXY=localhost npm run train:multi -- --cache=artifacts/cache/games.csv
+  node trainer/tests/smoke.js
+  ```

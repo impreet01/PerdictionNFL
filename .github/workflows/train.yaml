@@ -61,8 +61,10 @@ jobs:
           echo "Resolved SEASON=$SEASON"
 
       - name: Resolve week (auto unless override)
+        id: resolve
         run: |
           if [ -n "${{ github.event.inputs.week }}" ]; then
+            WEEK="${{ github.event.inputs.week }}"
             echo "WEEK=${{ github.event.inputs.week }}" >> $GITHUB_ENV
             echo "Resolved WEEK=$WEEK (manual override)"
           else
@@ -71,6 +73,13 @@ jobs:
             echo "WEEK=$WEEK" >> $GITHUB_ENV
             echo "Resolved WEEK=$WEEK (auto)"
           fi
+          echo "WEEK=$WEEK" >> $GITHUB_OUTPUT
+
+      - name: Build context
+        env:
+          SEASON: ${{ env.SEASON }}
+          WEEK: ${{ steps.resolve.outputs.WEEK }}
+        run: npm run build:context
 
       - name: Train + Predict (auto week)
         run: |

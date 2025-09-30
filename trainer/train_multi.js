@@ -12,19 +12,20 @@ import {
   loadDepthCharts,
   loadInjuries,
   loadSnapCounts,
-  loadPFRAdvTeam,
+  loadPFRAdvTeam,       // kept for compatibility; now returns weekly array
   loadESPNQBR,
   loadOfficials
 } from "./dataSources.js";
 import { buildContextForWeek } from "./contextPack.js";
 import { writeExplainArtifact } from "./explainRubric.js";
-import { buildFeatures, FEATS } from "./featureBuild.js";
+import { buildFeatures, FEATS as FEATS_BASE } from "./featureBuild.js";
 import { buildBTFeatures, BT_FEATURES } from "./featureBuild_bt.js";
 import { trainBTModel, predictBT, predictBTDeterministic } from "./model_bt.js";
 import { trainANNCommittee, predictANNCommittee, gradientANNCommittee } from "./model_ann.js";
 import { DecisionTreeClassifier as CART } from "ml-cart";
 import { Matrix, SVD } from "ml-matrix";
 import { logLoss, brier, accuracy, aucRoc, calibrationBins } from "./metrics.js";
+import { buildSeasonDB, attachAdvWeeklyDiff } from "./databases.js";
 
 const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 
@@ -484,10 +485,24 @@ const metricBlock = (actuals, preds) => ({
   n: preds.length
 });
 
+function expandFeats(baseFeats, sampleRows){
+  const extra = new Set();
+  for(const r of sampleRows){
+    for(const k of Object.keys(r)){
+      if(k.startsWith('diff_')) extra.add(k);
+      // If you also want raw home_/away_ advanced keys, uncomment:
+      // if(k.startsWith('home_') || k.startsWith('away_')) extra.add(k);
+    }
+  }
+  return Array.from(new Set([...baseFeats, ...Array.from(extra)]));
+}
+
 export async function runTraining({ season, week, data = {}, options = {} } = {}) {
   const resolvedSeason = Number(season ?? process.env.SEASON ?? new Date().getFullYear());
   let resolvedWeek = Number(week ?? process.env.WEEK ?? 6);
   if (!Number.isFinite(resolvedWeek)) resolvedWeek = 6;
+
+  const DB = await buildSeasonDB(resolvedSeason);
 
   const schedules = data.schedules ?? (await loadSchedules(resolvedSeason));
   const teamWeekly = data.teamWeekly ?? (await loadTeamWeekly(resolvedSeason));
@@ -551,6 +566,20 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     prevTeamWeekly
   });
 
+  // --- Enrich feature rows with PFR advanced weekly differentials ---
+  for (const r of featureRows) {
+    // r.team is home team for home=1 rows in your pipeline
+    if (r.home === 1) {
+      attachAdvWeeklyDiff(DB, r, r.week, r.team, r.opponent);
+    } else {
+      // away rows exist in featureRows too; safe to enrich anyway:
+      attachAdvWeeklyDiff(DB, r, r.week, r.opponent, r.team);
+    }
+  }
+
+  // Determine the final FEATS list (union of base + discovered diff_*):
+  const FEATS_ENR = expandFeats(FEATS_BASE, featureRows);
+
   const btTrainRowsRaw = btRows.filter(
     (r) => r.season === resolvedSeason && r.week < resolvedWeek && (r.label_win === 0 || r.label_win === 1)
   );
@@ -581,8 +610,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
 
   const labels = trainRows.map((r) => Number(r.win));
   const weeksSeen = new Set(trainRows.map((r) => r.week)).size;
-  const trainMatrix = matrixFromRows(trainRows, FEATS);
-  const scaler = fitScaler(trainMatrix.length ? trainMatrix : [new Array(FEATS.length).fill(0)]);
+  const trainMatrix = matrixFromRows(trainRows, FEATS_ENR);
+  const scaler = fitScaler(trainMatrix.length ? trainMatrix : [new Array(FEATS_ENR.length).fill(0)]);
   const trainStd = applyScaler(trainMatrix, scaler);
 
   const nTrain = trainRows.length;
@@ -609,7 +638,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
           iva.push(i);
         }
       }
-      const scalerFold = fitScaler(Xtr.length ? Xtr : [new Array(FEATS.length).fill(0)]);
+      const scalerFold = fitScaler(Xtr.length ? Xtr : [new Array(FEATS_ENR.length).fill(0)]);
       const XtrS = applyScaler(Xtr, scalerFold);
       const XvaS = applyScaler(Xva, scalerFold);
       const logitModel = trainLogisticGD(XtrS, ytr, { steps: 2500, lr: 4e-3, l2: 2e-4 });
@@ -650,7 +679,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
           iva.push(i);
         }
       }
-      const scalerFold = fitScaler(Xtr.length ? Xtr : [new Array(FEATS.length).fill(0)]);
+      const scalerFold = fitScaler(Xtr.length ? Xtr : [new Array(FEATS_ENR.length).fill(0)]);
       const XtrS = applyScaler(Xtr, scalerFold);
       const XvaS = applyScaler(Xva, scalerFold);
       const annModel = trainANNCommittee(XtrS, ytr, {
@@ -723,7 +752,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   });
   const btModelFull = trainBTModel(btTrainRows);
 
-  const testMatrix = matrixFromRows(testRows, FEATS);
+  const testMatrix = matrixFromRows(testRows, FEATS_ENR);
   const testStd = applyScaler(testMatrix, scaler);
   const logitTest = predictLogit(testStd, logitModelFull);
   const treeTest = predictTree(cartFull, leafStatsFull, testStd);
@@ -759,7 +788,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     probs.blended = blended;
 
     const contribLogit = logitModelFull.w.map((w, idx) => ({
-      feature: FEATS[idx],
+      feature: FEATS_ENR[idx],
       value: (w || 0) * (testStd[i]?.[idx] ?? 0)
     }));
     const path = leafPath(leafStatsFull.root, testStd[i] || []);
@@ -772,7 +801,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     ], btModelFull.scaler)[0] || [];
     const contribBT = btModelFull.w.map((w, idx) => ({ feature: BT_FEATURES[idx], value: (w || 0) * (btStd[idx] ?? 0) }));
     const gradAnn = gradientANNCommittee(annModelFull, testStd[i] || []);
-    const contribAnn = gradAnn.map((g, idx) => ({ feature: FEATS[idx], value: g }));
+    const contribAnn = gradAnn.map((g, idx) => ({ feature: FEATS_ENR[idx], value: g }));
     const drivers = buildTopDrivers({
       logisticContribs: contribLogit,
       treeInfo: { path, winrate: leafWin },
@@ -889,16 +918,16 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     if (cls !== actual) errorIndices.push(i);
   }
   if (errorIndices.length) {
-    const agg = new Array(FEATS.length).fill(0);
+    const agg = new Array(FEATS_ENR.length).fill(0);
     for (const idx of errorIndices) {
       const row = trainStd[idx] || [];
-      for (let j = 0; j < FEATS.length; j++) {
+      for (let j = 0; j < FEATS_ENR.length; j++) {
         const contrib = Math.abs((logitModelFull.w[j] || 0) * (row[j] ?? 0));
         if (Number.isFinite(contrib)) agg[j] += contrib;
       }
     }
     const top = agg
-      .map((score, idx) => ({ feature: FEATS[idx], score }))
+      .map((score, idx) => ({ feature: FEATS_ENR[idx], score }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 3)
@@ -910,10 +939,10 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     diagnostics.error_notes = "No standout feature-level errors detected for the latest completed week.";
   }
 
-  const pca = computePCA(trainStd, FEATS);
+  const pca = computePCA(trainStd, FEATS_ENR);
 
-  const featureStart = FEATS.indexOf("off_epa_per_play_s2d");
-  const appendedFeatures = featureStart >= 0 ? FEATS.slice(featureStart) : [];
+  const featureStart = FEATS_ENR.indexOf("off_epa_per_play_s2d");
+  const appendedFeatures = featureStart >= 0 ? FEATS_ENR.slice(featureStart) : [];
 
   const modelSummary = {
     season: resolvedSeason,
@@ -923,7 +952,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       weights: logitModelFull.w,
       bias: logitModelFull.b,
       scaler,
-      features: FEATS
+      features: FEATS_ENR
     },
     decision_tree: {
       params: treeParams,

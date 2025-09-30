@@ -106,7 +106,8 @@ async function main() {
   if (!result.diagnostics?.metrics?.ensemble) throw new Error("Smoke test: diagnostics missing ensemble metrics");
   if (!Array.isArray(result.btDebug) || !result.btDebug.length) throw new Error("Smoke test: btDebug missing");
 
-  writeArtifacts(result);
+  result.context = [];
+  await writeArtifacts(result);
   updateHistoricalArtifacts({ season, schedules });
 
   const indexPath = `artifacts/season_index_${season}.json`;

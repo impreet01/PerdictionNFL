@@ -1,5 +1,5 @@
 // worker/worker.js
-// Cloudflare Worker serving predictions, models, diagnostics, and history endpoints.
+// Cloudflare Worker serving predictions, context, explain scorecards, models, diagnostics, and history endpoints.
 
 const REPO_USER = "impreet01";
 const REPO_NAME = "PerdictionNFL";
@@ -7,13 +7,14 @@ const BRANCH = "main";
 
 const RAW_BASE = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/${BRANCH}/artifacts`;
 const GH_API_LIST = `https://api.github.com/repos/${REPO_USER}/${REPO_NAME}/contents/artifacts?ref=${BRANCH}`;
+const CACHE_TTL = 900;
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "cache-control": status === 200 ? "public, max-age=900" : "no-store"
+      "cache-control": status === 200 ? `public, max-age=${CACHE_TTL}` : "no-store"
     }
   });
 
@@ -57,7 +58,7 @@ async function resolveSeasonWeek(prefix, seasonParam, weekParam) {
 async function fetchArtifact(prefix, season, week) {
   const file = `${prefix}_${season}_W${String(week).padStart(2, "0")}.json`;
   const url = `${RAW_BASE}/${file}`;
-  const resp = await fetch(url, { cf: { cacheEverything: true, cacheTtl: 900 } });
+  const resp = await fetch(url, { cf: { cacheEverything: true, cacheTtl: CACHE_TTL } });
   if (!resp.ok) throw new Error(`artifact not found for ${season} W${week}`);
   return resp.json();
 }
@@ -125,25 +126,34 @@ async function historyResponse(query, mode) {
   }));
 }
 
+async function respondWithArtifact(prefix, url) {
+  const { season, week } = await resolveSeasonWeek(prefix, url.searchParams.get("season"), url.searchParams.get("week"));
+  const data = await fetchArtifact(prefix, season, week);
+  return json({ season, week, data });
+}
+
 export default {
   async fetch(req) {
     try {
       const url = new URL(req.url);
-      const path = url.pathname;
+      const path = url.pathname.replace(/\/$/, "");
+      if (path === "") {
+        return json({ ok: true, message: "nfl predictions worker" });
+      }
       if (path === "/predictions") {
-        const { season, week } = await resolveSeasonWeek("predictions", url.searchParams.get("season"), url.searchParams.get("week"));
-        const data = await fetchArtifact("predictions", season, week);
-        return json({ season, week, data });
+        return await respondWithArtifact("predictions", url);
+      }
+      if (path === "/context") {
+        return await respondWithArtifact("context", url);
+      }
+      if (path === "/explain") {
+        return await respondWithArtifact("explain", url);
       }
       if (path === "/models") {
-        const { season, week } = await resolveSeasonWeek("model", url.searchParams.get("season"), url.searchParams.get("week"));
-        const data = await fetchArtifact("model", season, week);
-        return json({ season, week, data });
+        return await respondWithArtifact("model", url);
       }
       if (path === "/diagnostics") {
-        const { season, week } = await resolveSeasonWeek("diagnostics", url.searchParams.get("season"), url.searchParams.get("week"));
-        const data = await fetchArtifact("diagnostics", season, week);
-        return json({ season, week, data });
+        return await respondWithArtifact("diagnostics", url);
       }
       if (path === "/history/team") {
         const data = await historyResponse(url.searchParams, "team");

@@ -1,6 +1,7 @@
 // trainer/train_multi.js
 // Multi-model ensemble trainer with logistic+CART, Bradley-Terry, and ANN committee.
 
+import fs from "node:fs";
 import {
   loadSchedules,
   loadTeamWeekly,
@@ -8,14 +9,17 @@ import {
   loadPBP,
   loadPlayerWeekly
 } from "./dataSources.js";
+import { buildContextForWeek } from "./contextPack.js";
+import { writeExplainArtifact } from "./explainRubric.js";
 import { buildFeatures, FEATS } from "./featureBuild.js";
 import { buildBTFeatures, BT_FEATURES } from "./featureBuild_bt.js";
 import { trainBTModel, predictBT, predictBTDeterministic } from "./model_bt.js";
 import { trainANNCommittee, predictANNCommittee, gradientANNCommittee } from "./model_ann.js";
 import { DecisionTreeClassifier as CART } from "ml-cart";
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
 import { Matrix, SVD } from "ml-matrix";
 import { logLoss, brier, accuracy, aucRoc, calibrationBins } from "./metrics.js";
+
+const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
@@ -963,9 +967,27 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   };
 }
 
-export function writeArtifacts(result) {
+export async function writeArtifacts(result) {
   const stamp = `${result.season}_W${String(result.week).padStart(2, "0")}`;
   writeFileSync(`${ART_DIR}/predictions_${stamp}.json`, JSON.stringify(result.predictions, null, 2));
+  // 1) Build & write context pack
+  const context = Array.isArray(result.context)
+    ? result.context
+    : await buildContextForWeek(result.season, result.week);
+  await fs.promises.writeFile(
+    `${ART_DIR}/context_${result.season}_W${String(result.week).padStart(2, "0")}.json`,
+    JSON.stringify(context, null, 2)
+  );
+
+  // 2) Compute & write explanation scorecards
+  await writeExplainArtifact({
+    season: result.season,
+    week: result.week,
+    predictions: Array.isArray(result.predictions)
+      ? result.predictions
+      : result.predictions?.games || result.predictions,
+    context
+  });
   writeFileSync(`${ART_DIR}/model_${stamp}.json`, JSON.stringify(result.modelSummary, null, 2));
   writeFileSync(`${ART_DIR}/diagnostics_${stamp}.json`, JSON.stringify(result.diagnostics, null, 2));
   writeFileSync(`${ART_DIR}/bt_features_${stamp}.json`, JSON.stringify(result.btDebug, null, 2));
@@ -1252,14 +1274,14 @@ async function main() {
   for (const wk of seasonWeeks) {
     if (wk > finalWeek) break;
     const result = await runTraining({ season, week: wk, data: sharedData });
-    writeArtifacts(result);
+    await writeArtifacts(result);
     latestResult = result;
     console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
   }
 
   if (!latestResult) {
     const result = await runTraining({ season, week: finalWeek, data: sharedData });
-    writeArtifacts(result);
+    await writeArtifacts(result);
     latestResult = result;
     console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
   }

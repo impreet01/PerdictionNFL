@@ -16,7 +16,7 @@ function counts(arr, key) {
 
 (async () => {
   console.log(`DEBUG: Season=${SEASON}, TargetWeek=${WEEK}`);
-  const schedules = await loadSchedules();
+  const schedules = await loadSchedules(SEASON);
   const schedReg = schedules.filter(r => Number(r.season) === SEASON);
   console.log(`schedules total rows (this season): ${schedReg.length}`);
   console.log(`schedules season_type counts:`, counts(schedReg, "season_type"));

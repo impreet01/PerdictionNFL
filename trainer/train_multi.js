@@ -7,7 +7,14 @@ import {
   loadTeamWeekly,
   loadTeamGameAdvanced,
   loadPBP,
-  loadPlayerWeekly
+  loadPlayerWeekly,
+  loadRostersWeekly,
+  loadDepthCharts,
+  loadInjuries,
+  loadSnapCounts,
+  loadPFRAdvTeam,
+  loadESPNQBR,
+  loadOfficials
 } from "./dataSources.js";
 import { buildContextForWeek } from "./contextPack.js";
 import { writeExplainArtifact } from "./explainRubric.js";
@@ -482,7 +489,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   let resolvedWeek = Number(week ?? process.env.WEEK ?? 6);
   if (!Number.isFinite(resolvedWeek)) resolvedWeek = 6;
 
-  const schedules = data.schedules ?? (await loadSchedules());
+  const schedules = data.schedules ?? (await loadSchedules(resolvedSeason));
   const teamWeekly = data.teamWeekly ?? (await loadTeamWeekly(resolvedSeason));
   let teamGame;
   if (data.teamGame !== undefined) {
@@ -1219,7 +1226,7 @@ export function updateHistoricalArtifacts({ season, schedules }) {
 }
 
 async function loadSeasonData(season) {
-  const schedules = await loadSchedules();
+  const schedules = await loadSchedules(season);
   const teamWeekly = await loadTeamWeekly(season);
 
   let teamGame;
@@ -1250,7 +1257,70 @@ async function loadSeasonData(season) {
     playerWeekly = [];
   }
 
-  return { schedules, teamWeekly, teamGame, prevTeamWeekly, pbp, playerWeekly };
+  let rosters;
+  try {
+    rosters = await loadRostersWeekly(season);
+  } catch (err) {
+    rosters = [];
+  }
+
+  let depthCharts;
+  try {
+    depthCharts = await loadDepthCharts(season);
+  } catch (err) {
+    depthCharts = [];
+  }
+
+  let injuries;
+  try {
+    injuries = await loadInjuries(season);
+  } catch (err) {
+    injuries = [];
+  }
+
+  let snapCounts;
+  try {
+    snapCounts = await loadSnapCounts(season);
+  } catch (err) {
+    snapCounts = [];
+  }
+
+  let pfrAdv;
+  try {
+    pfrAdv = await loadPFRAdvTeam(season);
+  } catch (err) {
+    pfrAdv = [];
+  }
+
+  let qbr;
+  try {
+    qbr = await loadESPNQBR(season);
+  } catch (err) {
+    qbr = [];
+  }
+
+  let officials;
+  try {
+    officials = await loadOfficials();
+  } catch (err) {
+    officials = [];
+  }
+
+  return {
+    schedules,
+    teamWeekly,
+    teamGame,
+    prevTeamWeekly,
+    pbp,
+    playerWeekly,
+    rosters,
+    depthCharts,
+    injuries,
+    snapCounts,
+    pfrAdv,
+    qbr,
+    officials
+  };
 }
 
 async function main() {

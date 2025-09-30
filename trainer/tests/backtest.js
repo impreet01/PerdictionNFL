@@ -35,7 +35,7 @@ function regression(points) {
 
 async function main() {
   const season = Number(process.env.SEASON ?? new Date().getFullYear());
-  const schedules = await loadSchedules();
+  const schedules = await loadSchedules(season);
   const teamWeekly = await loadTeamWeekly(season);
   let prev = [];
   try {

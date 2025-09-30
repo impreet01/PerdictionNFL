@@ -56,7 +56,7 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
 (async function main(){
   console.log(`Training season ${TARGET_SEASON}, week ${TARGET_WEEK}`);
 
-  const schedules = await loadSchedules();
+  const schedules = await loadSchedules(TARGET_SEASON);
   const teamWeekly = await loadTeamWeekly(TARGET_SEASON);
   let teamGame = [];
   try { teamGame = await loadTeamGameAdvanced(TARGET_SEASON); } catch (_) {}

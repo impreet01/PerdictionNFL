@@ -26,7 +26,7 @@ function hasFinalScore(g) {
 
 async function main() {
   const SEASON = Number(process.env.SEASON || new Date().getFullYear());
-  const schedules = await loadSchedules();
+  const schedules = await loadSchedules(SEASON);
 
   const reg = schedules.filter(
     (g) => Number(g.season) === SEASON && isReg(g.season_type)
@@ -47,7 +47,8 @@ async function main() {
   console.log(`Resolved WEEK=${WEEK}`);
 }
 
-main().catch(() => {
+main().catch((err) => {
   // Be tolerant; let the workflow continue even if resolution fails
+  console.warn(`resolveWeek failed: ${err?.message || err}`);
   console.log("Resolved WEEK=");
 });

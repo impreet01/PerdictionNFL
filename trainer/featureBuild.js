@@ -5,6 +5,9 @@
 // Defensive "allowed" values are taken from the opponent row in the same game/week.
 // Only generates rows for actual games (no fabrication of future weeks).
 
+import { aggregatePBP } from "./featureBuild_pbp.js";
+import { aggregatePlayerUsage } from "./featureBuild_players.js";
+
 export const FEATS = [
   "off_1st_down_s2d",
   "off_total_yds_s2d",
@@ -45,7 +48,63 @@ export const FEATS = [
   "off_third_down_pct_s2d_minus_opp",
   "off_red_zone_td_pct_s2d_minus_opp",
   "off_sack_rate_s2d_minus_opp",
-  "off_neutral_pass_rate_s2d_minus_opp"
+  "off_neutral_pass_rate_s2d_minus_opp",
+  "off_epa_per_play_s2d",
+  "off_epa_per_play_w3",
+  "off_epa_per_play_w5",
+  "off_epa_per_play_exp",
+  "off_success_rate_s2d",
+  "off_success_rate_w3",
+  "off_success_rate_w5",
+  "off_success_rate_exp",
+  "def_epa_per_play_allowed_s2d",
+  "def_epa_per_play_allowed_w3",
+  "def_epa_per_play_allowed_w5",
+  "def_epa_per_play_allowed_exp",
+  "def_success_rate_allowed_s2d",
+  "def_success_rate_allowed_w3",
+  "def_success_rate_allowed_w5",
+  "def_success_rate_allowed_exp",
+  "rb_rush_share_s2d",
+  "rb_rush_share_w3",
+  "rb_rush_share_w5",
+  "rb_rush_share_exp",
+  "wr_target_share_s2d",
+  "wr_target_share_w3",
+  "wr_target_share_w5",
+  "wr_target_share_exp",
+  "te_target_share_s2d",
+  "te_target_share_w3",
+  "te_target_share_w5",
+  "te_target_share_exp",
+  "qb_aypa_s2d",
+  "qb_aypa_w3",
+  "qb_aypa_w5",
+  "qb_aypa_exp",
+  "qb_sack_rate_s2d",
+  "qb_sack_rate_w3",
+  "qb_sack_rate_w5",
+  "qb_sack_rate_exp",
+  "roof_dome",
+  "roof_outdoor"
+];
+
+const DECAY_LAMBDA = 0.85;
+const MAX_HISTORY = 8;
+
+const PBP_METRICS = [
+  { key: "off_epa_per_play", weightKey: "off_play_weight" },
+  { key: "off_success_rate", weightKey: "off_play_weight" },
+  { key: "def_epa_per_play_allowed", weightKey: "def_play_weight" },
+  { key: "def_success_rate_allowed", weightKey: "def_play_weight" }
+];
+
+const USAGE_METRICS = [
+  { key: "rb_rush_share", weightKey: "rb_rush_weight" },
+  { key: "wr_target_share", weightKey: "target_weight" },
+  { key: "te_target_share", weightKey: "target_weight" },
+  { key: "qb_aypa", weightKey: "qb_aypa_weight" },
+  { key: "qb_sack_rate", weightKey: "qb_sack_rate_weight" }
 ];
 
 const isReg = (v) => {
@@ -66,6 +125,54 @@ const normTeam = (value) => {
   const s = String(value).trim().toUpperCase();
   return s || null;
 };
+
+const weightedAverage = (history = []) => {
+  if (!history.length) return 0;
+  const weight = history.reduce((s, r) => s + (Number(r.weight) || 0), 0);
+  if (weight > 0) {
+    const sum = history.reduce((s, r) => s + (Number(r.value) || 0) * (Number(r.weight) || 0), 0);
+    return sum / weight;
+  }
+  const total = history.reduce((s, r) => s + (Number(r.value) || 0), 0);
+  return total / history.length;
+};
+
+const windowAverage = (history = [], size = 3) => {
+  if (!history.length) return 0;
+  const slice = history.slice(-size);
+  return weightedAverage(slice);
+};
+
+function updateMetricCollection(prevState = {}, configs = [], weekMetrics = {}) {
+  const nextState = { ...prevState };
+  const features = {};
+  for (const cfg of configs) {
+    const baseKey = cfg.key;
+    const value = Number(weekMetrics[baseKey] ?? 0) || 0;
+    const weight = Number(weekMetrics[cfg.weightKey] ?? 0) || 0;
+    const prev = prevState[baseKey] || { sum: 0, weight: 0, history: [], exp: null };
+    const history = Array.isArray(prev.history) ? prev.history.slice() : [];
+    history.push({ value, weight });
+    if (history.length > MAX_HISTORY) history.shift();
+    const sum = prev.sum + (weight > 0 ? value * weight : 0);
+    const weightSum = prev.weight + (weight > 0 ? weight : 0);
+    let exp = prev.exp;
+    if (weight > 0) {
+      exp = exp == null ? value : DECAY_LAMBDA * exp + (1 - DECAY_LAMBDA) * value;
+    } else if (exp == null) {
+      exp = value;
+    }
+    const s2d = weightSum > 0 ? sum / weightSum : weightedAverage(history);
+    const w3 = windowAverage(history, 3);
+    const w5 = windowAverage(history, 5);
+    nextState[baseKey] = { sum, weight: weightSum, history, exp };
+    features[`${baseKey}_s2d`] = Number.isFinite(s2d) ? s2d : 0;
+    features[`${baseKey}_w3`] = Number.isFinite(w3) ? w3 : 0;
+    features[`${baseKey}_w5`] = Number.isFinite(w5) ? w5 : 0;
+    features[`${baseKey}_exp`] = Number.isFinite(exp) ? exp : 0;
+  }
+  return { state: nextState, features };
+}
 
 function finalScores(game) {
   const hs = game.home_score ?? game.home_points ?? game.home_pts;
@@ -278,7 +385,15 @@ function seedElo(team, prevTeamWeekly) {
   return Number.isFinite(wins) ? 1450 + 5 * wins : 1500;
 }
 
-export function buildFeatures({ teamWeekly, teamGame = [], schedules, season, prevTeamWeekly }) {
+export function buildFeatures({
+  teamWeekly,
+  teamGame = [],
+  schedules,
+  season,
+  prevTeamWeekly,
+  pbp = [],
+  playerWeekly = []
+}) {
   const seasonNum = Number(season);
   if (!Number.isFinite(seasonNum)) return [];
 
@@ -299,6 +414,8 @@ export function buildFeatures({ teamWeekly, teamGame = [], schedules, season, pr
 
   const twIdx = indexTeamWeek(teamWeekly || [], seasonNum);
   const tgIdx = indexTeamGame(teamGame || [], seasonNum);
+  const pbpIdx = aggregatePBP({ rows: pbp || [], season: seasonNum });
+  const usageIdx = aggregatePlayerUsage({ rows: playerWeekly || [], season: seasonNum });
 
   const lastDate = new Map();
   const elo = new Map();
@@ -308,9 +425,13 @@ export function buildFeatures({ teamWeekly, teamGame = [], schedules, season, pr
 
   const roll = new Map();
   const advRoll = new Map();
+  const pbpRoll = new Map();
+  const usageRoll = new Map();
   for (const team of teams) {
     roll.set(team, new Map());
     advRoll.set(team, new Map());
+    pbpRoll.set(team, {});
+    usageRoll.set(team, {});
   }
 
   const out = [];
@@ -332,6 +453,10 @@ export function buildFeatures({ teamWeekly, teamGame = [], schedules, season, pr
       const aRow = twIdx.get(aKey) || {};
       const hAdvRow = tgIdx.get(hKey) || {};
       const aAdvRow = tgIdx.get(aKey) || {};
+      const hPbpWeek = pbpIdx.get(hKey) || {};
+      const aPbpWeek = pbpIdx.get(aKey) || {};
+      const hUsageWeek = usageIdx.get(hKey) || {};
+      const aUsageWeek = usageIdx.get(aKey) || {};
 
       const hOppRow = aRow;
       const aOppRow = hRow;
@@ -340,6 +465,37 @@ export function buildFeatures({ teamWeekly, teamGame = [], schedules, season, pr
       const aSignals = perGameSignals(aRow, aOppRow);
       const hAdvSignals = advancedSignals(hAdvRow);
       const aAdvSignals = advancedSignals(aAdvRow);
+
+      const hPbpPrev = pbpRoll.get(home) || {};
+      const aPbpPrev = pbpRoll.get(away) || {};
+      const hUsagePrev = usageRoll.get(home) || {};
+      const aUsagePrev = usageRoll.get(away) || {};
+
+      const { state: hPbpState, features: hPbpFeats } = updateMetricCollection(
+        hPbpPrev,
+        PBP_METRICS,
+        hPbpWeek
+      );
+      const { state: aPbpState, features: aPbpFeats } = updateMetricCollection(
+        aPbpPrev,
+        PBP_METRICS,
+        aPbpWeek
+      );
+      pbpRoll.set(home, hPbpState);
+      pbpRoll.set(away, aPbpState);
+
+      const { state: hUsageState, features: hUsageFeats } = updateMetricCollection(
+        hUsagePrev,
+        USAGE_METRICS,
+        hUsageWeek
+      );
+      const { state: aUsageState, features: aUsageFeats } = updateMetricCollection(
+        aUsagePrev,
+        USAGE_METRICS,
+        aUsageWeek
+      );
+      usageRoll.set(home, hUsageState);
+      usageRoll.set(away, aUsageState);
 
       const hPrev = roll.get(home).get(week - 1) || {};
       const aPrev = roll.get(away).get(week - 1) || {};
@@ -394,7 +550,24 @@ export function buildFeatures({ teamWeekly, teamGame = [], schedules, season, pr
       const awayElo = num(elo.get(away), 1500);
       const eloDiff = homeElo - awayElo;
 
-      const mkRow = (team, opp, isHome, me, op, advMe, advOp) => {
+      const roofFlag = (val) => {
+        if (val == null || val === "") return null;
+        if (typeof val === "number") return val ? 1 : 0;
+        const str = String(val).toLowerCase();
+        if (["1", "y", "yes", "true", "dome", "indoors", "indoor"].includes(str)) return 1;
+        if (["0", "n", "no", "false", "outdoor", "outdoors", "open"].includes(str)) return 0;
+        const numVal = Number(str);
+        if (Number.isFinite(numVal)) return numVal ? 1 : 0;
+        return null;
+      };
+      const derivedRoof = String(game.roof ?? game.stadium_type ?? "").toLowerCase();
+      const roofDome =
+        roofFlag(game.is_dome) ?? (derivedRoof ? (derivedRoof.includes("dome") || derivedRoof.includes("indoor") ? 1 : 0) : 0);
+      const roofOutdoor =
+        roofFlag(game.is_outdoor) ??
+        (derivedRoof ? (derivedRoof.includes("outdoor") || derivedRoof.includes("open") ? 1 : 0) : 0);
+
+      const mkRow = (team, opp, isHome, me, op, advMe, advOp, pbpMe, usageMe) => {
         const adv = advMe || zeroAdvanced();
         const advOpp = advOp || zeroAdvanced();
         return {
@@ -444,12 +617,16 @@ export function buildFeatures({ teamWeekly, teamGame = [], schedules, season, pr
           off_sack_rate_s2d_minus_opp: num(adv.off_sack_rate_s2d) - num(advOpp.off_sack_rate_s2d),
           off_neutral_pass_rate_s2d_minus_opp:
             num(adv.off_neutral_pass_rate_s2d) - num(advOpp.off_neutral_pass_rate_s2d),
-          win: winLabel(game, isHome)
+          win: winLabel(game, isHome),
+          ...pbpMe,
+          ...usageMe,
+          roof_dome: roofDome,
+          roof_outdoor: roofOutdoor
         };
       };
 
-      const homeRow = mkRow(home, away, true, hS2D, aS2D, hAdvS2D, aAdvS2D);
-      const awayRow = mkRow(away, home, false, aS2D, hS2D, aAdvS2D, hAdvS2D);
+      const homeRow = mkRow(home, away, true, hS2D, aS2D, hAdvS2D, aAdvS2D, hPbpFeats, hUsageFeats);
+      const awayRow = mkRow(away, home, false, aS2D, hS2D, aAdvS2D, hAdvS2D, aPbpFeats, aUsageFeats);
       out.push(homeRow, awayRow);
 
       if (gameDate) {

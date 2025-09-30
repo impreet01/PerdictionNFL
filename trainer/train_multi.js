@@ -1,14 +1,21 @@
 // trainer/train_multi.js
 // Multi-model ensemble trainer with logistic+CART, Bradley-Terry, and ANN committee.
 
-import { loadSchedules, loadTeamWeekly, loadTeamGameAdvanced } from "./dataSources.js";
+import {
+  loadSchedules,
+  loadTeamWeekly,
+  loadTeamGameAdvanced,
+  loadPBP,
+  loadPlayerWeekly
+} from "./dataSources.js";
 import { buildFeatures, FEATS } from "./featureBuild.js";
 import { buildBTFeatures, BT_FEATURES } from "./featureBuild_bt.js";
 import { trainBTModel, predictBT, predictBTDeterministic } from "./model_bt.js";
 import { trainANNCommittee, predictANNCommittee, gradientANNCommittee } from "./model_ann.js";
 import { DecisionTreeClassifier as CART } from "ml-cart";
-import { writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
 import { Matrix, SVD } from "ml-matrix";
+import { logLoss, brier, accuracy, aucRoc, calibrationBins } from "./metrics.js";
 
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
@@ -153,61 +160,6 @@ function kfoldIndices(n, k) {
   return folds;
 }
 
-const logloss = (probs, labels) => {
-  if (!labels.length) return null;
-  let s = 0;
-  const eps = 1e-12;
-  for (let i = 0; i < labels.length; i++) {
-    const p = Math.min(Math.max(probs[i], eps), 1 - eps);
-    s += -(labels[i] * Math.log(p) + (1 - labels[i]) * Math.log(1 - p));
-  }
-  return s / labels.length;
-};
-
-const brier = (probs, labels) => {
-  if (!labels.length) return null;
-  let s = 0;
-  for (let i = 0; i < labels.length; i++) {
-    const diff = probs[i] - labels[i];
-    s += diff * diff;
-  }
-  return s / labels.length;
-};
-
-function auc(probs, labels) {
-  const pairs = probs.map((p, i) => ({ p, y: labels[i] }));
-  const pos = pairs.filter((r) => r.y === 1);
-  const neg = pairs.filter((r) => r.y === 0);
-  if (!pos.length || !neg.length) return null;
-  let wins = 0;
-  let ties = 0;
-  for (const a of pos) {
-    for (const b of neg) {
-      if (a.p > b.p) wins += 1;
-      else if (a.p === b.p) ties += 1;
-    }
-  }
-  return (wins + 0.5 * ties) / (pos.length * neg.length);
-}
-
-function calibrationBins(probs, labels, bins = 10) {
-  if (!labels.length) return [];
-  const binCounts = Array.from({ length: bins }, () => ({ sum: 0, count: 0, actual: 0 }));
-  for (let i = 0; i < labels.length; i++) {
-    const idx = Math.min(bins - 1, Math.max(0, Math.floor(probs[i] * bins)));
-    binCounts[idx].sum += probs[i];
-    binCounts[idx].actual += labels[i];
-    binCounts[idx].count += 1;
-  }
-  return binCounts.map((b, idx) => ({
-    lower: idx / bins,
-    upper: (idx + 1) / bins,
-    mean_pred: b.count ? b.sum / b.count : null,
-    empirical: b.count ? b.actual / b.count : null,
-    count: b.count
-  }));
-}
-
 function enumerateWeights(step = 0.05) {
   const weights = [];
   for (let wl = 0; wl <= 1; wl += step) {
@@ -311,7 +263,45 @@ const FEATURE_LABELS = {
   diff_turnovers: "turnover differential",
   diff_possession_seconds: "possession differential",
   diff_r_ratio: "r-ratio differential",
-  diff_elo_pre: "Elo differential"
+  diff_elo_pre: "Elo differential",
+  off_epa_per_play_s2d: "offensive EPA/play (S2D)",
+  off_epa_per_play_w3: "offensive EPA/play (3wk)",
+  off_epa_per_play_w5: "offensive EPA/play (5wk)",
+  off_epa_per_play_exp: "offensive EPA/play (exp)",
+  off_success_rate_s2d: "offensive success rate (S2D)",
+  off_success_rate_w3: "offensive success rate (3wk)",
+  off_success_rate_w5: "offensive success rate (5wk)",
+  off_success_rate_exp: "offensive success rate (exp)",
+  def_epa_per_play_allowed_s2d: "defensive EPA/play allowed (S2D)",
+  def_epa_per_play_allowed_w3: "defensive EPA/play allowed (3wk)",
+  def_epa_per_play_allowed_w5: "defensive EPA/play allowed (5wk)",
+  def_epa_per_play_allowed_exp: "defensive EPA/play allowed (exp)",
+  def_success_rate_allowed_s2d: "defensive success rate allowed (S2D)",
+  def_success_rate_allowed_w3: "defensive success rate allowed (3wk)",
+  def_success_rate_allowed_w5: "defensive success rate allowed (5wk)",
+  def_success_rate_allowed_exp: "defensive success rate allowed (exp)",
+  rb_rush_share_s2d: "RB rush share (S2D)",
+  rb_rush_share_w3: "RB rush share (3wk)",
+  rb_rush_share_w5: "RB rush share (5wk)",
+  rb_rush_share_exp: "RB rush share (exp)",
+  wr_target_share_s2d: "WR target share (S2D)",
+  wr_target_share_w3: "WR target share (3wk)",
+  wr_target_share_w5: "WR target share (5wk)",
+  wr_target_share_exp: "WR target share (exp)",
+  te_target_share_s2d: "TE target share (S2D)",
+  te_target_share_w3: "TE target share (3wk)",
+  te_target_share_w5: "TE target share (5wk)",
+  te_target_share_exp: "TE target share (exp)",
+  qb_aypa_s2d: "QB air yards per attempt (S2D)",
+  qb_aypa_w3: "QB air yards per attempt (3wk)",
+  qb_aypa_w5: "QB air yards per attempt (5wk)",
+  qb_aypa_exp: "QB air yards per attempt (exp)",
+  qb_sack_rate_s2d: "QB sack rate (S2D)",
+  qb_sack_rate_w3: "QB sack rate (3wk)",
+  qb_sack_rate_w5: "QB sack rate (5wk)",
+  qb_sack_rate_exp: "QB sack rate (exp)",
+  roof_dome: "Dome roof flag",
+  roof_outdoor: "Outdoor roof flag"
 };
 
 function humanizeFeature(key) {
@@ -453,6 +443,36 @@ function ensureArray(arr, len, fill = 0.5) {
 const makeGameId = (row) =>
   `${row.season}-W${String(row.week).padStart(2, "0")}-${row.team}-${row.opponent}`;
 
+const normalizeTeamCode = (value) => {
+  if (!value) return null;
+  const str = String(value).trim().toUpperCase();
+  return str || null;
+};
+
+const isRegularSeason = (value) => {
+  if (value == null) return true;
+  const str = String(value).trim().toUpperCase();
+  return str === "" || str.startsWith("REG");
+};
+
+const scheduleGameId = (season, week, home, away) =>
+  `${season}-W${String(week).padStart(2, "0")}-${home}-${away}`;
+
+const scheduleScores = (game) => {
+  const hs = Number(game.home_score ?? game.home_points ?? game.home_pts);
+  const as = Number(game.away_score ?? game.away_points ?? game.away_pts);
+  if (!Number.isFinite(hs) || !Number.isFinite(as)) return null;
+  return { hs, as };
+};
+
+const metricBlock = (actuals, preds) => ({
+  logloss: logLoss(actuals, preds),
+  brier: brier(actuals, preds),
+  auc: aucRoc(actuals, preds),
+  accuracy: accuracy(actuals, preds),
+  n: preds.length
+});
+
 export async function runTraining({ season, week, data = {}, options = {} } = {}) {
   const resolvedSeason = Number(season ?? process.env.SEASON ?? new Date().getFullYear());
   let resolvedWeek = Number(week ?? process.env.WEEK ?? 6);
@@ -481,12 +501,36 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     }
   }
 
+  let pbpData;
+  if (data.pbp !== undefined) {
+    pbpData = data.pbp;
+  } else {
+    try {
+      pbpData = await loadPBP(resolvedSeason);
+    } catch (e) {
+      pbpData = [];
+    }
+  }
+
+  let playerWeekly;
+  if (data.playerWeekly !== undefined) {
+    playerWeekly = data.playerWeekly;
+  } else {
+    try {
+      playerWeekly = await loadPlayerWeekly(resolvedSeason);
+    } catch (e) {
+      playerWeekly = [];
+    }
+  }
+
   const featureRows = buildFeatures({
     teamWeekly,
     teamGame,
     schedules,
     season: resolvedSeason,
-    prevTeamWeekly
+    prevTeamWeekly,
+    pbp: pbpData,
+    playerWeekly
   });
   const btRows = buildBTFeatures({
     teamWeekly,
@@ -640,7 +684,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       w.bt * (btOOF[i] ?? 0.5) +
       w.ann * (annOOF[i] ?? 0.5)
     );
-    metrics.push({ weights: w, loss: logloss(blend, labels) ?? Infinity });
+    metrics.push({ weights: w, loss: logLoss(labels, blend) ?? Infinity });
   }
   metrics.sort((a, b) => a.loss - b.loss);
   const bestWeights = metrics[0]?.weights ?? defaultWeights();
@@ -766,29 +810,34 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
 
   const metricsSummary = {
     logistic: {
-      logloss: logloss(oofLogit, labels),
-      brier: brier(oofLogit, labels),
-      auc: auc(oofLogit, labels)
+      logloss: logLoss(labels, oofLogit),
+      brier: brier(labels, oofLogit),
+      auc: aucRoc(labels, oofLogit),
+      accuracy: accuracy(labels, oofLogit)
     },
     tree: {
-      logloss: logloss(oofTree, labels),
-      brier: brier(oofTree, labels),
-      auc: auc(oofTree, labels)
+      logloss: logLoss(labels, oofTree),
+      brier: brier(labels, oofTree),
+      auc: aucRoc(labels, oofTree),
+      accuracy: accuracy(labels, oofTree)
     },
     bt: {
-      logloss: logloss(btOOF, labels),
-      brier: brier(btOOF, labels),
-      auc: auc(btOOF, labels)
+      logloss: logLoss(labels, btOOF),
+      brier: brier(labels, btOOF),
+      auc: aucRoc(labels, btOOF),
+      accuracy: accuracy(labels, btOOF)
     },
     ann: {
-      logloss: logloss(annOOF, labels),
-      brier: brier(annOOF, labels),
-      auc: auc(annOOF, labels)
+      logloss: logLoss(labels, annOOF),
+      brier: brier(labels, annOOF),
+      auc: aucRoc(labels, annOOF),
+      accuracy: accuracy(labels, annOOF)
     },
     ensemble: {
-      logloss: logloss(oofBlendCal, labels),
-      brier: brier(oofBlendCal, labels),
-      auc: auc(oofBlendCal, labels)
+      logloss: logLoss(labels, oofBlendCal),
+      brier: brier(labels, oofBlendCal),
+      auc: aucRoc(labels, oofBlendCal),
+      accuracy: accuracy(labels, oofBlendCal)
     }
   };
 
@@ -798,13 +847,62 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     metrics: metricsSummary,
     blend_weights: clampedWeights,
     calibration_beta: calibrator.beta ?? 0,
-    calibration_bins: calibrationBins(oofBlendCal, labels),
+    calibration_bins: calibrationBins(labels, oofBlendCal),
     n_train_rows: nTrain,
     weeks_seen: weeksSeen,
     training_weeks: [...new Set(trainRows.map((r) => r.week))].sort((a, b) => a - b)
   };
 
+  const trainLogitFull = predictLogit(trainStd, logitModelFull);
+  const trainTreeFull = predictTree(cartFull, leafStatsFull, trainStd);
+  const trainAnnFull = predictANNCommittee(annModelFull, trainStd);
+  const trainBtFull = btTrainRows.length
+    ? predictBTDeterministic(btModelFull, btTrainRows).map((p) => p?.prob ?? 0.5)
+    : new Array(labels.length).fill(0.5);
+  const trainBlendRawFull = labels.map(
+    (_, i) =>
+      clampedWeights.logistic * (trainLogitFull[i] ?? 0.5) +
+      clampedWeights.tree * (trainTreeFull[i] ?? 0.5) +
+      clampedWeights.bt * (trainBtFull[i] ?? 0.5) +
+      clampedWeights.ann * (trainAnnFull[i] ?? 0.5)
+  );
+  const trainBlendFull = trainBlendRawFull.map((p) => applyPlatt(p, calibrator));
+  const latestTrainWeek = Math.max(0, ...trainRows.map((r) => Number(r.week) || 0));
+  const errorIndices = [];
+  for (let i = 0; i < trainRows.length; i++) {
+    if (trainRows[i].week !== latestTrainWeek) continue;
+    const actual = labels[i];
+    if (actual !== 0 && actual !== 1) continue;
+    const pred = trainBlendFull[i] ?? 0.5;
+    const cls = pred >= 0.5 ? 1 : 0;
+    if (cls !== actual) errorIndices.push(i);
+  }
+  if (errorIndices.length) {
+    const agg = new Array(FEATS.length).fill(0);
+    for (const idx of errorIndices) {
+      const row = trainStd[idx] || [];
+      for (let j = 0; j < FEATS.length; j++) {
+        const contrib = Math.abs((logitModelFull.w[j] || 0) * (row[j] ?? 0));
+        if (Number.isFinite(contrib)) agg[j] += contrib;
+      }
+    }
+    const top = agg
+      .map((score, idx) => ({ feature: FEATS[idx], score }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map((item) => humanizeFeature(item.feature));
+    if (top.length) {
+      diagnostics.error_notes = `Top features associated with errors this week were ${top.join(", ")}.`;
+    }
+  } else if (latestTrainWeek) {
+    diagnostics.error_notes = "No standout feature-level errors detected for the latest completed week.";
+  }
+
   const pca = computePCA(trainStd, FEATS);
+
+  const featureStart = FEATS.indexOf("off_epa_per_play_s2d");
+  const appendedFeatures = featureStart >= 0 ? FEATS.slice(featureStart) : [];
 
   const modelSummary = {
     season: resolvedSeason,
@@ -835,7 +933,12 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       weights: clampedWeights,
       calibration_beta: calibrator.beta ?? 0
     },
-    pca
+    pca,
+    feature_enrichment: {
+      appended_features: appendedFeatures,
+      pbp_rows: Array.isArray(pbpData) ? pbpData.length : 0,
+      player_weekly_rows: Array.isArray(playerWeekly) ? playerWeekly.length : 0
+    }
   };
 
   const btDebug = btTestRows.map((row) => ({
@@ -855,7 +958,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     predictions,
     modelSummary,
     diagnostics,
-    btDebug
+    btDebug,
+    schedules
   };
 }
 
@@ -867,11 +971,161 @@ function writeArtifacts(result) {
   writeFileSync(`${ART_DIR}/bt_features_${stamp}.json`, JSON.stringify(result.btDebug, null, 2));
 }
 
+function updateHistoricalArtifacts({ season, schedules }) {
+  if (!Array.isArray(schedules) || !schedules.length) return;
+  const seasonGames = schedules.filter(
+    (game) => Number(game.season) === Number(season) && isRegularSeason(game.season_type)
+  );
+  if (!seasonGames.length) return;
+
+  const weeks = [...new Set(seasonGames.map((g) => Number(g.week)).filter(Number.isFinite))].sort(
+    (a, b) => a - b
+  );
+
+  const aggregated = {
+    actual: [],
+    logistic: [],
+    decision_tree: [],
+    bt: [],
+    ann: [],
+    blended: []
+  };
+  const weeklySummaries = [];
+  let latestCompletedWeek = 0;
+
+  for (const week of weeks) {
+    const games = seasonGames.filter((g) => Number(g.week) === week);
+    if (!games.length) continue;
+    const allComplete = games.every((g) => scheduleScores(g));
+    if (!allComplete) continue;
+
+    const stamp = `${season}_W${String(week).padStart(2, "0")}`;
+    const predictionPath = `${ART_DIR}/predictions_${stamp}.json`;
+    if (!existsSync(predictionPath)) continue;
+
+    let preds;
+    try {
+      preds = JSON.parse(readFileSync(predictionPath, "utf8"));
+    } catch (err) {
+      continue;
+    }
+    if (!Array.isArray(preds) || !preds.length) continue;
+
+    const actualMap = new Map();
+    for (const game of games) {
+      const home = normalizeTeamCode(game.home_team);
+      const away = normalizeTeamCode(game.away_team);
+      if (!home || !away) continue;
+      const scores = scheduleScores(game);
+      if (!scores) continue;
+      if (scores.hs === scores.as) continue;
+      const homeWin = scores.hs > scores.as ? 1 : 0;
+      actualMap.set(scheduleGameId(season, week, home, away), {
+        home_points: scores.hs,
+        away_points: scores.as,
+        home_win: homeWin
+      });
+    }
+
+    const outcomes = [];
+    const labels = [];
+    const probBuckets = {
+      logistic: [],
+      decision_tree: [],
+      bt: [],
+      ann: [],
+      blended: []
+    };
+
+    for (const pred of preds) {
+      const actual = actualMap.get(pred.game_id);
+      if (!actual) continue;
+      const probs = pred.probs || {};
+      const logistic = Number(probs.logistic ?? pred.forecast ?? 0.5);
+      const tree = Number(probs.tree ?? probs.decision_tree ?? pred.forecast ?? 0.5);
+      const bt = Number(probs.bt ?? pred.forecast ?? 0.5);
+      const ann = Number(probs.ann ?? pred.forecast ?? 0.5);
+      const blended = Number(probs.blended ?? pred.forecast ?? 0.5);
+      labels.push(actual.home_win);
+      probBuckets.logistic.push(logistic);
+      probBuckets.decision_tree.push(tree);
+      probBuckets.bt.push(bt);
+      probBuckets.ann.push(ann);
+      probBuckets.blended.push(blended);
+      outcomes.push({
+        game_id: pred.game_id,
+        home_team: pred.home_team,
+        away_team: pred.away_team,
+        season: pred.season ?? season,
+        week: pred.week ?? week,
+        actual,
+        predicted: {
+          logistic,
+          decision_tree: tree,
+          bt,
+          ann,
+          blended
+        }
+      });
+    }
+
+    if (!outcomes.length) continue;
+
+    writeFileSync(`${ART_DIR}/outcomes_${stamp}.json`, JSON.stringify(outcomes, null, 2));
+
+    const perModel = {
+      logistic: metricBlock(labels, probBuckets.logistic),
+      decision_tree: metricBlock(labels, probBuckets.decision_tree),
+      bt: metricBlock(labels, probBuckets.bt),
+      ann: metricBlock(labels, probBuckets.ann),
+      blended: metricBlock(labels, probBuckets.blended)
+    };
+
+    const metricsPayload = {
+      season,
+      week,
+      per_model: perModel,
+      calibration_bins: calibrationBins(labels, probBuckets.blended)
+    };
+
+    writeFileSync(`${ART_DIR}/metrics_${stamp}.json`, JSON.stringify(metricsPayload, null, 2));
+    weeklySummaries.push(metricsPayload);
+    latestCompletedWeek = Math.max(latestCompletedWeek, week);
+
+    aggregated.actual.push(...labels);
+    aggregated.logistic.push(...probBuckets.logistic);
+    aggregated.decision_tree.push(...probBuckets.decision_tree);
+    aggregated.bt.push(...probBuckets.bt);
+    aggregated.ann.push(...probBuckets.ann);
+    aggregated.blended.push(...probBuckets.blended);
+  }
+
+  if (!latestCompletedWeek || !aggregated.actual.length) return;
+
+  const cumulative = {
+    logistic: metricBlock(aggregated.actual, aggregated.logistic),
+    decision_tree: metricBlock(aggregated.actual, aggregated.decision_tree),
+    bt: metricBlock(aggregated.actual, aggregated.bt),
+    ann: metricBlock(aggregated.actual, aggregated.ann),
+    blended: metricBlock(aggregated.actual, aggregated.blended)
+  };
+
+  const seasonMetrics = {
+    season,
+    latest_completed_week: latestCompletedWeek,
+    cumulative,
+    weeks: weeklySummaries.map((entry) => ({ week: entry.week, per_model: entry.per_model }))
+  };
+
+  writeFileSync(`${ART_DIR}/metrics_${season}.json`, JSON.stringify(seasonMetrics, null, 2));
+}
+
 async function main() {
   const season = Number(process.env.SEASON ?? new Date().getFullYear());
   const weekEnv = Number(process.env.WEEK ?? 6);
   const result = await runTraining({ season, week: weekEnv });
   writeArtifacts(result);
+  updateHistoricalArtifacts({ season: result.season, schedules: result.schedules });
   console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
 }
 

@@ -12,6 +12,20 @@ import path from "path";
 import axios from "axios";
 import zlib from "zlib";
 import { parse } from "csv-parse/sync";
+import {
+  loadSchedules as loadSchedulesDS,
+  loadESPNQBR as loadESPNQBRDS,
+  loadOfficials as loadOfficialsDS,
+  loadSnapCounts as loadSnapCountsDS,
+  loadTeamWeekly as loadTeamWeeklyDS,
+  loadTeamGameAdvanced as loadTeamGameAdvancedDS,
+  loadPlayerWeekly as loadPlayerWeeklyDS,
+  loadRostersWeekly as loadRostersWeeklyDS,
+  loadDepthCharts as loadDepthChartsDS,
+  loadFTNCharts as loadFTNChartsDS,
+  loadPBP as loadPBPDS,
+  loadPFRAdvTeamWeekly as loadPFRAdvTeamWeeklyDS
+} from "./dataSources.js";
 
 const BASE_REL = "https://github.com/nflverse/nflverse-data/releases/download";
 const RAW_MAIN = "https://raw.githubusercontent.com/nflverse/nflverse-data/main";
@@ -491,6 +505,144 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
   console.log(`[context] WROTE ${fileB}`);
 
   return payload;
+}
+
+// ---------------------------------------------------------------------------
+// Season database facade used by training pipeline
+const keyTW = (s, w, t) => `${s}|${w}|${t}`;
+const kGame = (gid) => String(gid);
+const T = (v) => String(v || "").toUpperCase();
+
+function scheduleKey(r) {
+  const season = toInt(r.season ?? r.year);
+  const week = toInt(r.week ?? r.gameday ?? r.game_week);
+  const home = T(r.home_team ?? r.home_team_abbr ?? r.home);
+  const away = T(r.away_team ?? r.away_team_abbr ?? r.away);
+  const id = r.game_id ?? r.gsis ?? `${season}-W${String(week).padStart(2, "0")}-${away}-${home}`;
+  return { season, week, home, away, game_id: id };
+}
+
+export async function buildSeasonDB(season) {
+  const y = toInt(season);
+  if (y == null) throw new Error("buildSeasonDB season");
+  const [
+    schedulesAll,
+    qbrAll,
+    officialsAll,
+    snapRows,
+    teamWeeklyRows,
+    teamAdvRows,
+    playerWeeklyRows,
+    rosterRows,
+    depthRows,
+    ftnRows,
+    pbpRows,
+    pfrAdvMap
+  ] = await Promise.all([
+    loadSchedulesDS(),
+    loadESPNQBRDS(),
+    loadOfficialsDS(),
+    loadSnapCountsDS(y),
+    loadTeamWeeklyDS(y),
+    loadTeamGameAdvancedDS(y),
+    loadPlayerWeeklyDS(y),
+    loadRostersWeeklyDS(y),
+    loadDepthChartsDS(y),
+    loadFTNChartsDS(y),
+    loadPBPDS(y),
+    loadPFRAdvTeamWeeklyDS(y)
+  ]);
+
+  const schedules = schedulesAll.filter((r) => toInt(r.season ?? r.year) === y);
+
+  const gamesById = new Map();
+  const weeksIndex = new Map();
+  for (const r of schedules) {
+    const { season: s, week: w, home, away, game_id } = scheduleKey(r);
+    if (s == null || w == null || !home || !away) continue;
+    const gid = kGame(game_id);
+    gamesById.set(gid, { game_id: gid, season: s, week: w, home_team: home, away_team: away, raw: r });
+    const wkKey = `${s}|${w}`;
+    if (!weeksIndex.has(wkKey)) weeksIndex.set(wkKey, []);
+    weeksIndex.get(wkKey).push(gid);
+  }
+
+  const teamWeekMap = new Map();
+  for (const r of teamWeeklyRows) {
+    const s = toInt(r.season ?? r.year);
+    const w = toInt(r.week ?? r.wk);
+    const t = T(r.team ?? r.team_abbr ?? r.TEAM);
+    if (s == null || w == null || !t) continue;
+    teamWeekMap.set(keyTW(s, w, t), r);
+  }
+
+  const qbrMap = new Map();
+  for (const r of qbrAll) {
+    const s = toInt(r.season ?? r.year);
+    const w = toInt(r.week ?? r.wk);
+    const t = T(r.team ?? r.team_abbr ?? r.QBR_TEAM ?? r.team_name);
+    if (s == null || w == null || !t) continue;
+    qbrMap.set(keyTW(s, w, t), r);
+  }
+
+  const officialsByGame = new Map();
+  for (const r of officialsAll) {
+    const gid = kGame(r.game_id ?? r.gsis_id ?? r.gid);
+    if (gid) officialsByGame.set(gid, r);
+  }
+
+  return {
+    season: y,
+    gamesById,
+    weeksIndex,
+    teamWeekMap,
+    playerWeekly: playerWeeklyRows,
+    depthCharts: depthRows,
+    rosters: rosterRows,
+    ftnChart: ftnRows,
+    teamGameAdvanced: teamAdvRows,
+    qbrMap,
+    officialsByGame,
+    snaps: snapRows,
+    pfrAdvWeekly: pfrAdvMap,
+    pbp: pbpRows
+  };
+}
+
+export function attachAdvWeeklyDiff(db, feat, week, homeTeam, awayTeam) {
+  const wk = toInt(week);
+  const hKey = `${db.season}|${wk}|${T(homeTeam)}`;
+  const aKey = `${db.season}|${wk}|${T(awayTeam)}`;
+  const h = db.pfrAdvWeekly.get(hKey);
+  const a = db.pfrAdvWeekly.get(aKey);
+  if (h) {
+    for (const [k, v] of Object.entries(h)) {
+      if (["season", "week", "team"].includes(k)) continue;
+      if (typeof v === "number") feat[`home_${k}`] = v;
+    }
+  }
+  if (a) {
+    for (const [k, v] of Object.entries(a)) {
+      if (["season", "week", "team"].includes(k)) continue;
+      if (typeof v === "number") feat[`away_${k}`] = v;
+    }
+  }
+  if (h && a) {
+    for (const [k, v] of Object.entries(h)) {
+      if (["season", "week", "team"].includes(k)) continue;
+      const av = a[k];
+      if (typeof v === "number" && typeof av === "number") {
+        feat[`diff_${k}`] = v - av;
+      }
+    }
+  }
+  return feat;
+}
+
+export function listWeekGames(db, week) {
+  const key = `${db.season}|${toInt(week)}`;
+  const ids = db.weeksIndex.get(key) || [];
+  return ids.map((id) => db.gamesById.get(id)).filter(Boolean);
 }
 
 // CLI

@@ -10,9 +10,17 @@ function isReg(v) {
   return s === "" || s.startsWith("REG");
 }
 
+function coerceScore(value) {
+  if (value == null) return NaN;
+  const text = String(value).trim();
+  if (text === "" || text.toUpperCase() === "NA") return NaN;
+  const num = Number(text);
+  return Number.isFinite(num) ? num : NaN;
+}
+
 function hasFinalScore(g) {
-  const hs = Number(g.home_score ?? g.home_points ?? g.home_pts);
-  const as = Number(g.away_score ?? g.away_points ?? g.away_pts);
+  const hs = coerceScore(g.home_score ?? g.home_points ?? g.home_pts);
+  const as = coerceScore(g.away_score ?? g.away_points ?? g.away_pts);
   return Number.isFinite(hs) && Number.isFinite(as);
 }
 

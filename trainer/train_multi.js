@@ -963,7 +963,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   };
 }
 
-function writeArtifacts(result) {
+export function writeArtifacts(result) {
   const stamp = `${result.season}_W${String(result.week).padStart(2, "0")}`;
   writeFileSync(`${ART_DIR}/predictions_${stamp}.json`, JSON.stringify(result.predictions, null, 2));
   writeFileSync(`${ART_DIR}/model_${stamp}.json`, JSON.stringify(result.modelSummary, null, 2));
@@ -971,7 +971,7 @@ function writeArtifacts(result) {
   writeFileSync(`${ART_DIR}/bt_features_${stamp}.json`, JSON.stringify(result.btDebug, null, 2));
 }
 
-function updateHistoricalArtifacts({ season, schedules }) {
+export function updateHistoricalArtifacts({ season, schedules }) {
   if (!Array.isArray(schedules) || !schedules.length) return;
   const seasonGames = schedules.filter(
     (game) => Number(game.season) === Number(season) && isRegularSeason(game.season_type)
@@ -991,25 +991,66 @@ function updateHistoricalArtifacts({ season, schedules }) {
     blended: []
   };
   const weeklySummaries = [];
+  const weekMetadata = [];
   let latestCompletedWeek = 0;
 
   for (const week of weeks) {
     const games = seasonGames.filter((g) => Number(g.week) === week);
     if (!games.length) continue;
-    const allComplete = games.every((g) => scheduleScores(g));
-    if (!allComplete) continue;
 
     const stamp = `${season}_W${String(week).padStart(2, "0")}`;
-    const predictionPath = `${ART_DIR}/predictions_${stamp}.json`;
-    if (!existsSync(predictionPath)) continue;
+    const predictionFilename = `predictions_${stamp}.json`;
+    const outcomesFilename = `outcomes_${stamp}.json`;
+    const metricsFilename = `metrics_${stamp}.json`;
+    const predictionPath = `${ART_DIR}/${predictionFilename}`;
+    const outcomesPath = `${ART_DIR}/${outcomesFilename}`;
+    const metricsPath = `${ART_DIR}/${metricsFilename}`;
+
+    const metadataEntry = {
+      week,
+      stamp,
+      scheduled_games: games.length,
+      completed: false,
+      status: "pending",
+      predictions: {
+        filename: predictionFilename,
+        path: predictionPath,
+        exists: existsSync(predictionPath)
+      },
+      outcomes: {
+        filename: outcomesFilename,
+        path: outcomesPath,
+        exists: existsSync(outcomesPath)
+      },
+      metrics: {
+        filename: metricsFilename,
+        path: metricsPath,
+        exists: existsSync(metricsPath)
+      }
+    };
+    weekMetadata.push(metadataEntry);
+
+    const allComplete = games.every((g) => scheduleScores(g));
+    if (!allComplete) {
+      metadataEntry.status = "awaiting_scores";
+      continue;
+    }
+    if (!metadataEntry.predictions.exists) {
+      metadataEntry.status = "missing_predictions";
+      continue;
+    }
 
     let preds;
     try {
       preds = JSON.parse(readFileSync(predictionPath, "utf8"));
     } catch (err) {
+      metadataEntry.status = "invalid_predictions";
       continue;
     }
-    if (!Array.isArray(preds) || !preds.length) continue;
+    if (!Array.isArray(preds) || !preds.length) {
+      metadataEntry.status = "invalid_predictions";
+      continue;
+    }
 
     const actualMap = new Map();
     for (const game of games) {
@@ -1069,9 +1110,12 @@ function updateHistoricalArtifacts({ season, schedules }) {
       });
     }
 
-    if (!outcomes.length) continue;
+    if (!outcomes.length) {
+      metadataEntry.status = "no_evaluable_games";
+      continue;
+    }
 
-    writeFileSync(`${ART_DIR}/outcomes_${stamp}.json`, JSON.stringify(outcomes, null, 2));
+    writeFileSync(outcomesPath, JSON.stringify(outcomes, null, 2));
 
     const perModel = {
       logistic: metricBlock(labels, probBuckets.logistic),
@@ -1088,7 +1132,7 @@ function updateHistoricalArtifacts({ season, schedules }) {
       calibration_bins: calibrationBins(labels, probBuckets.blended)
     };
 
-    writeFileSync(`${ART_DIR}/metrics_${stamp}.json`, JSON.stringify(metricsPayload, null, 2));
+    writeFileSync(metricsPath, JSON.stringify(metricsPayload, null, 2));
     weeklySummaries.push(metricsPayload);
     latestCompletedWeek = Math.max(latestCompletedWeek, week);
 
@@ -1098,6 +1142,12 @@ function updateHistoricalArtifacts({ season, schedules }) {
     aggregated.bt.push(...probBuckets.bt);
     aggregated.ann.push(...probBuckets.ann);
     aggregated.blended.push(...probBuckets.blended);
+
+    metadataEntry.completed = true;
+    metadataEntry.status = "complete";
+    metadataEntry.outcomes.exists = true;
+    metadataEntry.metrics.exists = true;
+    metadataEntry.games_evaluated = outcomes.length;
   }
 
   if (!latestCompletedWeek || !aggregated.actual.length) return;
@@ -1118,6 +1168,32 @@ function updateHistoricalArtifacts({ season, schedules }) {
   };
 
   writeFileSync(`${ART_DIR}/metrics_${season}.json`, JSON.stringify(seasonMetrics, null, 2));
+
+  const seasonIndex = {
+    season,
+    latest_completed_week: latestCompletedWeek,
+    weeks: weekMetadata
+  };
+
+  writeFileSync(`${ART_DIR}/season_index_${season}.json`, JSON.stringify(seasonIndex, null, 2));
+
+  const weeklyGameCounts = weeklySummaries.map((entry) => ({
+    week: entry.week,
+    games: entry.per_model?.blended?.n ?? entry.per_model?.logistic?.n ?? 0
+  }));
+
+  const seasonSummary = {
+    season,
+    latest_completed_week: latestCompletedWeek,
+    completed_weeks: weeklySummaries.length,
+    total_games: aggregated.actual.length,
+    season_metrics: seasonMetrics,
+    weekly_summaries: weeklySummaries,
+    weekly_game_counts: weeklyGameCounts,
+    week_metadata: weekMetadata
+  };
+
+  writeFileSync(`${ART_DIR}/season_summary_${season}.json`, JSON.stringify(seasonSummary, null, 2));
 }
 
 async function loadSeasonData(season) {

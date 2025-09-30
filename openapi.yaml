@@ -1,20 +1,37 @@
 openapi: 3.1.1
 info:
-  title: NFL Predictions & Context API
-  version: "1.3.1"
+  title: NFL Predictions Worker API
+  version: "2.0.0"
   description: >
-    Read-only API for weekly NFL predictions, model internals, diagnostics,
-    outcomes, accuracy metrics, and external context (injuries, depth charts,
-    snaps, trends, QB form, venues). All endpoints return JSON.
+    Cloudflare Worker that serves NFL prediction artifacts, model diagnostics,
+    context packs, and historical lookups directly from the repository's
+    `artifacts/` folder. Every endpoint is read-only and returns JSON.
 
 servers:
   - url: https://YOUR_WORKER_BASE_URL
 
 paths:
+  /:
+    get:
+      operationId: getRoot
+      summary: Worker health probe
+      responses:
+        "200":
+          description: Worker is responding
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+
   /health:
     get:
       operationId: getHealth
-      summary: API health and latest available week for a season
+      summary: Show available prediction/model artifacts for a season
       parameters:
         - in: query
           name: season
@@ -23,18 +40,46 @@ paths:
             example: 2025
       responses:
         "200":
-          description: Health payload
+          description: Health payload describing latest week and available files
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Health"
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  latest_week:
+                    type: integer
+                    nullable: true
+                  weeks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        week:
+                          type: integer
+                        predictions_file:
+                          type: string
+                        model_file:
+                          type: string
+                          nullable: true
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Season index not found
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /weeks:
     get:
       operationId: listWeeks
-      summary: List available weeks for a season
+      summary: List prediction weeks available for a season
       parameters:
         - in: query
           name: season
@@ -43,7 +88,7 @@ paths:
             example: 2025
       responses:
         "200":
-          description: Weeks for the season
+          description: Season week listing
           content:
             application/json:
               schema:
@@ -58,13 +103,23 @@ paths:
                     type: array
                     items:
                       type: integer
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Not found
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /season/index:
     get:
       operationId: getSeasonIndex
-      summary: Get the season index (week → artifact filenames)
+      summary: Retrieve the compiled artifact index for a season
       parameters:
         - in: query
           name: season
@@ -77,14 +132,29 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SeasonIndex"
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  data:
+                    $ref: "#/components/schemas/SeasonIndex"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Not found
+          description: Index not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /season/summary:
     get:
       operationId: getSeasonSummary
-      summary: Get season summary through the latest built week
+      summary: Retrieve the season summary artifact
       parameters:
         - in: query
           name: season
@@ -97,17 +167,76 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SeasonSummary"
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  data:
+                    $ref: "#/components/schemas/SeasonSummary"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Not found
+          description: Summary not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /predictions:
+    get:
+      operationId: getPredictions
+      summary: Get predictions for a season/week (defaults to latest)
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          schema:
+            type: integer
+            example: 5
+      responses:
+        "200":
+          description: Prediction payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PredictionGame"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Predictions not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /predictions/current:
     get:
       operationId: getCurrentPredictions
-      summary: Get predictions for the latest week available (auto-resolved)
+      summary: Get predictions for the newest available season/week
       responses:
         "200":
-          description: Predictions for latest week
+          description: Latest prediction payload
           content:
             application/json:
               schema:
@@ -117,17 +246,21 @@ paths:
                     type: integer
                   week:
                     type: integer
-                  games:
+                  data:
                     type: array
                     items:
                       $ref: "#/components/schemas/PredictionGame"
         "404":
-          description: No current predictions yet
+          description: No predictions available yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
-  /predictions:
+  /context:
     get:
-      operationId: getPredictionsByWeek
-      summary: Get predictions for a given season/week (or latest if week omitted)
+      operationId: getContext
+      summary: Get context pack for a season/week (defaults to latest)
       parameters:
         - in: query
           name: season
@@ -138,10 +271,10 @@ paths:
           name: week
           schema:
             type: integer
-            example: 4
+            example: 5
       responses:
         "200":
-          description: Predictions for requested week
+          description: Context payload
           content:
             application/json:
               schema:
@@ -151,17 +284,94 @@ paths:
                     type: integer
                   week:
                     type: integer
-                  games:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/PredictionGame"
+                  data:
+                    $ref: "#/components/schemas/ContextPayload"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Not found
+          description: Context not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /context/current:
+    get:
+      operationId: getCurrentContext
+      summary: Get the context payload built through the latest week
+      responses:
+        "200":
+          description: Context current payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                    nullable: true
+                  built_through_week:
+                    type: integer
+                    nullable: true
+                  data:
+                    $ref: "#/components/schemas/ContextPayload"
+        "404":
+          description: Context not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /explain:
+    get:
+      operationId: getExplain
+      summary: Get explainability rubric for a season/week (defaults to latest)
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          schema:
+            type: integer
+            example: 5
+      responses:
+        "200":
+          description: Explain scorecard payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  data:
+                    $ref: "#/components/schemas/ExplainPayload"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Explain artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /models:
     get:
-      operationId: getModelByWeek
-      summary: Get model internals for a given season/week (or latest if week omitted)
+      operationId: getModels
+      summary: Get model internals for a season/week (defaults to latest)
       parameters:
         - in: query
           name: season
@@ -172,10 +382,10 @@ paths:
           name: week
           schema:
             type: integer
-            example: 4
+            example: 5
       responses:
         "200":
-          description: Model for requested week
+          description: Model payload
           content:
             application/json:
               schema:
@@ -185,15 +395,25 @@ paths:
                     type: integer
                   week:
                     type: integer
-                  model:
-                    $ref: "#/components/schemas/ModelFile"
+                  data:
+                    $ref: "#/components/schemas/ModelPayload"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Not found
+          description: Model artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /diagnostics:
     get:
       operationId: getDiagnostics
-      summary: Get diagnostics for a given season/week (AUC, logloss, calibration bins) if produced
+      summary: Get diagnostics for a season/week (defaults to latest)
       parameters:
         - in: query
           name: season
@@ -204,7 +424,7 @@ paths:
           name: week
           schema:
             type: integer
-            example: 4
+            example: 5
       responses:
         "200":
           description: Diagnostics payload
@@ -217,15 +437,191 @@ paths:
                     type: integer
                   week:
                     type: integer
-                  diagnostics:
-                    $ref: "#/components/schemas/Diagnostics"
+                  data:
+                    $ref: "#/components/schemas/DiagnosticsPayload"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Not found
+          description: Diagnostics artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /outcomes:
+    get:
+      operationId: getOutcomes
+      summary: Get joined predictions and actual results for a season/week
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          schema:
+            type: integer
+            example: 5
+      responses:
+        "200":
+          description: Outcomes payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OutcomeGame"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Outcomes artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /metrics/week:
+    get:
+      operationId: getWeekMetrics
+      summary: Get per-model metrics for a season/week
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          schema:
+            type: integer
+            example: 5
+      responses:
+        "200":
+          description: Weekly metrics payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  data:
+                    $ref: "#/components/schemas/WeekMetrics"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Metrics artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /metrics/season:
+    get:
+      operationId: getSeasonMetrics
+      summary: Get cumulative metrics for a season
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+      responses:
+        "200":
+          description: Season metrics payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  data:
+                    $ref: "#/components/schemas/SeasonMetrics"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Metrics artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /leaderboard:
+    get:
+      operationId: getLeaderboard
+      summary: Rank models by an evaluation metric for the season
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: metric
+          schema:
+            type: string
+            enum: [accuracy, auc, logloss, brier]
+            default: accuracy
+      responses:
+        "200":
+          description: Leaderboard payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  metric:
+                    type: string
+                  leaderboard:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LeaderboardEntry"
+        "400":
+          description: Invalid parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Metrics artifact missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /history/team:
     get:
       operationId: getTeamHistory
-      summary: Get all games for a team across available weeks (predictions view)
+      summary: List predictions for a team across available weeks
       parameters:
         - in: query
           name: season
@@ -240,29 +636,38 @@ paths:
             example: BUF
       responses:
         "200":
-          description: Team history
+          description: Team history payload
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  season:
-                    type: integer
                   team:
                     type: string
-                  games:
+                  season:
+                    type: integer
+                    nullable: true
+                  data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/PredictionGame"
+                      $ref: "#/components/schemas/HistoryEntry"
         "400":
-          description: Missing team
+          description: Missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: No data
+          description: No predictions available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /history/game:
     get:
       operationId: getMatchupHistory
-      summary: Get a specific home/away matchup across available weeks
+      summary: List predictions for a specific home/away matchup
       parameters:
         - in: query
           name: season
@@ -283,41 +688,50 @@ paths:
             example: BUF
       responses:
         "200":
-          description: Matchup history
+          description: Matchup history payload
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  season:
-                    type: integer
                   home:
                     type: string
                   away:
                     type: string
-                  games:
+                  season:
+                    type: integer
+                    nullable: true
+                  data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/PredictionGame"
+                      $ref: "#/components/schemas/HistoryEntry"
         "400":
-          description: Missing params
+          description: Missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: No data
+          description: No predictions available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /artifact:
     get:
       operationId: getArtifact
-      summary: Fetch a raw JSON artifact by filename (from /artifacts)
+      summary: Fetch a raw artifact by filename (within artifacts/)
       parameters:
         - in: query
           name: path
           required: true
           schema:
             type: string
-            example: predictions_2025_W04.json
+            example: predictions_2025_W05.json
       responses:
         "200":
-          description: Raw artifact JSON (object or array)
+          description: Raw artifact content (object or array)
           content:
             application/json:
               schema:
@@ -327,416 +741,143 @@ paths:
                   - type: array
                     items: {}
         "400":
-          description: Missing/invalid path
-        "404":
-          description: Not found
-
-  /context/current:
-    get:
-      operationId: getCurrentContext
-      summary: Get context payload for latest built week (injuries, depth, snaps, trends, QB form, venues)
-      responses:
-        "200":
-          description: Context payload for current
+          description: Invalid path
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ContextPayload"
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Not found
-
-  /context:
-    get:
-      operationId: getContextByWeek
-      summary: Get context payload for a given season (optionally capped by week)
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: week
-          schema:
-            type: integer
-            example: 4
-      responses:
-        "200":
-          description: Context payload
+          description: Artifact not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ContextPayload"
-        "404":
-          description: Not found
-
-  /outcomes:
-    get:
-      operationId: getOutcomesByWeek
-      summary: Get joined predictions and actual results for a week
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: week
-          required: true
-          schema:
-            type: integer
-            example: 4
-      responses:
-        "200":
-          description: Outcomes for requested week
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  week:
-                    type: integer
-                  games:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/OutcomeGame"
-        "400":
-          description: Missing week
-        "404":
-          description: Not found
-
-  /metrics/week:
-    get:
-      operationId: getMetricsByWeek
-      summary: Get per-model accuracy metrics for a specific week
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: week
-          required: true
-          schema:
-            type: integer
-            example: 4
-      responses:
-        "200":
-          description: Week metrics
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WeekMetrics"
-        "400":
-          description: Missing week
-        "404":
-          description: Not found
-
-  /metrics/season:
-    get:
-      operationId: getSeasonMetrics
-      summary: Get cumulative per-model accuracy metrics for the season
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-      responses:
-        "200":
-          description: Season metrics
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SeasonMetrics"
-        "404":
-          description: Not found
-
-  /leaderboard:
-    get:
-      operationId: getLeaderboard
-      summary: Rank models by a chosen metric (accuracy, auc, logloss, brier)
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: metric
-          schema:
-            type: string
-            enum: [accuracy, auc, logloss, brier]
-            default: accuracy
-      responses:
-        "200":
-          description: Leaderboard
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  metric:
-                    type: string
-                  leaderboard:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                        value:
-                          type: number
-        "404":
-          description: Not found
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
-    Health:
+    ErrorResponse:
       type: object
       properties:
-        season:
-          type: integer
-        latest_week:
-          type: integer
-          nullable: true
-        weeks:
-          type: array
-          items:
-            type: object
-            properties:
-              week:
-                type: integer
-              predictions_file:
-                type: string
-              model_file:
-                type: string
-
-    SeasonIndex:
-      type: object
-      properties:
-        season:
-          type: integer
-        weeks:
-          type: array
-          items:
-            type: object
-            properties:
-              week:
-                type: integer
-              predictions_file:
-                type: string
-              model_file:
-                type: string
-
-    SeasonSummary:
-      type: object
-      properties:
-        season:
-          type: integer
-        built_through_week:
-          type: integer
-          nullable: true
-        feature_names:
-          type: array
-          items:
-            type: string
-        weeks:
-          type: array
-          items:
-            type: object
-            properties:
-              week:
-                type: integer
-              train_rows:
-                type: integer
-              forecast:
-                type: boolean
-              hybrid_weight:
-                type: number
+        error:
+          type: string
 
     PredictionGame:
       type: object
       properties:
         game_id:
           type: string
+          example: 2025-W05-LA-SF
         home_team:
           type: string
+          example: LA
         away_team:
           type: string
+          example: SF
         season:
           type: integer
+          example: 2025
         week:
           type: integer
+          example: 5
         forecast:
-          type: boolean
+          type: number
+          format: float
+          description: Ensemble win probability for the home team
         probs:
-          type: object
-          properties:
-            logistic:
-              type: number
-            decision_tree:
-              type: number
-            bt:
-              type: number
-              nullable: true
-            ann:
-              type: number
-              nullable: true
-            blended:
-              type: number
+          $ref: "#/components/schemas/ProbabilityBreakdown"
         blend_weights:
-          type: object
-          properties:
-            logistic:
-              type: number
-            tree:
-              type: number
-            bt:
-              type: number
-              nullable: true
-            ann:
-              type: number
-              nullable: true
+          $ref: "#/components/schemas/BlendWeights"
+        calibration:
+          $ref: "#/components/schemas/CalibrationAdjustment"
         ci:
           type: object
-          properties:
-            bt90:
-              type: array
-              minItems: 2
-              maxItems: 2
-              items:
-                type: number
-        calibration:
-          type: object
-          properties:
-            pre:
+          nullable: true
+          description: Optional confidence interval data keyed by method
+          additionalProperties:
+            type: array
+            items:
               type: number
-            post:
-              type: number
-        natural_language:
-          type: string
         top_drivers:
           type: array
           items:
-            type: object
-            properties:
-              feature:
-                type: string
-              direction:
-                type: string
-                enum: ["up","down","neutral"]
-              magnitude:
-                type: number
-              source:
-                type: string
-                enum: ["logit","tree","bt","ann"]
+            $ref: "#/components/schemas/DriverAttribution"
+        natural_language:
+          type: string
+        actual:
+          $ref: "#/components/schemas/GameOutcome"
+          nullable: true
 
-    ModelFile:
+    ProbabilityBreakdown:
       type: object
       properties:
-        season:
-          type: integer
-        week:
-          type: integer
-        features:
-          type: array
-          items:
-            type: string
-        hybrid_weight:
-          type: number
         logistic:
-          type: object
-          properties:
-            weights:
-              type: array
-              items:
-                type: number
-            intercept:
-              type: number
-        scaler:
-          type: object
-          properties:
-            mu:
-              type: array
-              items:
-                type: number
-            sd:
-              type: array
-              items:
-                type: number
-        cart:
-          type: object
-          nullable: true
-          properties:
-            maxDepth:
-              type: integer
-            minNumSamples:
-              type: integer
+          type: number
+        tree:
+          type: number
         bt:
-          type: object
+          type: number
           nullable: true
-          properties:
-            coefficients:
-              type: array
-              items:
-                type: number
-            intercept:
-              type: number
         ann:
-          type: object
+          type: number
           nullable: true
-          properties:
-            seeds:
-              type: array
-              items:
-                type: integer
-            layers:
-              type: array
-              items:
-                type: integer
-        pca:
-          type: object
-          nullable: true
-          properties:
-            components:
-              type: array
-              items:
-                type: array
-                items:
-                  type: number
-            explained_variance:
-              type: array
-              items:
-                type: number
-        blend_weights:
-          type: object
-          properties:
-            logistic:
-              type: number
-            tree:
-              type: number
-            bt:
-              type: number
-              nullable: true
-            ann:
-              type: number
-              nullable: true
-        calibration_params:
-          type: object
-          nullable: true
-          properties:
-            a:
-              type: number
-            b:
-              type: number
+        blended:
+          type: number
+      additionalProperties:
+        type: number
 
-    Diagnostics:
+    BlendWeights:
+      type: object
+      properties:
+        logistic:
+          type: number
+        tree:
+          type: number
+        bt:
+          type: number
+          nullable: true
+        ann:
+          type: number
+          nullable: true
+      additionalProperties:
+        type: number
+
+    CalibrationAdjustment:
+      type: object
+      nullable: true
+      properties:
+        pre:
+          type: number
+          nullable: true
+        post:
+          type: number
+          nullable: true
+      additionalProperties:
+        type: number
+
+    DriverAttribution:
+      type: object
+      properties:
+        feature:
+          type: string
+        direction:
+          type: string
+        magnitude:
+          type: number
+        source:
+          type: string
+
+    GameOutcome:
+      type: object
+      properties:
+        home_points:
+          type: integer
+        away_points:
+          type: integer
+        home_win:
+          type: integer
+          enum: [0, 1]
+
+    DiagnosticsPayload:
       type: object
       properties:
         auc:
@@ -748,19 +889,28 @@ components:
         calibration_bins:
           type: array
           items:
-            type: object
-            properties:
-              bin:
-                type: integer
-              p_mean:
-                type: number
-              y_rate:
-                type: number
-              n:
-                type: integer
+            $ref: "#/components/schemas/CalibrationBin"
+        blend_weights:
+          $ref: "#/components/schemas/BlendWeights"
+          nullable: true
         n_train_rows:
           type: integer
+          nullable: true
         weeks_seen:
+          type: integer
+          nullable: true
+      additionalProperties: true
+
+    CalibrationBin:
+      type: object
+      properties:
+        bin:
+          type: integer
+        p_mean:
+          type: number
+        y_rate:
+          type: number
+        n:
           type: integer
 
     OutcomeGame:
@@ -777,30 +927,23 @@ components:
         week:
           type: integer
         actual:
-          type: object
-          properties:
-            home_points:
-              type: integer
-            away_points:
-              type: integer
-            home_win:
-              type: integer
-              enum: [0, 1]
+          $ref: "#/components/schemas/GameOutcome"
         predicted:
-          type: object
-          properties:
-            logistic:
-              type: number
-            decision_tree:
-              type: number
-            bt:
-              type: number
-              nullable: true
-            ann:
-              type: number
-              nullable: true
-            blended:
-              type: number
+          $ref: "#/components/schemas/ProbabilityBreakdown"
+
+    MetricsLine:
+      type: object
+      properties:
+        logloss:
+          type: number
+        brier:
+          type: number
+        auc:
+          type: number
+        accuracy:
+          type: number
+        n:
+          type: integer
 
     WeekMetrics:
       type: object
@@ -811,30 +954,8 @@ components:
           type: integer
         per_model:
           type: object
-          properties:
-            logistic:
-              $ref: "#/components/schemas/MetricRow"
-            decision_tree:
-              $ref: "#/components/schemas/MetricRow"
-            bt:
-              $ref: "#/components/schemas/MetricRow"
-            ann:
-              $ref: "#/components/schemas/MetricRow"
-            blended:
-              $ref: "#/components/schemas/MetricRow"
-        calibration_bins:
-          type: array
-          items:
-            type: object
-            properties:
-              bin:
-                type: integer
-              p_mean:
-                type: number
-              y_rate:
-                type: number
-              n:
-                type: integer
+          additionalProperties:
+            $ref: "#/components/schemas/MetricsLine"
 
     SeasonMetrics:
       type: object
@@ -845,17 +966,45 @@ components:
           type: integer
         cumulative:
           type: object
-          properties:
-            logistic:
-              $ref: "#/components/schemas/MetricRow"
-            decision_tree:
-              $ref: "#/components/schemas/MetricRow"
-            bt:
-              $ref: "#/components/schemas/MetricRow"
-            ann:
-              $ref: "#/components/schemas/MetricRow"
-            blended:
-              $ref: "#/components/schemas/MetricRow"
+          additionalProperties:
+            $ref: "#/components/schemas/MetricsLine"
+        by_week:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              week:
+                type: integer
+              metrics:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/MetricsLine"
+            required: [week, metrics]
+      additionalProperties: true
+
+    ContextPayload:
+      type: object
+      description: Aggregated injuries, depth charts, usage, and venue context
+      additionalProperties: true
+
+    ExplainPayload:
+      type: object
+      description: Explainability rubric and scorecard inputs
+      additionalProperties: true
+
+    ModelPayload:
+      type: object
+      description: Serialized ensemble parameters and scalers
+      additionalProperties: true
+
+    SeasonIndex:
+      type: object
+      properties:
+        season:
+          type: integer
+        latest_completed_week:
+          type: integer
         weeks:
           type: array
           items:
@@ -863,125 +1012,73 @@ components:
             properties:
               week:
                 type: integer
-              per_model:
+              status:
+                type: string
+              predictions:
                 type: object
-                properties:
-                  logistic:
-                    $ref: "#/components/schemas/MetricRow"
-                  decision_tree:
-                    $ref: "#/components/schemas/MetricRow"
-                  bt:
-                    $ref: "#/components/schemas/MetricRow"
-                  ann:
-                    $ref: "#/components/schemas/MetricRow"
-                  blended:
-                    $ref: "#/components/schemas/MetricRow"
+                additionalProperties: true
+              outcomes:
+                type: object
+                additionalProperties: true
+            additionalProperties: true
+      additionalProperties: true
 
-    MetricRow:
-      type: object
-      properties:
-        logloss:
-          type: number
-          nullable: true
-        brier:
-          type: number
-          nullable: true
-        auc:
-          type: number
-          nullable: true
-        accuracy:
-          type: number
-          nullable: true
-        n:
-          type: integer
-          nullable: true
-
-    ContextPayload:
+    SeasonSummary:
       type: object
       properties:
         season:
           type: integer
-        built_through_week:
+        latest_completed_week:
           type: integer
+        completed_weeks:
+          type: integer
+        total_games:
+          type: integer
+        season_metrics:
+          $ref: "#/components/schemas/SeasonMetrics"
+      additionalProperties: true
+
+    HistoryEntry:
+      type: object
+      properties:
+        season:
+          type: integer
+        week:
+          type: integer
+        game_id:
+          type: string
+        home_team:
+          type: string
+        away_team:
+          type: string
+        forecast:
+          type: number
           nullable: true
-        weeks:
+        probs:
+          $ref: "#/components/schemas/ProbabilityBreakdown"
+          nullable: true
+        blend_weights:
+          $ref: "#/components/schemas/BlendWeights"
+          nullable: true
+        calibration:
+          $ref: "#/components/schemas/CalibrationAdjustment"
+          nullable: true
+        top_drivers:
           type: array
+          nullable: true
           items:
-            type: integer
-        sources:
-          type: object
-          additionalProperties:
-            type: string
-        context:
-          type: object
-          properties:
-            summaries:
-              type: object
-              properties:
-                injuries:
-                  type: object
-                  description: Map team -> week -> counts
-                  additionalProperties:
-                    type: object
-                    additionalProperties:
-                      type: object
-                      properties:
-                        Out: { type: integer, nullable: true }
-                        Doubtful: { type: integer, nullable: true }
-                        Questionable: { type: integer, nullable: true }
-                        Probable: { type: integer, nullable: true }
-                        Unknown: { type: integer, nullable: true }
-                        key_out: { type: integer, nullable: true }
-                depth_chart_changes:
-                  type: object
-                  description: Map team -> week -> cumulative first-string changes
-                  additionalProperties:
-                    type: object
-                    additionalProperties:
-                      type: integer
-                snap_counts:
-                  type: object
-                  description: Map team -> week -> snaps and deltas
-                  additionalProperties:
-                    type: object
-                    additionalProperties:
-                      type: object
-                      properties:
-                        off: { type: integer, nullable: true }
-                        def: { type: integer, nullable: true }
-                        off_delta: { type: integer, nullable: true }
-                        def_delta: { type: integer, nullable: true }
-                form_rolling3:
-                  type: object
-                  description: Map team -> week -> rolling 3-game averages
-                  additionalProperties:
-                    type: object
-                    additionalProperties:
-                      type: object
-                      properties:
-                        pf3: { type: number, nullable: true }
-                        pa3: { type: number, nullable: true }
-                        yds3: { type: number, nullable: true }
-                qb_form:
-                  type: object
-                  description: Map team -> week -> QB form aggregates
-                  additionalProperties:
-                    type: object
-                    additionalProperties:
-                      type: object
-                      properties:
-                        ypa_mean: { type: number, nullable: true }
-                        rating_mean: { type: number, nullable: true }
-                        qbr: { type: number, nullable: true }
-            venues:
-              type: object
-              description: Map game_id -> { roof, surface }
-              additionalProperties:
-                type: object
-                properties:
-                  roof:
-                    type: string
-                    nullable: true
-                  surface:
-                    type: string
-                    nullable: true
+            $ref: "#/components/schemas/DriverAttribution"
+        natural_language:
+          type: string
+          nullable: true
+        actual:
+          $ref: "#/components/schemas/GameOutcome"
+          nullable: true
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        model:
+          type: string
+        value:
+          type: number

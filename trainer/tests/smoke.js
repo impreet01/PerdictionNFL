@@ -1,7 +1,8 @@
 // trainer/tests/smoke.js
 // Synthetic smoke test to ensure pipeline produces artifacts with required keys.
 
-import { runTraining } from "../train_multi.js";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "fs";
+import { runTraining, writeArtifacts, updateHistoricalArtifacts } from "../train_multi.js";
 
 const teams = ["A", "B", "C", "D"];
 
@@ -51,6 +52,8 @@ function makeTeamGameRow(season, week, team, thirdAtt, thirdConv, redAtt, redTd,
 
 async function main() {
   const season = 2023;
+  rmSync("artifacts", { recursive: true, force: true });
+  mkdirSync("artifacts", { recursive: true });
   const schedules = [
     makeGame(season, 1, "A", "B", 24, 20),
     makeGame(season, 1, "C", "D", 17, 21),
@@ -102,6 +105,34 @@ async function main() {
   if (!result.modelSummary?.bt?.coefficients) throw new Error("Smoke test: BT coefficients missing");
   if (!result.diagnostics?.metrics?.ensemble) throw new Error("Smoke test: diagnostics missing ensemble metrics");
   if (!Array.isArray(result.btDebug) || !result.btDebug.length) throw new Error("Smoke test: btDebug missing");
+
+  writeArtifacts(result);
+  updateHistoricalArtifacts({ season, schedules });
+
+  const indexPath = `artifacts/season_index_${season}.json`;
+  if (!existsSync(indexPath)) throw new Error("Smoke test: season index missing");
+  const indexData = JSON.parse(readFileSync(indexPath, "utf8"));
+  if (indexData.latest_completed_week !== 3) throw new Error("Smoke test: season index latest week incorrect");
+  if (!Array.isArray(indexData.weeks) || indexData.weeks.length !== 3)
+    throw new Error("Smoke test: season index weeks incorrect");
+  const week3Meta = indexData.weeks.find((w) => w.week === 3);
+  if (!week3Meta?.completed) throw new Error("Smoke test: week 3 metadata missing completion");
+  if (!week3Meta.metrics?.exists || !week3Meta.outcomes?.exists)
+    throw new Error("Smoke test: week 3 metadata missing artifacts");
+
+  const summaryPath = `artifacts/season_summary_${season}.json`;
+  if (!existsSync(summaryPath)) throw new Error("Smoke test: season summary missing");
+  const summaryData = JSON.parse(readFileSync(summaryPath, "utf8"));
+  if (summaryData.total_games < 2) throw new Error("Smoke test: season summary total games incorrect");
+  if (!Array.isArray(summaryData.weekly_summaries) || summaryData.weekly_summaries.length !== 1)
+    throw new Error("Smoke test: season summary weekly summaries incorrect");
+  if (!Array.isArray(summaryData.week_metadata) || summaryData.week_metadata.length !== indexData.weeks.length)
+    throw new Error("Smoke test: season summary metadata mismatch");
+  const summaryWeek3 = summaryData.week_metadata.find((w) => w.week === 3);
+  if (!summaryWeek3?.completed) throw new Error("Smoke test: summary missing completed week metadata");
+  if (!Array.isArray(summaryData.weekly_game_counts) || summaryData.weekly_game_counts[0]?.games < 2)
+    throw new Error("Smoke test: season summary game counts incorrect");
+
   console.log("Smoke test passed");
 }
 

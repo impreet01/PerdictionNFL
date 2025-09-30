@@ -59,11 +59,14 @@ function currentYear() {
 // Schedules/games (stable in repo tree)
 export async function loadSchedules() {
   const CANDIDATES = [
+    // Primary mirror maintained by nflverse since 2024 realignment
+    "https://raw.githubusercontent.com/nflverse/nfldata/main/data/games.csv",
+    "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv",
     "https://raw.githubusercontent.com/nflverse/nflverse-data/main/data/games.csv",
     "https://raw.githubusercontent.com/nflverse/nflverse-data/master/data/games.csv"
   ];
   const txt = await tryFirst(CANDIDATES);
-  if (!txt) throw new Error("Could not load schedules (games.csv) from nflverse-data");
+  if (!txt) throw new Error("Could not load schedules (games.csv) from nflverse mirrors");
   return parseCsvLoose(txt);
 }
 

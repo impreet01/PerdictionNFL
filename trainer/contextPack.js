@@ -9,7 +9,7 @@ import { loadElo } from "./eloLoader.js";
 
 export async function buildContextForWeek(season, week) {
   const [schedAll, teamW, playersW, rostersW, depthW, injuriesW, pfrTeam, qbr, elo] = await Promise.all([
-    loadSchedules(),
+    loadSchedules(season),
     loadTeamWeekly(season),
     loadPlayerWeekly(season),
     loadRostersWeekly(season),

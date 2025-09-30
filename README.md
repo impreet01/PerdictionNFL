@@ -50,14 +50,16 @@ Each successful `train:multi` run refreshes or adds:
 | `bt_features_<season>_W<week>.json` | Bradley–Terry feature matrix for audit/backtests.|
 
 ## Data sources
-`trainer/dataSources.js` gracefully falls back across multiple nflverse mirrors/releases for:
-- Schedules/games (`games.csv`)
+`trainer/dataSources.js` now caches downloads per season and gracefully falls back across multiple nflverse mirrors/releases for:
+- Schedules/games (`schedules_<season>.csv` fallback to `games.csv`)
 - Team weekly stats (`stats_team_week_<season>.csv`)
 - Player weekly stats (`stats_player_week_<season>.csv`)
-- Team game advanced stats (`team_game_<season>.csv`)
+- Team game advanced stats (`stats_team_game_<season>.csv`)
 - Play-by-play (`play_by_play_<season>.csv.gz`)
+- Weekly rosters, depth charts, injuries, snap counts, and officials for context packs
+- ESPN Total QBR and Pro-Football-Reference advanced team metrics for quarterback and efficiency context
 
-Set `LOG_LEVEL=debug` to trace which mirrors respond during a run.
+See `docs/data-ingestion.md` for a quick reference to every nflverse dataset we pull and how to extend the loaders. Set `LOG_LEVEL=debug` to trace which mirrors respond during a run.
 
 ## Deployment
 Deploy `api/worker.js` to Cloudflare Workers, editing the `REPO_USER`, `REPO_NAME`, and `BRANCH` constants to point at your fork. The Worker lists the `artifacts/` directory via the GitHub API and serves the newest available predictions when `season` or `week` is omitted, enabling the bundled `openapi.yaml` to power a Custom GPT Action or any HTTP client.

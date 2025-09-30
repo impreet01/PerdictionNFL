@@ -201,10 +201,10 @@ export async function loadRostersWeekly(season) {
   if (y == null) throw new Error(`loadRostersWeekly requires a valid season, received ${season}`);
   return cached(caches.rostersWeekly, y, async () => {
     const candidates = [
-      `${BASE_REL}/weekly_rosters/weekly_rosters_${y}.csv`,
-      `${BASE_REL}/weekly_rosters/weekly_rosters_${y}.csv.gz`,
-      `${RAW_MAIN}/data/rosters/weekly_rosters_${y}.csv`,
-      `${RAW_MAST}/data/rosters/weekly_rosters_${y}.csv`
+      `${BASE_REL}/weekly_rosters/roster_weekly_${y}.csv`,
+      `${BASE_REL}/weekly_rosters/roster_weekly_${y}.csv.gz`,
+      `${RAW_MAIN}/data/rosters/roster_weekly_${y}.csv`,
+      `${RAW_MAST}/data/rosters/roster_weekly_${y}.csv`
     ];
     const tried = [];
     for (const u of candidates) {
@@ -343,10 +343,10 @@ export async function loadESPNQBR(season) {
   if (y == null) throw new Error(`loadESPNQBR requires a valid season, received ${season}`);
   return cached(caches.espnQBR, y, async () => {
     const candidates = [
-      `${BASE_REL}/espn_data/espn_qbr_${y}.csv`,
-      `${BASE_REL}/espn_data/espn_qbr_${y}.csv.gz`,
-      `${RAW_MAIN}/data/espn_qbr/espn_qbr_${y}.csv`,
-      `${RAW_MAST}/data/espn_qbr/espn_qbr_${y}.csv`
+      `${BASE_REL}/espn_data/qbr_week_level.csv`,
+      `${BASE_REL}/espn_data/eqbr_week_level.csv.gz`,
+      `${RAW_MAIN}/data/espn_qbr/qbr_week_level.csv`,
+      `${RAW_MAST}/data/espn_qbr/qbr_week_level.csv`
     ];
     const tried = [];
     for (const u of candidates) {
@@ -388,12 +388,12 @@ export async function loadTeamGameAdvanced(season) {
   if (y == null) throw new Error(`loadTeamGameAdvanced requires a valid season, received ${season}`);
   return cached(caches.teamGame, y, async () => {
     const candidates = [
-      `${BASE_REL}/stats_team/stats_team_game_${y}.csv`,
-      `${BASE_REL}/stats_team/stats_team_game_${y}.csv.gz`,
-      `${BASE_REL}/stats_team/stats_team_game.csv`,
-      `${BASE_REL}/stats_team/stats_team_game.csv.gz`,
-      `${RAW_MAIN}/data/team_game_stats/stats_team_game_${y}.csv`,
-      `${RAW_MAST}/data/team_game_stats/stats_team_game_${y}.csv`
+      `${BASE_REL}/stats_team/stats_team_week_${y}.csv`,
+      `${BASE_REL}/stats_team/stats_team_week_${y}.csv.gz`,
+      `${BASE_REL}/stats_team/stats_team_week.csv`,
+      `${BASE_REL}/stats_team/stats_team_week.csv.gz`,
+      `${RAW_MAIN}/data/team_game_stats/stats_team_week_${y}.csv`,
+      `${RAW_MAST}/data/team_game_stats/stats_team_week_${y}.csv`
     ];
     const tried = [];
     for (const u of candidates) {

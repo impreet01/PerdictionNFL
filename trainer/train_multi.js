@@ -1120,13 +1120,75 @@ function updateHistoricalArtifacts({ season, schedules }) {
   writeFileSync(`${ART_DIR}/metrics_${season}.json`, JSON.stringify(seasonMetrics, null, 2));
 }
 
+async function loadSeasonData(season) {
+  const schedules = await loadSchedules();
+  const teamWeekly = await loadTeamWeekly(season);
+
+  let teamGame;
+  try {
+    teamGame = await loadTeamGameAdvanced(season);
+  } catch (err) {
+    teamGame = [];
+  }
+
+  let prevTeamWeekly;
+  try {
+    prevTeamWeekly = await loadTeamWeekly(season - 1);
+  } catch (err) {
+    prevTeamWeekly = [];
+  }
+
+  let pbp;
+  try {
+    pbp = await loadPBP(season);
+  } catch (err) {
+    pbp = [];
+  }
+
+  let playerWeekly;
+  try {
+    playerWeekly = await loadPlayerWeekly(season);
+  } catch (err) {
+    playerWeekly = [];
+  }
+
+  return { schedules, teamWeekly, teamGame, prevTeamWeekly, pbp, playerWeekly };
+}
+
 async function main() {
   const season = Number(process.env.SEASON ?? new Date().getFullYear());
-  const weekEnv = Number(process.env.WEEK ?? 6);
-  const result = await runTraining({ season, week: weekEnv });
-  writeArtifacts(result);
-  updateHistoricalArtifacts({ season: result.season, schedules: result.schedules });
-  console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
+  let weekEnv = Number(process.env.WEEK ?? 6);
+  if (!Number.isFinite(weekEnv) || weekEnv < 1) weekEnv = 1;
+
+  const sharedData = await loadSeasonData(season);
+
+  const seasonWeeks = [...new Set(
+    sharedData.schedules
+      .filter((game) => Number(game.season) === season && isRegularSeason(game.season_type))
+      .map((game) => Number(game.week))
+      .filter((wk) => Number.isFinite(wk) && wk >= 1)
+  )].sort((a, b) => a - b);
+
+  const maxAvailableWeek = seasonWeeks.length ? seasonWeeks[seasonWeeks.length - 1] : weekEnv;
+  const finalWeek = Math.min(Math.max(1, Math.floor(weekEnv)), maxAvailableWeek);
+  let latestResult = null;
+
+  for (const wk of seasonWeeks) {
+    if (wk > finalWeek) break;
+    const result = await runTraining({ season, week: wk, data: sharedData });
+    writeArtifacts(result);
+    latestResult = result;
+    console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
+  }
+
+  if (!latestResult) {
+    const result = await runTraining({ season, week: finalWeek, data: sharedData });
+    writeArtifacts(result);
+    latestResult = result;
+    console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
+  }
+
+  updateHistoricalArtifacts({ season: latestResult.season, schedules: latestResult.schedules });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -737,6 +737,7 @@ paths:
               schema:
                 oneOf:
                   - type: object
+                    properties: {}
                     additionalProperties: true
                   - type: array
                     items: {}
@@ -984,18 +985,338 @@ components:
       additionalProperties: true
 
     ContextPayload:
-      type: object
+      type: array
       description: Aggregated injuries, depth charts, usage, and venue context
+      items:
+        $ref: "#/components/schemas/ContextGame"
+
+    ContextGame:
+      type: object
+      properties:
+        game_id:
+          type: string
+        season:
+          type: integer
+        week:
+          type: integer
+        home_team:
+          type: string
+        away_team:
+          type: string
+        context:
+          $ref: "#/components/schemas/ContextDetails"
+      required: [game_id, season, week, home_team, away_team, context]
+
+    ContextDetails:
+      type: object
+      properties:
+        injuries:
+          $ref: "#/components/schemas/ContextInjuries"
+        qb_form:
+          $ref: "#/components/schemas/ContextQBForm"
+        rolling_strength:
+          $ref: "#/components/schemas/ContextRollingStrength"
+        venue:
+          $ref: "#/components/schemas/ContextVenue"
+        elo:
+          type: number
+          nullable: true
+        market:
+          type: number
+          nullable: true
+      additionalProperties: true
+
+    ContextInjuries:
+      type: object
+      properties:
+        home_out:
+          type: array
+          items:
+            type: string
+        away_out:
+          type: array
+          items:
+            type: string
+        home_probable:
+          type: array
+          items:
+            type: string
+        away_probable:
+          type: array
+          items:
+            type: string
+      additionalProperties: true
+
+    ContextQBForm:
+      type: object
+      properties:
+        home:
+          $ref: "#/components/schemas/QBFormMetrics"
+        away:
+          $ref: "#/components/schemas/QBFormMetrics"
+      additionalProperties: true
+
+    QBFormMetrics:
+      type: object
+      properties:
+        ypa_3g:
+          type: number
+          nullable: true
+        sack_rate_3g:
+          type: number
+          nullable: true
+        qbr:
+          type: number
+          nullable: true
+      additionalProperties: true
+
+    ContextRollingStrength:
+      type: object
+      properties:
+        home:
+          $ref: "#/components/schemas/RollingStrengthMetrics"
+        away:
+          $ref: "#/components/schemas/RollingStrengthMetrics"
+      additionalProperties: true
+
+    RollingStrengthMetrics:
+      type: object
+      properties:
+        yds_for_3g:
+          type: number
+          nullable: true
+        yds_against_3g:
+          type: number
+          nullable: true
+        net_yds_3g:
+          type: number
+          nullable: true
+      additionalProperties: true
+
+    ContextVenue:
+      type: object
+      properties:
+        is_dome:
+          type: boolean
+        is_outdoor:
+          type: boolean
+        surface:
+          type: string
       additionalProperties: true
 
     ExplainPayload:
       type: object
       description: Explainability rubric and scorecard inputs
+      properties:
+        season:
+          type: integer
+        week:
+          type: integer
+        rubric_version:
+          type: string
+        thresholds:
+          type: object
+          additionalProperties:
+            type: number
+        weights:
+          type: object
+          additionalProperties:
+            type: number
+        games:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExplainGame"
+      required: [season, week, rubric_version, thresholds, weights, games]
+      additionalProperties: true
+
+    ExplainGame:
+      type: object
+      properties:
+        game_id:
+          type: string
+        home_team:
+          type: string
+        away_team:
+          type: string
+        pick:
+          type: string
+          nullable: true
+        blended:
+          type: number
+          nullable: true
+        support_score:
+          type: number
+          nullable: true
+        factors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExplainFactor"
+      additionalProperties: true
+
+    ExplainFactor:
+      type: object
+      properties:
+        name:
+          type: string
+        vote:
+          type: number
+        weight:
+          type: number
+        reason:
+          type: string
       additionalProperties: true
 
     ModelPayload:
       type: object
       description: Serialized ensemble parameters and scalers
+      properties:
+        season:
+          type: integer
+        week:
+          type: integer
+        generated_at:
+          type: string
+          format: date-time
+        logistic:
+          $ref: "#/components/schemas/LogisticModel"
+        bt:
+          $ref: "#/components/schemas/BradleyTerryModel"
+        decision_tree:
+          $ref: "#/components/schemas/DecisionTreeModel"
+        ann:
+          $ref: "#/components/schemas/AnnModel"
+        ensemble:
+          $ref: "#/components/schemas/EnsembleModel"
+        feature_enrichment:
+          $ref: "#/components/schemas/FeatureEnrichment"
+        pca:
+          type: array
+          items:
+            $ref: "#/components/schemas/PCAComponent"
+      additionalProperties: true
+
+    LogisticModel:
+      type: object
+      properties:
+        features:
+          type: array
+          items:
+            type: string
+        weights:
+          type: array
+          items:
+            type: number
+        bias:
+          type: number
+          nullable: true
+        scaler:
+          $ref: "#/components/schemas/ScalerParameters"
+      additionalProperties: true
+
+    BradleyTerryModel:
+      type: object
+      properties:
+        features:
+          type: array
+          items:
+            type: string
+        coefficients:
+          type: array
+          items:
+            type: number
+        intercept:
+          type: number
+          nullable: true
+        scaler:
+          $ref: "#/components/schemas/ScalerParameters"
+      additionalProperties: true
+
+    DecisionTreeModel:
+      type: object
+      properties:
+        alpha:
+          type: number
+          nullable: true
+        params:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+
+    AnnModel:
+      type: object
+      properties:
+        architecture:
+          type: array
+          items:
+            type: integer
+        committee_size:
+          type: integer
+        seeds:
+          type: array
+          items:
+            type: integer
+      additionalProperties: true
+
+    EnsembleModel:
+      type: object
+      properties:
+        weights:
+          type: object
+          additionalProperties:
+            type: number
+        calibration_beta:
+          type: number
+          nullable: true
+      additionalProperties: true
+
+    FeatureEnrichment:
+      type: object
+      properties:
+        appended_features:
+          type: array
+          items:
+            type: string
+        pbp_rows:
+          type: integer
+          nullable: true
+        player_weekly_rows:
+          type: integer
+          nullable: true
+      additionalProperties: true
+
+    PCAComponent:
+      type: object
+      properties:
+        component:
+          type: integer
+        explained_variance:
+          type: number
+        top_loadings:
+          type: array
+          items:
+            $ref: "#/components/schemas/PCALoading"
+      additionalProperties: true
+
+    PCALoading:
+      type: object
+      properties:
+        feature:
+          type: string
+        loading:
+          type: number
+      additionalProperties: true
+
+    ScalerParameters:
+      type: object
+      properties:
+        mu:
+          type: array
+          items:
+            type: number
+        sigma:
+          type: array
+          items:
+            type: number
       additionalProperties: true
 
     SeasonIndex:

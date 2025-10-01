@@ -51,81 +51,105 @@ function zeroLike(mat) {
   return mat.map((row) => row.map(() => 0));
 }
 
-function forward(network, x) {
-  const { W1, b1, W2, b2, W3, b3 } = network;
-  const z1 = addVec(matVec(W1, x), b1);
-  const a1 = applyFunc(z1, tanh);
-  const z2 = addVec(matVec(W2, a1), b2);
-  const a2 = applyFunc(z2, tanh);
-  const z3 = dotVec(W3[0], a2) + b3[0];
-  const out = sigmoid(z3);
-  return { z1, a1, z2, a2, z3, out };
+function copyNetwork(network) {
+  return {
+    weights: network.weights.map((matrix) => matrix.map((row) => row.slice())),
+    biases: network.biases.map((b) => b.slice())
+  };
 }
 
-function backward(network, cache, x, target) {
-  const { W2, W3 } = network;
-  const { z1, a1, z2, a2, out } = cache;
-  const delta3 = out - target;
-  const gradW3 = [a2.map((v) => delta3 * v)];
-  const gradb3 = [delta3];
-  const delta2 = new Array(a2.length).fill(0);
-  for (let j = 0; j < a2.length; j++) {
-    delta2[j] = delta3 * W3[0][j] * dtanh(z2[j]);
+function initNetwork(inputDim, architecture, rng) {
+  const arch = Array.isArray(architecture) && architecture.length ? architecture : [64, 32, 16];
+  const weights = [];
+  const biases = [];
+  let prev = inputDim;
+  for (const size of arch) {
+    const scale = 0.25 / Math.sqrt(Math.max(1, prev));
+    weights.push(initMatrix(size, prev, rng, scale));
+    biases.push(initVector(size));
+    prev = size;
   }
-  const gradW2 = zeroLike(W2);
-  const gradb2 = new Array(a2.length).fill(0);
-  for (let j = 0; j < a2.length; j++) {
-    for (let k = 0; k < a1.length; k++) {
-      gradW2[j][k] += delta2[j] * a1[k];
+  const outScale = 0.25 / Math.sqrt(Math.max(1, prev));
+  weights.push(initMatrix(1, prev, rng, outScale));
+  biases.push(initVector(1));
+  return { weights, biases };
+}
+
+function forward(network, x) {
+  const { weights, biases } = network;
+  const activations = [x];
+  const zs = [];
+  let a = x;
+  const lastIdx = weights.length - 1;
+  for (let l = 0; l < lastIdx; l++) {
+    const z = addVec(matVec(weights[l], a), biases[l]);
+    zs.push(z);
+    a = applyFunc(z, tanh);
+    activations.push(a);
+  }
+  const outLinear = addVec(matVec(weights[lastIdx], a), biases[lastIdx]);
+  const zOut = outLinear[0];
+  const out = sigmoid(zOut);
+  return { activations, zs, zOut, out };
+}
+
+function backward(network, cache, target) {
+  const { weights, biases } = network;
+  const gradW = weights.map((W) => zeroLike(W));
+  const gradB = biases.map((b) => initVector(b.length));
+  const lastIdx = weights.length - 1;
+  const deltaOut = cache.out - target;
+  const lastActivation = cache.activations[lastIdx] || cache.activations.at(-1) || [];
+  for (let j = 0; j < weights[lastIdx][0].length; j++) {
+    gradW[lastIdx][0][j] += deltaOut * lastActivation[j];
+  }
+  gradB[lastIdx][0] += deltaOut;
+
+  let downstream = new Array(weights[lastIdx][0].length).fill(0);
+  for (let j = 0; j < downstream.length; j++) {
+    downstream[j] = deltaOut * weights[lastIdx][0][j];
+  }
+
+  for (let layer = lastIdx - 1; layer >= 0; layer--) {
+    const z = cache.zs[layer];
+    const prevActivation = cache.activations[layer];
+    const current = new Array(weights[layer].length).fill(0);
+    for (let j = 0; j < weights[layer].length; j++) {
+      const delta = downstream[j] * dtanh(z[j]);
+      gradB[layer][j] += delta;
+      current[j] = delta;
+      for (let k = 0; k < weights[layer][j].length; k++) {
+        gradW[layer][j][k] += delta * prevActivation[k];
+      }
     }
-    gradb2[j] += delta2[j];
+    const prevSize = weights[layer][0]?.length ?? prevActivation.length;
+    const newDownstream = new Array(prevSize).fill(0);
+    for (let j = 0; j < weights[layer].length; j++) {
+      for (let k = 0; k < weights[layer][j].length; k++) {
+        newDownstream[k] += current[j] * weights[layer][j][k];
+      }
+    }
+    downstream = newDownstream;
   }
-  const delta1 = new Array(a1.length).fill(0);
-  for (let j = 0; j < a1.length; j++) {
-    let sum = 0;
-    for (let k = 0; k < a2.length; k++) sum += delta2[k] * network.W2[k][j];
-    delta1[j] = sum * dtanh(z1[j]);
-  }
-  const gradW1 = zeroLike(network.W1);
-  const gradb1 = new Array(a1.length).fill(0);
-  for (let j = 0; j < a1.length; j++) {
-    for (let k = 0; k < x.length; k++) gradW1[j][k] += delta1[j] * x[k];
-    gradb1[j] += delta1[j];
-  }
-  return { gradW3, gradb3, gradW2, gradb2, gradW1, gradb1 };
+
+  return { gradW, gradB };
 }
 
 function updateNetwork(network, grads, lr) {
-  const { gradW3, gradb3, gradW2, gradb2, gradW1, gradb1 } = grads;
-  for (let j = 0; j < network.W3.length; j++) {
-    for (let k = 0; k < network.W3[j].length; k++) {
-      network.W3[j][k] -= lr * gradW3[j][k];
+  for (let l = 0; l < network.weights.length; l++) {
+    const W = network.weights[l];
+    const gW = grads.gradW[l];
+    for (let i = 0; i < W.length; i++) {
+      for (let j = 0; j < W[i].length; j++) {
+        W[i][j] -= lr * gW[i][j];
+      }
+    }
+    const b = network.biases[l];
+    const gB = grads.gradB[l];
+    for (let i = 0; i < b.length; i++) {
+      b[i] -= lr * gB[i];
     }
   }
-  network.b3[0] -= lr * gradb3[0];
-  for (let j = 0; j < network.W2.length; j++) {
-    for (let k = 0; k < network.W2[j].length; k++) {
-      network.W2[j][k] -= lr * gradW2[j][k];
-    }
-    network.b2[j] -= lr * gradb2[j];
-  }
-  for (let j = 0; j < network.W1.length; j++) {
-    for (let k = 0; k < network.W1[j].length; k++) {
-      network.W1[j][k] -= lr * gradW1[j][k];
-    }
-    network.b1[j] -= lr * gradb1[j];
-  }
-}
-
-function copyNetwork(network) {
-  return {
-    W1: network.W1.map((row) => row.slice()),
-    b1: network.b1.slice(),
-    W2: network.W2.map((row) => row.slice()),
-    b2: network.b2.slice(),
-    W3: network.W3.map((row) => row.slice()),
-    b3: network.b3.slice()
-  };
 }
 
 function lossBCE(pred, target) {
@@ -152,25 +176,24 @@ function selectVals(arr, idx) {
   return idx.map((i) => arr[i]);
 }
 
-function trainSingleNetwork(X, y, { seed = 1, maxEpochs = 200, lr = 1e-3, patience = 10 }) {
+function trainSingleNetwork(
+  X,
+  y,
+  { seed = 1, maxEpochs = 200, lr = 1e-3, patience = 10, architecture = [64, 32, 16] }
+) {
   const rng = makeLCG(seed);
   const inputDim = X[0]?.length || 0;
-  const hidden1 = 32;
-  const hidden2 = 16;
-  const net = {
-    W1: initMatrix(hidden1, inputDim, rng, 0.25 / Math.sqrt(Math.max(1, inputDim))),
-    b1: initVector(hidden1),
-    W2: initMatrix(hidden2, hidden1, rng, 0.25 / Math.sqrt(Math.max(1, hidden1))),
-    b2: initVector(hidden2),
-    W3: initMatrix(1, hidden2, rng, 0.25 / Math.sqrt(Math.max(1, hidden2))),
-    b3: initVector(1)
-  };
+  const net = initNetwork(inputDim, architecture, rng);
 
-  if (X.length <= 1) {
+  if (X.length <= 1 || !inputDim) {
     return { network: net, epochs: 0, bestLoss: Infinity };
   }
 
-  const { trainIdx, valIdx } = splitTrainVal(X, y, Math.min(0.2, Math.max(0.1, 1 / Math.max(2, X.length))));
+  const { trainIdx, valIdx } = splitTrainVal(
+    X,
+    y,
+    Math.min(0.2, Math.max(0.1, 1 / Math.max(2, X.length)))
+  );
   const Xtrain = selectRows(X, trainIdx);
   const ytrain = selectVals(y, trainIdx);
   const Xval = selectRows(X, valIdx.length ? valIdx : trainIdx);
@@ -182,45 +205,36 @@ function trainSingleNetwork(X, y, { seed = 1, maxEpochs = 200, lr = 1e-3, patien
 
   for (let epoch = 0; epoch < maxEpochs; epoch++) {
     const grads = {
-      gradW3: zeroLike(net.W3),
-      gradb3: [0],
-      gradW2: zeroLike(net.W2),
-      gradb2: new Array(net.W2.length).fill(0),
-      gradW1: zeroLike(net.W1),
-      gradb1: new Array(net.W1.length).fill(0)
+      gradW: net.weights.map((W) => zeroLike(W)),
+      gradB: net.biases.map((b) => initVector(b.length))
     };
     for (let i = 0; i < Xtrain.length; i++) {
       const cache = forward(net, Xtrain[i]);
-      const g = backward(net, cache, Xtrain[i], ytrain[i]);
-      for (let j = 0; j < net.W3.length; j++) {
-        for (let k = 0; k < net.W3[j].length; k++) grads.gradW3[j][k] += g.gradW3[j][k];
-      }
-      grads.gradb3[0] += g.gradb3[0];
-      for (let j = 0; j < net.W2.length; j++) {
-        for (let k = 0; k < net.W2[j].length; k++) grads.gradW2[j][k] += g.gradW2[j][k];
-        grads.gradb2[j] += g.gradb2[j];
-      }
-      for (let j = 0; j < net.W1.length; j++) {
-        for (let k = 0; k < net.W1[j].length; k++) grads.gradW1[j][k] += g.gradW1[j][k];
-        grads.gradb1[j] += g.gradb1[j];
+      const g = backward(net, cache, ytrain[i]);
+      for (let l = 0; l < grads.gradW.length; l++) {
+        for (let r = 0; r < grads.gradW[l].length; r++) {
+          for (let c = 0; c < grads.gradW[l][r].length; c++) {
+            grads.gradW[l][r][c] += g.gradW[l][r][c];
+          }
+        }
+        for (let r = 0; r < grads.gradB[l].length; r++) {
+          grads.gradB[l][r] += g.gradB[l][r];
+        }
       }
     }
     const denom = Math.max(1, Xtrain.length);
-    for (let j = 0; j < net.W3.length; j++) {
-      for (let k = 0; k < net.W3[j].length; k++) grads.gradW3[j][k] /= denom;
-    }
-    grads.gradb3[0] /= denom;
-    for (let j = 0; j < net.W2.length; j++) {
-      for (let k = 0; k < net.W2[j].length; k++) grads.gradW2[j][k] /= denom;
-      grads.gradb2[j] /= denom;
-    }
-    for (let j = 0; j < net.W1.length; j++) {
-      for (let k = 0; k < net.W1[j].length; k++) grads.gradW1[j][k] /= denom;
-      grads.gradb1[j] /= denom;
+    for (let l = 0; l < grads.gradW.length; l++) {
+      for (let r = 0; r < grads.gradW[l].length; r++) {
+        for (let c = 0; c < grads.gradW[l][r].length; c++) {
+          grads.gradW[l][r][c] /= denom;
+        }
+      }
+      for (let r = 0; r < grads.gradB[l].length; r++) {
+        grads.gradB[l][r] /= denom;
+      }
     }
     updateNetwork(net, grads, lr);
 
-    // validation
     let valLoss = 0;
     for (let i = 0; i < Xval.length; i++) {
       const pred = forward(net, Xval[i]).out;
@@ -240,23 +254,29 @@ function trainSingleNetwork(X, y, { seed = 1, maxEpochs = 200, lr = 1e-3, patien
   return { network: best, epochs: 0, bestLoss };
 }
 
-export function trainANNCommittee(X, y, {
-  seeds = 15,
-  maxEpochs = Number(process.env.ANN_MAX_EPOCHS ?? 200),
-  lr = 1e-3,
-  patience = 10,
-  timeLimitMs = 60000
-} = {}) {
+export function trainANNCommittee(
+  X,
+  y,
+  {
+    seeds = 5,
+    maxEpochs = Number(process.env.ANN_MAX_EPOCHS ?? 300),
+    lr = 1e-3,
+    patience = 12,
+    timeLimitMs = 70000,
+    architecture
+  } = {}
+) {
   if (!X?.length) {
-    return { models: [], seeds: [], architecture: [0, 32, 16, 1] };
+    return { models: [], seeds: [], architecture: [0, 1] };
   }
   const start = Date.now();
   const models = [];
   const usedSeeds = [];
   const maxSeeds = Math.max(1, Math.round(seeds));
+  const arch = Array.isArray(architecture) && architecture.length ? architecture : [64, 32, 16];
   for (let i = 0; i < maxSeeds; i++) {
     const seed = i + 1;
-    const result = trainSingleNetwork(X, y, { seed, maxEpochs, lr, patience });
+    const result = trainSingleNetwork(X, y, { seed, maxEpochs, lr, patience, architecture: arch });
     models.push(result.network);
     usedSeeds.push(seed);
     if (Date.now() - start > timeLimitMs) break;
@@ -264,7 +284,7 @@ export function trainANNCommittee(X, y, {
   return {
     models,
     seeds: usedSeeds,
-    architecture: [X[0]?.length || 0, 32, 16, 1]
+    architecture: [X[0]?.length || 0, ...arch, 1]
   };
 }
 
@@ -279,29 +299,53 @@ export function predictANNCommittee(model, X) {
   return probs.map((p) => p / model.models.length);
 }
 
-function gradientSingle(net, x) {
-  const { z1, a1, z2, a2, out } = forward(net, x);
-  const delta3 = out * (1 - out);
-  const grad = new Array(x.length).fill(0);
-  for (let j = 0; j < a2.length; j++) {
-    const delta2 = delta3 * net.W3[0][j] * dtanh(z2[j]);
-    for (let k = 0; k < a1.length; k++) {
-      const delta1 = delta2 * net.W2[j][k] * dtanh(z1[k]);
-      for (let m = 0; m < x.length; m++) {
-        grad[m] += delta1 * net.W1[k][m];
+function gradientInput(network, x) {
+  const cache = forward(network, x);
+  const weights = network.weights;
+  const lastIdx = weights.length - 1;
+  const deltaOut = cache.out * (1 - cache.out);
+  if (weights.length === 1) {
+    return weights[0][0].map((w) => deltaOut * w);
+  }
+  let downstream = new Array(weights[lastIdx][0].length).fill(0);
+  for (let j = 0; j < downstream.length; j++) {
+    downstream[j] = deltaOut * weights[lastIdx][0][j];
+  }
+  for (let layer = lastIdx - 1; layer >= 0; layer--) {
+    const z = cache.zs[layer];
+    const current = new Array(weights[layer].length).fill(0);
+    for (let j = 0; j < weights[layer].length; j++) {
+      current[j] = downstream[j] * dtanh(z[j]);
+    }
+    if (layer === 0) {
+      const gradIn = new Array(x.length).fill(0);
+      for (let j = 0; j < weights[layer].length; j++) {
+        for (let k = 0; k < weights[layer][j].length; k++) {
+          gradIn[k] += current[j] * weights[layer][j][k];
+        }
+      }
+      return gradIn;
+    }
+    const newDownstream = new Array(weights[layer][0].length).fill(0);
+    for (let j = 0; j < weights[layer].length; j++) {
+      for (let k = 0; k < weights[layer][j].length; k++) {
+        newDownstream[k] += current[j] * weights[layer][j][k];
       }
     }
+    downstream = newDownstream;
   }
-  return grad;
+  return new Array(x.length).fill(0);
 }
 
 export function gradientANNCommittee(model, x) {
   if (!model?.models?.length) return new Array(x.length).fill(0);
   const grad = new Array(x.length).fill(0);
   for (const net of model.models) {
-    const g = gradientSingle(net, x);
+    const g = gradientInput(net, x);
     for (let i = 0; i < grad.length; i++) grad[i] += g[i];
   }
   for (let i = 0; i < grad.length; i++) grad[i] /= model.models.length;
   return grad;
 }
+
+export default trainANNCommittee;

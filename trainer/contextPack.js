@@ -1,239 +1,279 @@
 // trainer/contextPack.js
-// Builds per-game context for a week: injuries, QB form, rolling team strength, venue, Elo/spread.
+// Builds per-game context for a given week with rolling form, QB trends, injuries, venue, and market.
 
 import {
-  loadSchedules, loadTeamWeekly, loadPlayerWeekly, loadRostersWeekly,
-  loadDepthCharts, loadInjuries, loadPFRAdvTeam, loadESPNQBR
+  loadSchedules,
+  loadTeamWeekly,
+  loadPlayerWeekly,
+  loadInjuries,
+  loadESPNQBR
 } from "./dataSources.js";
 import { loadElo } from "./eloLoader.js";
 
+function toNum(v, def = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : def;
+}
+
+function rollingAvg(arr, k) {
+  const out = [];
+  for (let i = 0; i < arr.length; i++) {
+    const s = Math.max(0, i - k + 1);
+    const slice = arr.slice(s, i + 1);
+    const sum = slice.reduce((acc, val) => acc + toNum(val), 0);
+    out.push(slice.length ? sum / slice.length : 0);
+  }
+  return out;
+}
+
+function gameKey(season, week, home, away) {
+  return `${season}-W${String(week).padStart(2, "0")}-${home}-${away}`;
+}
+
+function pickValue(row, keys = []) {
+  for (const key of keys) {
+    if (row?.[key] != null && row[key] !== "") return row[key];
+  }
+  return null;
+}
+
+function extractWeeklySeries(rows, weeklyKeys = [], cumulativeKeys = []) {
+  const weekly = rows.map((r) => pickValue(r, weeklyKeys));
+  if (weekly.some((v) => v != null && v !== "")) {
+    return weekly.map((v) => toNum(v));
+  }
+  const cumulative = rows.map((r) => pickValue(r, cumulativeKeys));
+  const cumulativeNums = cumulative.map((v) => toNum(v));
+  const out = [];
+  for (let i = 0; i < cumulativeNums.length; i++) {
+    if (i === 0) out.push(cumulativeNums[i]);
+    else out.push(cumulativeNums[i] - cumulativeNums[i - 1]);
+  }
+  return out.map((v) => (Number.isFinite(v) ? v : 0));
+}
+
+function buildInjuryMap(rows, season, week) {
+  const out = new Map();
+  for (const r of rows || []) {
+    if (Number(r.season) !== season) continue;
+    const wk = Number(r.week);
+    if (Number.isFinite(wk) && wk > week) continue;
+    const team = String(r.team || r.team_abbr || "").toUpperCase();
+    if (!team) continue;
+    const status = String(r.status || r.injury_status || "").toLowerCase();
+    const player = r.player || r.player_name || r.gsis_id || "unknown";
+    const bucket = status.includes("out") || status.includes("ir") || status.includes("susp") ? "out" :
+      status.includes("question") || status.includes("doubt") || status.includes("probable") || status.includes("limited")
+        ? "questionable"
+        : null;
+    if (!bucket) continue;
+    if (!out.has(team)) out.set(team, { out: [], questionable: [] });
+    out.get(team)[bucket].push(player);
+  }
+  return out;
+}
+
+function buildEloMap(rows, season, week) {
+  const map = new Map();
+  for (const r of rows || []) {
+    if (Number(r.season) !== season) continue;
+    const wk = Number(r.week);
+    if (!Number.isFinite(wk) || wk !== week) continue;
+    const home = String(r.home_team || r.home || "").toUpperCase();
+    const away = String(r.away_team || r.away || "").toUpperCase();
+    if (!home || !away) continue;
+    const key = gameKey(season, wk, home, away);
+    const homeE = toNum(r.elo_home ?? r.home_elo ?? r.elo_pre_home ?? r.elo_home_pre);
+    const awayE = toNum(r.elo_away ?? r.away_elo ?? r.elo_pre_away ?? r.elo_away_pre);
+    const spread = r.spread_home != null ? toNum(r.spread_home) : r.spread != null ? toNum(r.spread) : null;
+    map.set(key, {
+      home: homeE,
+      away: awayE,
+      diff: homeE - awayE,
+      spread_home: Number.isFinite(spread) ? spread : null
+    });
+  }
+  return map;
+}
+
+function buildQBRHistory(rows, season) {
+  const map = new Map();
+  for (const r of rows || []) {
+    if (Number(r.season) !== season) continue;
+    const wk = Number(r.week ?? r.game_week ?? r.week_number);
+    if (!Number.isFinite(wk)) continue;
+    const team = String(r.team || r.team_abbr || r.recent_team || "").toUpperCase();
+    if (!team) continue;
+    const qbr = toNum(r.qbr_total ?? r.qbr ?? r.total_qbr ?? r.qbr_raw ?? r.espn_qbr ?? r.qbr_offense);
+    if (!map.has(team)) map.set(team, []);
+    map.get(team).push({ week: wk, qbr });
+  }
+  for (const arr of map.values()) arr.sort((a, b) => a.week - b.week);
+  return map;
+}
+
+function latestQBR(entries = [], week) {
+  if (!entries.length) return null;
+  let val = null;
+  for (const entry of entries) {
+    if (Number.isFinite(week) && entry.week > week) break;
+    val = entry.qbr;
+  }
+  return val ?? entries.at(-1)?.qbr ?? null;
+}
+
 export async function buildContextForWeek(season, week) {
-  const [schedAll, teamW, playersW, rostersW, depthW, injuriesW, pfrTeam, qbr, elo] = await Promise.all([
-    loadSchedules(season),
-    loadTeamWeekly(season),
-    loadPlayerWeekly(season),
-    loadRostersWeekly(season),
-    loadDepthCharts(season),
-    loadInjuries(season),
-    loadPFRAdvTeam(season),
-    loadESPNQBR(season),
-    loadElo(season)
-  ]);
+  const y = Number(season);
+  const w = Number(week);
+  if (!Number.isFinite(y) || !Number.isFinite(w)) return [];
 
-  // Filter schedule rows for the exact week/season
-  const sched = schedAll.filter(r => Number(r.season)===season && Number(r.week)===week);
-  const teamKey = (t,w)=> `${t}:${season}:${w}`;
+  const schedules = await loadSchedules(y);
+  let teamWeekly = [];
+  let playerWeekly = [];
+  let injuries = [];
+  let qbrRows = [];
+  let eloRows = [];
+  try { teamWeekly = await loadTeamWeekly(y); } catch (err) { console.warn("teamWeekly load failed", err?.message ?? err); }
+  try { playerWeekly = await loadPlayerWeekly(y); } catch (err) { console.warn("playerWeekly load failed", err?.message ?? err); }
+  try { injuries = await loadInjuries(y); } catch (err) { console.warn("injuries load failed", err?.message ?? err); }
+  try { qbrRows = await loadESPNQBR(y); } catch (err) { /* optional */ }
+  try { eloRows = await loadElo(y); } catch (err) { console.warn("elo load failed", err?.message ?? err); }
 
-  // Index team weekly by (team,week)
-  const teamMap = new Map();
-  for (const r of teamW) {
-    const t = r.team || r.team_abbr || r.posteam || r.recent_team;
-    const w = Number(r.week);
-    if (!t || !Number.isFinite(w) || Number(r.season)!==season) continue;
-    teamMap.set(teamKey(t,w), r);
+  const games = schedules.filter((g) => Number(g.season) === y && Number(g.week) === w);
+  if (!games.length) return [];
+
+  const byTeam = new Map();
+  for (const row of teamWeekly || []) {
+    if (Number(row.season) !== y) continue;
+    const team = String(row.team ?? row.team_abbr ?? row.recent_team ?? row.posteam ?? "").toUpperCase();
+    if (!team) continue;
+    const wk = Number(row.week ?? row.game_week ?? row.week_number);
+    if (!Number.isFinite(wk)) continue;
+    if (!byTeam.has(team)) byTeam.set(team, []);
+    byTeam.get(team).push({ ...row, _week: wk });
   }
 
-  // Players: group last 3 games per team for QB form
-  const playersByTeam = groupPlayerWeekly(playersW, season);
-  // Injuries, depth charts, rosters → star/out lists
-  const injuryIndex = indexInjuries(injuriesW, season, week);
-  const startersIdx  = indexStarters(depthW, rostersW, season, week);
-  // ESPN QBR indexed by team (some CSVs have team or player_id)
-  const qbrByTeam = indexQBR(qbr, season);
+  const qbHistory = buildQBRHistory(qbrRows, y);
+  const injuryMap = buildInjuryMap(injuries, y, w);
+  const eloMap = buildEloMap(eloRows, y, w);
 
-  // Elo by game_id
-  const eloByGame = indexElo(elo, season);
+  for (const [team, rows] of byTeam.entries()) {
+    rows.sort((a, b) => a._week - b._week);
+    const yardsFor = extractWeeklySeries(rows, ["total_yards", "off_total_yards", "off_total_yds", "yards_gained"], ["off_total_yds_s2d", "total_yards_s2d"]);
+    const yardsAgainst = extractWeeklySeries(rows, ["yards_allowed", "total_yards_allowed", "def_total_yards", "def_total_yds"], ["def_total_yds_s2d", "yards_allowed_s2d"]);
+    const passYards = extractWeeklySeries(rows, ["passing_yards", "pass_yards", "pass_yds"], ["off_pass_yds_s2d"]);
+    const passAtt = extractWeeklySeries(rows, ["pass_attempts", "passing_attempts", "attempts", "pass_att"], ["off_pass_att_s2d"]);
+    const sacks = extractWeeklySeries(rows, ["sacks", "sacks_taken", "qb_sacked"], ["off_sacks_taken_s2d"]);
+
+    const ypaSeries = passYards.map((yds, idx) => (Math.max(1, passAtt[idx]) ? yds / Math.max(1, passAtt[idx]) : 0));
+    const sackRateSeries = sacks.map((s, idx) => s / Math.max(1, passAtt[idx] + sacks[idx]));
+
+    const roll3For = rollingAvg(yardsFor, 3);
+    const roll5For = rollingAvg(yardsFor, 5);
+    const roll3Against = rollingAvg(yardsAgainst, 3);
+    const roll5Against = rollingAvg(yardsAgainst, 5);
+    const roll3Ypa = rollingAvg(ypaSeries, 3);
+    const roll5Ypa = rollingAvg(ypaSeries, 5);
+    const roll3Sack = rollingAvg(sackRateSeries, 3);
+    const roll5Sack = rollingAvg(sackRateSeries, 5);
+
+    rows.forEach((row, idx) => {
+      row._roll3_for = roll3For[idx];
+      row._roll5_for = roll5For[idx];
+      row._roll3_against = roll3Against[idx];
+      row._roll5_against = roll5Against[idx];
+      row._roll3_net = roll3For[idx] - roll3Against[idx];
+      row._roll5_net = roll5For[idx] - roll5Against[idx];
+      row._qb_ypa3 = roll3Ypa[idx];
+      row._qb_ypa5 = roll5Ypa[idx];
+      row._qb_sack3 = roll3Sack[idx];
+      row._qb_sack5 = roll5Sack[idx];
+    });
+  }
 
   const out = [];
-  for (const g of sched) {
-    const home = g.home_team, away = g.away_team;
-    const homeKey = (home || "").toUpperCase();
-    const awayKey = (away || "").toUpperCase();
-    const game_id = `${season}-W${String(week).padStart(2,"0")}-${home}-${away}`;
+  for (const g of games) {
+    const home = String(g.home_team || "").toUpperCase();
+    const away = String(g.away_team || "").toUpperCase();
+    if (!home || !away) continue;
+    const gid = gameKey(y, w, home, away);
 
-    const rsHome = rollingTeamStrength(teamMap, home, season, week, 3);
-    const rsAway = rollingTeamStrength(teamMap, away, season, week, 3);
+    const hRows = byTeam.get(home) || [];
+    const aRows = byTeam.get(away) || [];
+    const hLast = hRows.filter((r) => r._week <= w).at(-1) ?? hRows.at(-1) ?? {};
+    const aLast = aRows.filter((r) => r._week <= w).at(-1) ?? aRows.at(-1) ?? {};
 
-    const qbHome = qbForm(playersByTeam[home]?.last3, qbrByTeam[homeKey]);
-    const qbAway = qbForm(playersByTeam[away]?.last3, qbrByTeam[awayKey]);
+    const roof = String(g.roof ?? g.roof_type ?? "").toLowerCase();
+    const surfaceRaw = g.surface ?? g.surface_type ?? g.surface_short ?? null;
+    const isDome = roof.includes("dome") || roof.includes("closed") || roof.includes("roof");
+    const isOutdoor = roof.includes("outdoor") || roof.includes("open") || (!roof && !isDome);
 
-    const injHome = injuryIndex.get(homeKey) || { out:[], probable:[] };
-    const injAway = injuryIndex.get(awayKey) || { out:[], probable:[] };
+    const qbrHome = latestQBR(qbHistory.get(home) || [], w);
+    const qbrAway = latestQBR(qbHistory.get(away) || [], w);
 
-    // mark starters as star=true for impact
-    markStarters(injHome, startersIdx.get(homeKey));
-    markStarters(injAway, startersIdx.get(awayKey));
-
-    const roof = (g.roof || g.roof_type || "").toLowerCase();
-    const surfaceSrc = (g.surface || g.surface_short || "").toLowerCase();
-    const surface = surfaceSrc.includes("turf") ? "turf" : surfaceSrc.includes("grass") ? "grass" : "unknown";
-    const is_dome = /dome|closed/.test(roof);
-    const is_outdoor = /outdoor|open/.test(roof);
-
-    const eloG = eloByGame.get(game_id) || null;
+    const eloInfo = eloMap.get(gid) || null;
 
     out.push({
-      game_id, season, week, home_team: home, away_team: away,
+      game_id: gid,
+      season: y,
+      week: w,
+      home_team: home,
+      away_team: away,
       context: {
-        injuries: {
-          home_out: injHome.out,
-          away_out: injAway.out,
-          home_probable: injHome.probable,
-          away_probable: injAway.probable
+        rolling_strength: {
+          home: {
+            yds_for_3g: hLast._roll3_for ?? null,
+            yds_for_5g: hLast._roll5_for ?? null,
+            yds_against_3g: hLast._roll3_against ?? null,
+            yds_against_5g: hLast._roll5_against ?? null,
+            net_yds_3g: hLast._roll3_net ?? null,
+            net_yds_5g: hLast._roll5_net ?? null
+          },
+          away: {
+            yds_for_3g: aLast._roll3_for ?? null,
+            yds_for_5g: aLast._roll5_for ?? null,
+            yds_against_3g: aLast._roll3_against ?? null,
+            yds_against_5g: aLast._roll5_against ?? null,
+            net_yds_3g: aLast._roll3_net ?? null,
+            net_yds_5g: aLast._roll5_net ?? null
+          }
         },
-        qb_form: { home: qbHome, away: qbAway },
-        rolling_strength: { home: rsHome, away: rsAway },
-        venue: { is_dome, is_outdoor, surface },
-        elo: eloG ? { home: eloG.home, away: eloG.away, diff: eloG.diff, spread_home: eloG.spread_home ?? null } : null,
-        market: eloG && Number.isFinite(eloG.spread_home) ? { spread_home: eloG.spread_home } : null
+        qb_form: {
+          home: {
+            ypa_3g: hLast._qb_ypa3 ?? null,
+            ypa_5g: hLast._qb_ypa5 ?? null,
+            sack_rate_3g: hLast._qb_sack3 ?? null,
+            sack_rate_5g: hLast._qb_sack5 ?? null,
+            qbr: qbrHome
+          },
+          away: {
+            ypa_3g: aLast._qb_ypa3 ?? null,
+            ypa_5g: aLast._qb_ypa5 ?? null,
+            sack_rate_3g: aLast._qb_sack3 ?? null,
+            sack_rate_5g: aLast._qb_sack5 ?? null,
+            qbr: qbrAway
+          }
+        },
+        injuries: {
+          home_out: injuryMap.get(home)?.out ?? [],
+          away_out: injuryMap.get(away)?.out ?? [],
+          home_probable: injuryMap.get(home)?.questionable ?? [],
+          away_probable: injuryMap.get(away)?.questionable ?? []
+        },
+        venue: {
+          is_dome: isDome,
+          is_outdoor: isOutdoor,
+          surface: surfaceRaw || null
+        },
+        elo: eloInfo,
+        market: eloInfo && Number.isFinite(eloInfo.spread_home)
+          ? { spread_home: eloInfo.spread_home }
+          : null
       }
     });
   }
+
   return out;
 }
 
-// ---- helpers ---------------------------------------------------------------
-
-function groupPlayerWeekly(rows, season) {
-  const byTeam = {};
-  for (const r of rows) {
-    if (Number(r.season)!==season) continue;
-    const t = r.team || r.recent_team || r.team_abbr; if (!t) continue;
-    (byTeam[t] ||= []).push(r);
-  }
-  const out = {};
-  for (const [t, arr] of Object.entries(byTeam)) {
-    arr.sort((a,b)=> Number(a.week)-Number(b.week));
-    const qbs = arr.filter(x => (x.position||x.pos||"").toUpperCase()==="QB");
-    out[t] = { last3: qbs.slice(-3) };
-  }
-  return out;
-}
-
-function qbForm(last3, qbrTeam) {
-  // Primary: last-3 YPA & sack rate; augment with QBR if available
-  if (!last3 || !last3.length) return { ypa_3g: 0, sack_rate_3g: 0, qbr: qbrTeam ?? null };
-  let att=0, yds=0, sacks=0, dropbacks=0;
-  for (const r of last3) {
-    const pa = Number(r.pass_attempts || r.attempts || r.c_att || 0);
-    const y = Number(r.passing_yards || r.pass_yds || r.yards || 0);
-    const sk = Number(r.sacks || r.sacks_taken || 0);
-    att+=pa; yds+=y; sacks+=sk; dropbacks+=(pa+sk);
-  }
-  const ypa = att? yds/att : 0;
-  const sr = dropbacks? sacks/dropbacks : 0;
-  return { ypa_3g: round4(ypa), sack_rate_3g: round4(sr), qbr: qbrTeam ?? null };
-}
-
-function rollingTeamStrength(teamMap, team, season, week, k) {
-  const rows=[]; for (let w=week-1; w>=1 && rows.length<k; w--) {
-    const r = teamMap.get(`${team}:${season}:${w}`); if (r) rows.push(r);
-  }
-  let yfor=0, yagainst=0;
-  for (const r of rows) {
-    yfor += Number(r.total_yards || r.off_total_yards || r.off_total_yds || 0);
-    yagainst += Number(r.total_yards_allowed || r.def_total_yards || r.def_total_yds || 0);
-  }
-  return { yds_for_3g:yfor, yds_against_3g:yagainst, net_yds_3g:yfor-yagainst };
-}
-
-function indexElo(rows, season) {
-  const m = new Map();
-  for (const r of rows) {
-    if (Number(r.season)!==season) continue;
-    const home = r.home_team || r.home, away = r.away_team || r.away, week = Number(r.week);
-    if (!home||!away||!week) continue;
-    const game_id = `${season}-W${String(week).padStart(2,"0")}-${home}-${away}`;
-    const homeE = Number(r.elo_home || r.home_elo || r.elo_pre_home || 0);
-    const awayE = Number(r.elo_away || r.away_elo || r.elo_pre_away || 0);
-    const diff = homeE - awayE;
-    const spread_home = (r.spread_home!=null) ? Number(r.spread_home) :
-                        (r.spread!=null) ? Number(r.spread) : null;
-    m.set(game_id, { home: homeE, away: awayE, diff, ...(Number.isFinite(spread_home)?{spread_home}: {}) });
-  }
-  return m;
-}
-
-function indexQBR(rows, season) {
-  // Many QBR tables have columns like season, team, qbr_total or qbr
-  const out = {};
-  for (const r of rows) {
-    if (Number(r.season)!==season) continue;
-    const t = (r.team || r.team_abbr || "").toUpperCase(); if (!t) continue;
-    const qbr = Number(r.qbr_total || r.qbr || r.total_qbr || 0);
-    if (!Number.isFinite(qbr)) continue;
-    // Keep latest entry or max
-    out[t] = qbr;
-  }
-  return out;
-}
-
-function indexInjuries(rows, season, week) {
-  // Expect columns like season, week, team, player, position, status
-  const key = t => `${t}`;
-  const out = new Map();
-  const OUT_STATI = new Set(["OUT","IR","PUP","SUSP","RESERVED"]);
-  const PRB_STATI = new Set(["QUESTIONABLE","DOUBTFUL","PROBABLE","LIMITED"]);
-
-  for (const r of rows) {
-    if (Number(r.season)!==season) continue;
-    const w = Number(r.week); if (!Number.isFinite(w) || w>week) continue;
-    const team = (r.team || r.team_abbr || "").toUpperCase(); if (!team) continue;
-    const status = (r.status || r.injury_status || "").toUpperCase();
-    const pos = (r.position || r.pos || "").toUpperCase();
-    const player = r.player || r.player_name || r.gsis_id || "unknown";
-    const row = { player, pos, note: status, star: false };
-
-    const bucket = (OUT_STATI.has(status) || status==="DNP") ? "out" :
-                   PRB_STATI.has(status) ? "probable" : null;
-    if (!bucket) continue;
-    const v = out.get(key(team)) || { out:[], probable:[] };
-    v[bucket].push(row);
-    out.set(key(team), v);
-  }
-  return out;
-}
-
-function indexStarters(depthCharts, rosters, season, week) {
-  // Very light starter index: depth_charts with depth==1 at this week, fallback to roster starters if present
-  const starters = new Map(); // key: team -> Set of player names
-  const byTeam = new Map();
-
-  for (const r of depthCharts) {
-    if (Number(r.season)!==season) continue;
-    const w = Number(r.week); if (!Number.isFinite(w) || w>week) continue;
-    const team = (r.team || r.team_abbr || "").toUpperCase(); if (!team) continue;
-    const depth = Number(r.depth || r.player_depth || 0);
-    const player = r.player || r.player_name || r.gsis_id || "";
-    if (depth === 1 && player) {
-      (byTeam.get(team) || byTeam.set(team, new Set()).get(team)).add(player);
-    }
-  }
-  // fallback: rosters weekly (starter flag sometimes provided)
-  for (const r of rosters) {
-    if (Number(r.season)!==season) continue;
-    const w = Number(r.week); if (!Number.isFinite(w) || w>week) continue;
-    const team = (r.team || r.team_abbr || r.recent_team || "").toUpperCase(); if (!team) continue;
-    const player = r.player || r.player_name || r.gsis_id || "";
-    const starter = (String(r.starter || r.depth || "").toLowerCase()==="true" || String(r.depth||"")==="1");
-    if (starter && player) {
-      (byTeam.get(team) || byTeam.set(team, new Set()).get(team)).add(player);
-    }
-  }
-  // finalize
-  for (const [t,set] of byTeam.entries()) starters.set(t, Array.from(set));
-  return starters;
-}
-
-function markStarters(injBucket, startersArray) {
-  if (!injBucket || !startersArray) return;
-  const starters = new Set(startersArray.map(s=>String(s).toLowerCase()));
-  for (const k of ["out","probable"]) {
-    for (const p of injBucket[k] || []) {
-      const nm = String(p.player||"").toLowerCase();
-      if (starters.has(nm) || p.pos === "QB") p.star = true;
-    }
-  }
-}
-
-function round4(x){ return Math.round(x*1e4)/1e4; }
+export default buildContextForWeek;

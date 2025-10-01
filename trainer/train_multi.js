@@ -658,41 +658,38 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     oofTree = ensureArray([], nTrain, 0.5);
   }
 
-  const annSeeds = options.annSeeds ?? Number(process.env.ANN_SEEDS ?? 15);
-  const annMaxEpochs = options.annMaxEpochs ?? Number(process.env.ANN_MAX_EPOCHS ?? 200);
+  // --- BEGIN: robust ANN OOF ---
+  const annSeeds = options.annSeeds ?? Number(process.env.ANN_SEEDS ?? 5); // committee size
+  const annMaxEpochs = options.annMaxEpochs ?? Number(process.env.ANN_MAX_EPOCHS ?? 250);
   const annCvSeeds = Math.max(3, Math.min(annSeeds, options.annCvSeeds ?? 5));
   const annOOF = new Array(nTrain).fill(0.5);
+
   if (nTrain >= 2) {
     const foldSets = folds.length ? folds : [Array.from({ length: nTrain }, (_, i) => i)];
     for (const valIdx of foldSets) {
       const trainIdx = new Set(Array.from({ length: nTrain }, (_, i) => i).filter((i) => !valIdx.includes(i)));
-      const Xtr = [];
-      const ytr = [];
-      const Xva = [];
-      const iva = [];
+      const Xtr = [], ytr = [], Xva = [], iva = [];
       for (let i = 0; i < nTrain; i++) {
-        if (trainIdx.has(i)) {
-          Xtr.push(trainMatrix[i]);
-          ytr.push(labels[i]);
-        } else {
-          Xva.push(trainMatrix[i]);
-          iva.push(i);
-        }
+        if (trainIdx.has(i)) { Xtr.push(trainMatrix[i]); ytr.push(labels[i]); }
+        else { Xva.push(trainMatrix[i]); iva.push(i); }
       }
+      // per-fold scaler
       const scalerFold = fitScaler(Xtr.length ? Xtr : [new Array(FEATS_ENR.length).fill(0)]);
       const XtrS = applyScaler(Xtr, scalerFold);
       const XvaS = applyScaler(Xva, scalerFold);
+      // train a small committee for OOF
       const annModel = trainANNCommittee(XtrS, ytr, {
         seeds: annCvSeeds,
-        maxEpochs: Math.min(annMaxEpochs, options.annCvMaxEpochs ?? 120),
+        maxEpochs: Math.min(annMaxEpochs, options.annCvMaxEpochs ?? 150),
         lr: 1e-3,
-        patience: 8,
-        timeLimitMs: options.annCvTimeLimit ?? 20000
+        patience: 10,
+        timeLimitMs: options.annCvTimeLimit ?? 25000
       });
       const preds = predictANNCommittee(annModel, XvaS);
       for (let j = 0; j < iva.length; j++) annOOF[iva[j]] = preds[j];
     }
   }
+  // --- END: robust ANN OOF ---
 
   const btOOF = new Array(nTrain).fill(0.5);
   if (btTrainRows.length && nTrain) {
@@ -743,13 +740,15 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const cartFull = new CART({ maxDepth: treeParams.depth, minNumSamples: treeParams.minSamples, gainFunction: "gini" });
   if (trainStd.length) cartFull.train(trainStd, labels);
   const leafStatsFull = buildLeafFreq(cartFull, trainStd, labels, laplaceAlpha(trainStd.length));
+  // --- BEGIN: robust ANN full fit ---
   const annModelFull = trainANNCommittee(trainStd, labels, {
-    seeds: annSeeds,
-    maxEpochs: annMaxEpochs,
+    seeds: options.annSeeds ?? Number(process.env.ANN_SEEDS ?? 5),
+    maxEpochs: options.annMaxEpochs ?? Number(process.env.ANN_MAX_EPOCHS ?? 300),
     lr: 1e-3,
-    patience: 10,
-    timeLimitMs: options.annTimeLimit ?? 60000
+    patience: 12,
+    timeLimitMs: options.annTimeLimit ?? 70000
   });
+  // --- END: robust ANN full fit ---
   const btModelFull = trainBTModel(btTrainRows);
 
   const testMatrix = matrixFromRows(testRows, FEATS_ENR);
@@ -891,6 +890,19 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     n_train_rows: nTrain,
     weeks_seen: weeksSeen,
     training_weeks: [...new Set(trainRows.map((r) => r.week))].sort((a, b) => a - b)
+  };
+
+  diagnostics.ann_details = {
+    committee_size: annModelFull?.models?.length ?? null,
+    seeds: annModelFull?.seeds ?? null
+  };
+  diagnostics.oof_variance = {
+    ann: (function () {
+      if (!nTrain) return null;
+      const m = annOOF.reduce((s, v) => s + v, 0) / Math.max(1, annOOF.length);
+      const v = annOOF.reduce((s, v) => s + (v - m) * (v - m), 0) / Math.max(1, annOOF.length);
+      return { mean: m, var: v };
+    })()
   };
 
   const trainLogitFull = predictLogit(trainStd, logitModelFull);

@@ -49,6 +49,15 @@ export const FEATS = [
   "off_red_zone_td_pct_s2d_minus_opp",
   "off_sack_rate_s2d_minus_opp",
   "off_neutral_pass_rate_s2d_minus_opp",
+  "off_yds_for_3g",
+  "off_yds_for_5g",
+  "def_yds_against_3g",
+  "def_yds_against_5g",
+  "net_yds_3g",
+  "net_yds_5g",
+  "qb_ypa_3g",
+  "qb_sack_rate_3g",
+  "qb_qbr",
   "off_epa_per_play_s2d",
   "off_epa_per_play_w3",
   "off_epa_per_play_w5",
@@ -142,6 +151,93 @@ const windowAverage = (history = [], size = 3) => {
   const slice = history.slice(-size);
   return weightedAverage(slice);
 };
+
+const avgLast = (arr = [], k = 3) => {
+  if (!arr.length) return 0;
+  const slice = arr.slice(-k);
+  const sum = slice.reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0);
+  return slice.length ? sum / slice.length : 0;
+};
+
+function pushLimited(arr, value, limit = 8) {
+  if (!Number.isFinite(value)) value = 0;
+  arr.push(value);
+  if (arr.length > limit) arr.shift();
+}
+
+function ensureFormState(map, team) {
+  if (!map.has(team)) {
+    map.set(team, {
+      offFor: [],
+      defAgainst: [],
+      qbYpa: [],
+      qbSack: []
+    });
+  }
+  return map.get(team);
+}
+
+function snapshotRolling(state = {}) {
+  const offFor = state.offFor || [];
+  const defAgainst = state.defAgainst || [];
+  const qbYpa = state.qbYpa || [];
+  const qbSack = state.qbSack || [];
+  const off3 = avgLast(offFor, 3);
+  const off5 = avgLast(offFor, 5);
+  const def3 = avgLast(defAgainst, 3);
+  const def5 = avgLast(defAgainst, 5);
+  return {
+    off3,
+    off5,
+    def3,
+    def5,
+    net3: off3 - def3,
+    net5: off5 - def5,
+    qbYpa3: avgLast(qbYpa, 3),
+    qbSack3: avgLast(qbSack, 3)
+  };
+}
+
+function updateFormSnapshots(state, signals = {}, usage = {}) {
+  if (!state) return;
+  pushLimited(state.offFor, num(signals.offTotal));
+  pushLimited(state.defAgainst, num(signals.defTotalAllowed));
+  const ypaVal = Number.isFinite(usage.qb_aypa) ? usage.qb_aypa : 0;
+  const sackVal = Number.isFinite(usage.qb_sack_rate) ? usage.qb_sack_rate : 0;
+  pushLimited(state.qbYpa, ypaVal);
+  pushLimited(state.qbSack, sackVal);
+}
+
+function buildTeamQBRHistory(rows = [], season) {
+  const map = new Map();
+  for (const row of rows) {
+    if (Number(row.season) !== Number(season)) continue;
+    const week = Number(row.week ?? row.game_week ?? row.week_number);
+    if (!Number.isFinite(week)) continue;
+    const pos = String(row.position ?? row.player_position ?? row.pos ?? "").toUpperCase();
+    if (pos && pos !== "QB") continue;
+    const team = normTeam(row.recent_team ?? row.team ?? row.team_abbr ?? row.posteam);
+    if (!team) continue;
+    const qbr = Number(row.qbr_total ?? row.qbr ?? row.total_qbr ?? row.espn_qbr ?? row.qbr_raw ?? row.qbr_offense);
+    if (!Number.isFinite(qbr)) continue;
+    const key = team;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push({ week, qbr });
+  }
+  for (const arr of map.values()) arr.sort((a, b) => a.week - b.week);
+  return map;
+}
+
+function latestTeamQBR(map, team, week) {
+  const arr = map.get(team);
+  if (!arr || !arr.length) return null;
+  let val = null;
+  for (const entry of arr) {
+    if (Number.isFinite(week) && entry.week > week) break;
+    val = entry.qbr;
+  }
+  return val ?? arr[arr.length - 1].qbr ?? null;
+}
 
 function updateMetricCollection(prevState = {}, configs = [], weekMetrics = {}) {
   const nextState = { ...prevState };
@@ -427,11 +523,14 @@ export function buildFeatures({
   const advRoll = new Map();
   const pbpRoll = new Map();
   const usageRoll = new Map();
+  const formRoll = new Map();
+  const qbQbrHistory = buildTeamQBRHistory(playerWeekly || [], seasonNum);
   for (const team of teams) {
     roll.set(team, new Map());
     advRoll.set(team, new Map());
     pbpRoll.set(team, {});
     usageRoll.set(team, {});
+    ensureFormState(formRoll, team);
   }
 
   const out = [];
@@ -567,7 +666,14 @@ export function buildFeatures({
         roofFlag(game.is_outdoor) ??
         (derivedRoof ? (derivedRoof.includes("outdoor") || derivedRoof.includes("open") ? 1 : 0) : 0);
 
-      const mkRow = (team, opp, isHome, me, op, advMe, advOp, pbpMe, usageMe) => {
+      const homeFormState = ensureFormState(formRoll, home);
+      const awayFormState = ensureFormState(formRoll, away);
+      const homeRolling = snapshotRolling(homeFormState);
+      const awayRolling = snapshotRolling(awayFormState);
+      const homeQbr = latestTeamQBR(qbQbrHistory, home, week - 1);
+      const awayQbr = latestTeamQBR(qbQbrHistory, away, week - 1);
+
+      const mkRow = (team, opp, isHome, me, op, advMe, advOp, pbpMe, usageMe, rolling, qbrVal) => {
         const adv = advMe || zeroAdvanced();
         const advOpp = advOp || zeroAdvanced();
         return {
@@ -617,6 +723,15 @@ export function buildFeatures({
           off_sack_rate_s2d_minus_opp: num(adv.off_sack_rate_s2d) - num(advOpp.off_sack_rate_s2d),
           off_neutral_pass_rate_s2d_minus_opp:
             num(adv.off_neutral_pass_rate_s2d) - num(advOpp.off_neutral_pass_rate_s2d),
+          off_yds_for_3g: Number.isFinite(rolling?.off3) ? rolling.off3 : 0,
+          off_yds_for_5g: Number.isFinite(rolling?.off5) ? rolling.off5 : 0,
+          def_yds_against_3g: Number.isFinite(rolling?.def3) ? rolling.def3 : 0,
+          def_yds_against_5g: Number.isFinite(rolling?.def5) ? rolling.def5 : 0,
+          net_yds_3g: Number.isFinite(rolling?.net3) ? rolling.net3 : 0,
+          net_yds_5g: Number.isFinite(rolling?.net5) ? rolling.net5 : 0,
+          qb_ypa_3g: Number.isFinite(rolling?.qbYpa3) ? rolling.qbYpa3 : 0,
+          qb_sack_rate_3g: Number.isFinite(rolling?.qbSack3) ? rolling.qbSack3 : 0,
+          qb_qbr: Number.isFinite(qbrVal) ? qbrVal : 0,
           win: winLabel(game, isHome),
           ...pbpMe,
           ...usageMe,
@@ -625,9 +740,36 @@ export function buildFeatures({
         };
       };
 
-      const homeRow = mkRow(home, away, true, hS2D, aS2D, hAdvS2D, aAdvS2D, hPbpFeats, hUsageFeats);
-      const awayRow = mkRow(away, home, false, aS2D, hS2D, aAdvS2D, hAdvS2D, aPbpFeats, aUsageFeats);
+      const homeRow = mkRow(
+        home,
+        away,
+        true,
+        hS2D,
+        aS2D,
+        hAdvS2D,
+        aAdvS2D,
+        hPbpFeats,
+        hUsageFeats,
+        homeRolling,
+        homeQbr
+      );
+      const awayRow = mkRow(
+        away,
+        home,
+        false,
+        aS2D,
+        hS2D,
+        aAdvS2D,
+        hAdvS2D,
+        aPbpFeats,
+        aUsageFeats,
+        awayRolling,
+        awayQbr
+      );
       out.push(homeRow, awayRow);
+
+      updateFormSnapshots(homeFormState, hSignals, hUsageWeek);
+      updateFormSnapshots(awayFormState, aSignals, aUsageWeek);
 
       if (gameDate) {
         lastDate.set(home, gameDate);

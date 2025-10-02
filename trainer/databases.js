@@ -153,6 +153,8 @@ async function loadPlayerWeekly(season) {
 async function loadWeeklyRosters(season) {
   const y = toInt(season);
   const candidates = [
+    `${BASE_REL}/weekly_rosters/roster_weekly_${y}.csv`,
+    `${BASE_REL}/weekly_rosters/roster_weekly_${y}.csv.gz`,
     `${BASE_REL}/weekly_rosters/weekly_rosters_${y}.csv`,
     `${BASE_REL}/weekly_rosters/weekly_rosters_${y}.csv.gz`,
     `${RAW_MAIN}/data/rosters/weekly_rosters_${y}.csv`,
@@ -196,18 +198,22 @@ async function loadSnapCounts(season) {
 
 async function loadPFRAdvTeam(season) {
   const y = toInt(season);
-  const candidates = [
-    `${BASE_REL}/pfr_advstats/pfr_advstats_team_${y}.csv`,
-    `${BASE_REL}/pfr_advstats/pfr_advstats_team_${y}.csv.gz`,
-    `${RAW_MAIN}/data/pfr_advstats/pfr_advstats_team_${y}.csv`,
-    `${RAW_MAST}/data/pfr_advstats/pfr_advstats_team_${y}.csv`
-  ];
-  return loadOneOf(candidates, null, `[context/pfr_adv_team]`, { emptyOk: true });
+  try {
+    const map = await loadPFRAdvTeamWeeklyDS(y);
+    const rows = Array.isArray(map) ? map : Array.from(map.values());
+    console.log(`[context/pfr_adv_team] OK dataSources rows=${rows.length}`);
+    return rows;
+  } catch (e) {
+    console.warn(`[context/pfr_adv_team] empty; dataSources error: ${e.message}`);
+    return [];
+  }
 }
 
 async function loadESPNQBR(season) {
   const y = toInt(season);
   const candidates = [
+    `${BASE_REL}/espn_data/qbr_week_level.csv`,
+    `${BASE_REL}/espn_data/qbr_week_level.csv.gz`,
     `${BASE_REL}/espn_data/espn_qbr_${y}.csv`,
     `${BASE_REL}/espn_data/espn_qbr_${y}.csv.gz`,
     `${RAW_MAIN}/data/espn_qbr/espn_qbr_${y}.csv`,
@@ -218,15 +224,14 @@ async function loadESPNQBR(season) {
 
 async function loadTeamGameAdvanced(season) {
   const y = toInt(season);
-  const candidates = [
-    `${BASE_REL}/stats_team/stats_team_game_${y}.csv`,
-    `${BASE_REL}/stats_team/stats_team_game_${y}.csv.gz`,
-    `${BASE_REL}/stats_team/stats_team_game.csv`,
-    `${BASE_REL}/stats_team/stats_team_game.csv.gz`,
-    `${RAW_MAIN}/data/team_game_stats/stats_team_game_${y}.csv`,
-    `${RAW_MAST}/data/team_game_stats/stats_team_game_${y}.csv`
-  ];
-  return loadOneOf(candidates, r => toInt(r.season) === y, `[context/team_game_adv]`, { emptyOk: true });
+  try {
+    const rows = await loadTeamGameAdvancedDS(y);
+    console.log(`[context/team_game_adv] OK dataSources rows=${rows.length}`);
+    return rows;
+  } catch (e) {
+    console.warn(`[context/team_game_adv] empty; dataSources error: ${e.message}`);
+    return [];
+  }
 }
 
 async function loadOneOf(candidates, filterFn, tag, opts = {}) {
@@ -470,13 +475,13 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       schedules: "nflverse-data releases (fallback nfldata games.csv)",
       team_week: "nflverse-data stats_team_week",
       player_week: "nflverse-data stats_player_week",
-      weekly_rosters: "nflverse-data weekly_rosters",
+      weekly_rosters: "nflverse-data roster_weekly",
       depth_charts: "nflverse-data depth_charts",
       injuries: "nflverse-data injuries",
       snap_counts: "nflverse-data snap_counts",
-      pfr_adv_team: "nflverse-data pfr_advstats team",
-      espn_qbr: "nflverse-data espn_qbr",
-      team_game_adv: "nflverse-data stats_team_game"
+      pfr_adv_team: "nflverse-data pfr advstats weekly merges",
+      espn_qbr: "nflverse-data qbr_week_level",
+      team_game_adv: "nflverse-data stats_team_week"
     },
     context: {
       // raw shards (optional: you can remove these if too large)

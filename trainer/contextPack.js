@@ -10,7 +10,8 @@ import {
 } from "./dataSources.js";
 import { loadElo } from "./eloLoader.js";
 
-function toNum(v, def = 0) {
+function toNum(v, def = null) {
+  if (v === undefined || v === null || v === "") return def;
   const n = Number(v);
   return Number.isFinite(n) ? n : def;
 }
@@ -19,9 +20,15 @@ function rollingAvg(arr, k) {
   const out = [];
   for (let i = 0; i < arr.length; i++) {
     const s = Math.max(0, i - k + 1);
-    const slice = arr.slice(s, i + 1);
-    const sum = slice.reduce((acc, val) => acc + toNum(val), 0);
-    out.push(slice.length ? sum / slice.length : 0);
+    const slice = arr.slice(s, i + 1)
+      .map((val) => toNum(val, null))
+      .filter((val) => Number.isFinite(val));
+    if (!slice.length) {
+      out.push(null);
+      continue;
+    }
+    const sum = slice.reduce((acc, val) => acc + val, 0);
+    out.push(sum / slice.length);
   }
   return out;
 }
@@ -40,16 +47,26 @@ function pickValue(row, keys = []) {
 function extractWeeklySeries(rows, weeklyKeys = [], cumulativeKeys = []) {
   const weekly = rows.map((r) => pickValue(r, weeklyKeys));
   if (weekly.some((v) => v != null && v !== "")) {
-    return weekly.map((v) => toNum(v));
+    return weekly.map((v) => toNum(v, null));
   }
   const cumulative = rows.map((r) => pickValue(r, cumulativeKeys));
-  const cumulativeNums = cumulative.map((v) => toNum(v));
+  const cumulativeNums = cumulative.map((v) => toNum(v, null));
   const out = [];
+  let lastValid = null;
   for (let i = 0; i < cumulativeNums.length; i++) {
-    if (i === 0) out.push(cumulativeNums[i]);
-    else out.push(cumulativeNums[i] - cumulativeNums[i - 1]);
+    const current = cumulativeNums[i];
+    if (!Number.isFinite(current)) {
+      out.push(null);
+      continue;
+    }
+    if (!Number.isFinite(lastValid)) {
+      out.push(current);
+    } else {
+      out.push(current - lastValid);
+    }
+    lastValid = current;
   }
-  return out.map((v) => (Number.isFinite(v) ? v : 0));
+  return out.map((v) => (Number.isFinite(v) ? v : null));
 }
 
 function buildInjuryMap(rows, season, week) {
@@ -165,8 +182,19 @@ export async function buildContextForWeek(season, week) {
     const passAtt = extractWeeklySeries(rows, ["pass_attempts", "passing_attempts", "attempts", "pass_att"], ["off_pass_att_s2d"]);
     const sacks = extractWeeklySeries(rows, ["sacks", "sacks_taken", "qb_sacked"], ["off_sacks_taken_s2d"]);
 
-    const ypaSeries = passYards.map((yds, idx) => (Math.max(1, passAtt[idx]) ? yds / Math.max(1, passAtt[idx]) : 0));
-    const sackRateSeries = sacks.map((s, idx) => s / Math.max(1, passAtt[idx] + sacks[idx]));
+    const ypaSeries = passYards.map((yds, idx) => {
+      const yards = toNum(yds, null);
+      const attempts = toNum(passAtt[idx], 0);
+      if (!Number.isFinite(yards) || attempts <= 0) return null;
+      return yards / attempts;
+    });
+    const sackRateSeries = sacks.map((s, idx) => {
+      const sackVal = toNum(s, null);
+      const attempts = toNum(passAtt[idx], 0);
+      const totalPlays = attempts + toNum(s, 0);
+      if (!Number.isFinite(sackVal) || totalPlays <= 0) return null;
+      return sackVal / totalPlays;
+    });
 
     const roll3For = rollingAvg(yardsFor, 3);
     const roll5For = rollingAvg(yardsFor, 5);
@@ -182,8 +210,14 @@ export async function buildContextForWeek(season, week) {
       row._roll5_for = roll5For[idx];
       row._roll3_against = roll3Against[idx];
       row._roll5_against = roll5Against[idx];
-      row._roll3_net = roll3For[idx] - roll3Against[idx];
-      row._roll5_net = roll5For[idx] - roll5Against[idx];
+      row._roll3_net =
+        Number.isFinite(roll3For[idx]) && Number.isFinite(roll3Against[idx])
+          ? roll3For[idx] - roll3Against[idx]
+          : null;
+      row._roll5_net =
+        Number.isFinite(roll5For[idx]) && Number.isFinite(roll5Against[idx])
+          ? roll5For[idx] - roll5Against[idx]
+          : null;
       row._qb_ypa3 = roll3Ypa[idx];
       row._qb_ypa5 = roll5Ypa[idx];
       row._qb_sack3 = roll3Sack[idx];

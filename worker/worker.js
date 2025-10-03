@@ -329,9 +329,16 @@ async function historyResponse(query, mode) {
 }
 
 export default {
-  async fetch(req) {
+  async fetch(req, env, ctx) {
     try {
       const url = new URL(req.url);
+      const API_KEY = env?.TANK01_API_KEY || env?.API_KEY || "";
+      const API_BASE_URL =
+        env?.TANK01_API_BASE_URL || env?.API_BASE_URL ||
+        "https://tank01-nfl-live-in-game-real-time-statistics-nfl.p.rapidapi.com";
+      void ctx;
+      void API_KEY;
+      void API_BASE_URL;
       const path = url.pathname.replace(/\/+$/, "") || "/";
       if (path === "/") {
         return json({ ok: true, message: "nfl predictions worker" });

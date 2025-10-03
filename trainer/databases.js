@@ -7,6 +7,7 @@
 // Requires: axios, csv-parse (installed in package.json)
 // Node ESM ("type":"module")
 
+import { CONFIG } from "../config/env.js";
 import fs from "fs";
 import path from "path";
 import axios from "axios";
@@ -29,6 +30,8 @@ import {
   PUBLIC_API_ENABLED,
   PUBLIC_API_SEASON_CUTOFF
 } from "./dataSources.js";
+
+void CONFIG;
 
 const BASE_REL = "https://github.com/nflverse/nflverse-data/releases/download";
 const RAW_MAIN = "https://raw.githubusercontent.com/nflverse/nflverse-data/main";

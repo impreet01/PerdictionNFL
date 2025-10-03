@@ -13,9 +13,16 @@ const RAW_BASE = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/${
 const GH_API_LIST = `https://api.github.com/repos/${REPO_USER}/${REPO_NAME}/contents/artifacts?ref=${BRANCH}`;
 
 export default {
-  async fetch(req) {
+  async fetch(req, env, ctx) {
     try {
       const url = new URL(req.url);
+      const API_KEY = env?.TANK01_API_KEY || env?.API_KEY || "";
+      const API_BASE_URL =
+        env?.TANK01_API_BASE_URL || env?.API_BASE_URL ||
+        "https://tank01-nfl-live-in-game-real-time-statistics-nfl.p.rapidapi.com";
+      void ctx;
+      void API_KEY;
+      void API_BASE_URL;
       if (url.pathname !== "/predict_week") {
         return json({ error: "use /predict_week?season=YYYY[&week=WW]" }, 404);
       }

@@ -24,6 +24,9 @@ jobs:
     env:
       NODE_VERSION: 20.x
       LOG_LEVEL: warn
+      NODE_ENV: production
+      TANK01_API_KEY: ${{ secrets.TANK01_API_KEY }}
+      TANK01_API_BASE_URL: https://tank01-nfl-live-in-game-real-time-statistics-nfl.p.rapidapi.com
 
     steps:
       - name: Checkout

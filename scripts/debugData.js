@@ -1,6 +1,9 @@
 // scripts/debugData.js
+import { CONFIG } from "../config/env.js";
 import { loadSchedules, loadTeamWeekly, loadTeamGameAdvanced } from "../trainer/dataSources.js";
 import { buildFeatures } from "../trainer/featureBuild.js";
+
+void CONFIG;
 
 const SEASON = Number(process.env.SEASON || new Date().getFullYear());
 const WEEK = Number(process.env.WEEK || 2);

@@ -22,6 +22,7 @@ import {
   loadPlayerWeekly as loadPlayerWeeklyDS,
   loadRostersWeekly as loadRostersWeeklyDS,
   loadDepthCharts as loadDepthChartsDS,
+  loadInjuries as loadInjuriesDS,
   loadFTNCharts as loadFTNChartsDS,
   loadPBP as loadPBPDS,
   loadPFRAdvTeamWeekly as loadPFRAdvTeamWeeklyDS,
@@ -224,17 +225,6 @@ async function loadDepthCharts(season) {
     `${RAW_MAST}/data/depth_charts/depth_charts_${y}.csv`
   ];
   return loadOneOf(candidates, null, `[context/depth_charts]`, { emptyOk: true });
-}
-
-async function loadInjuries(season) {
-  const y = toInt(season);
-  const candidates = [
-    `${BASE_REL}/injuries/injuries_${y}.csv`,
-    `${BASE_REL}/injuries/injuries_${y}.csv.gz`,
-    `${RAW_MAIN}/data/injuries/injuries_${y}.csv`,
-    `${RAW_MAST}/data/injuries/injuries_${y}.csv`
-  ];
-  return loadOneOf(candidates, null, `[context/injuries]`, { emptyOk: true });
 }
 
 async function loadSnapCounts(season) {
@@ -497,7 +487,7 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       loadPlayerWeekly(y),
       loadWeeklyRosters(y),
       loadDepthCharts(y),
-      loadInjuries(y),
+      loadInjuriesDS(y),
       loadSnapCounts(y),
       loadPFRAdvTeam(y),
       loadESPNQBR(y),
@@ -529,7 +519,7 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       player_week: "nflverse-data stats_player_week",
       weekly_rosters: "nflverse-data roster_weekly",
       depth_charts: "nflverse-data depth_charts",
-      injuries: "nflverse-data injuries",
+      injuries: "nflverse-data injuries (fallback Rotowire artifacts)",
       snap_counts: "nflverse-data snap_counts",
       pfr_adv_team: "nflverse-data pfr advstats weekly merges",
       espn_qbr: "nflverse-data qbr_week_level",

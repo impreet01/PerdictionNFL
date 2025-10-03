@@ -312,8 +312,10 @@ export async function fetchCsvFlexible(url){
   return { rows, source:url };
 }
 
+const ALL_SCHEDULES_KEY = Symbol('schedules-all');
+
 export const caches = {
-  schedules:   new Map(), // key 0
+  schedules:   new Map(), // key season or ALL_SCHEDULES_KEY
   qbr:         new Map(),
   officials:   new Map(),
   snapCounts:  new Map(), // key season
@@ -334,13 +336,33 @@ async function cached(store,key,loader){
 }
 
 // ---------- canonical loaders (exact paths) ----------
-export async function loadSchedules(){
-  return cached(caches.schedules, 0, async()=>{
-    const resolved = await resolveDatasetUrl('schedules', null, REL.schedules);
-    const targetUrl = resolved?.url ?? REL.schedules();
+export async function loadSchedules(season){
+  const y = toInt(season);
+  const resolved = await resolveDatasetUrl('schedules', y, REL.schedules);
+  const resolvedSeason = resolved?.season != null ? toInt(resolved.season) : null;
+  const targetSeason = y ?? resolvedSeason;
+  const cacheKey = targetSeason ?? ALL_SCHEDULES_KEY;
+  return cached(caches.schedules, cacheKey, async()=>{
+    const targetUrl = resolved?.url ?? REL.schedules(targetSeason ?? y);
     const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadSchedules] OK ${source} rows=${rows.length}`);
-    return rows;
+    let effectiveSeason = targetSeason;
+    if (effectiveSeason == null) {
+      for (const row of rows) {
+        const rowSeason = toInt(row.season);
+        if (rowSeason != null && (effectiveSeason == null || rowSeason > effectiveSeason)) {
+          effectiveSeason = rowSeason;
+        }
+      }
+    }
+    const filteredRows = effectiveSeason == null ? rows : rows.filter((r)=>toInt(r.season) === effectiveSeason);
+    if (effectiveSeason != null && cacheKey === ALL_SCHEDULES_KEY) {
+      caches.schedules.set(effectiveSeason, filteredRows);
+    }
+    console.log(
+      `[loadSchedules] OK ${source} rows=${filteredRows.length}` +
+      (effectiveSeason != null ? ` season=${effectiveSeason}` : '')
+    );
+    return filteredRows;
   });
 }
 export async function loadESPNQBR(){

@@ -1,11 +1,8 @@
 // scripts/buildIndex.js
 // Node ESM. Build a minimal season_index_<season>.json by scanning artifacts/.
 
-import { CONFIG } from '../config/env.js';
 import fs from 'node:fs';
 import path from 'node:path';
-
-void CONFIG;
 
 const ART = path.join(process.cwd(), 'artifacts');
 const SEASON = parseInt(process.env.SEASON || new Date().getFullYear(), 10);

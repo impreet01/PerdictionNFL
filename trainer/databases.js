@@ -25,7 +25,9 @@ import {
   loadFTNCharts as loadFTNChartsDS,
   loadPBP as loadPBPDS,
   loadPFRAdvTeamWeekly as loadPFRAdvTeamWeeklyDS,
-  listDatasetSeasons
+  listDatasetSeasons,
+  PUBLIC_API_ENABLED,
+  PUBLIC_API_SEASON_CUTOFF
 } from "./dataSources.js";
 
 const BASE_REL = "https://github.com/nflverse/nflverse-data/releases/download";
@@ -49,7 +51,9 @@ export async function resolveSeasonList({
   sinceSeason = null,
   maxSeasons = null,
   availableSeasons = [],
-  dataset = "teamWeekly"
+  dataset = "teamWeekly",
+  publicApiEnabled = false,
+  publicApiCutoff = null
 } = {}) {
   const seasons = Array.isArray(availableSeasons) && availableSeasons.length
     ? availableSeasons.slice()
@@ -72,11 +76,22 @@ export async function resolveSeasonList({
 
   let filtered = canonical;
   const since = toInt(sinceSeason);
-  if (Number.isFinite(since)) {
-    filtered = filtered.filter((s) => s >= since);
+  const publicCutoff = toInt(publicApiCutoff);
+  const tgt = Number.isFinite(targetSeason) ? Number(targetSeason) : null;
+
+  let effectiveSince = since;
+  if (!Number.isFinite(effectiveSince) && publicApiEnabled && !includeAll) {
+    if (Number.isFinite(publicCutoff)) {
+      effectiveSince = publicCutoff;
+    } else if (tgt != null) {
+      effectiveSince = tgt;
+    }
   }
 
-  const tgt = Number.isFinite(targetSeason) ? Number(targetSeason) : null;
+  if (Number.isFinite(effectiveSince)) {
+    filtered = filtered.filter((s) => s >= effectiveSince);
+  }
+
   if (!includeAll) {
     if (tgt != null) {
       filtered = filtered.filter((s) => s <= tgt);
@@ -729,7 +744,14 @@ if (import.meta && import.meta.url === `file://${process.argv[1]}`) {
       /^(1|true|yes)$/i.test(String(opts.all ?? '')) ||
       /^(1|true|yes)$/i.test(String(process.env.ALL_SEASONS ?? process.env.ALL ?? ''))
   );
-  const sinceSeason = opts.since != null ? toInt(opts.since) : (process.env.SINCE_SEASON ? toInt(process.env.SINCE_SEASON) : null);
+  const cliSince = opts.since != null ? toInt(opts.since) : null;
+  const envSince = process.env.SINCE_SEASON ? toInt(process.env.SINCE_SEASON) : null;
+  const sinceSeason =
+    cliSince ??
+    envSince ??
+    (!includeAll && PUBLIC_API_ENABLED
+      ? (Number.isFinite(PUBLIC_API_SEASON_CUTOFF) ? PUBLIC_API_SEASON_CUTOFF : targetSeason)
+      : null);
   const maxSeasons = opts.max != null ? toInt(opts.max) : (process.env.MAX_SEASONS ? toInt(process.env.MAX_SEASONS) : null);
   const outDir = opts.out || process.env.ARTIFACT_DIR || 'artifacts';
 
@@ -740,7 +762,9 @@ if (import.meta && import.meta.url === `file://${process.argv[1]}`) {
       includeAll,
       sinceSeason,
       maxSeasons,
-      availableSeasons: discovered
+      availableSeasons: discovered,
+      publicApiEnabled: PUBLIC_API_ENABLED,
+      publicApiCutoff: PUBLIC_API_SEASON_CUTOFF
     });
     if (!seasons.length) {
       throw new Error('No seasons resolved for context build');

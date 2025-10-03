@@ -2,7 +2,10 @@
 // Resolve WEEK = max(2, min(maxSchedWeek, lastFullWeek + 1))
 // "lastFullWeek" = latest regular-season week where ALL scheduled games have final scores.
 
+import { CONFIG } from "../config/env.js";
 import { loadSchedules } from "../trainer/dataSources.js";
+
+void CONFIG;
 
 function isReg(v) {
   if (v == null) return true;

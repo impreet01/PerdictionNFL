@@ -3,12 +3,14 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "node -e \"try{require('dotenv')}catch(e){process.exit(0)}\"",
     "build:context": "node trainer/databases.js",
     "train": "node trainer/train.js",
     "train:multi": "node trainer/train_multi.js",
     "validate:ingest": "node scripts/validate_ingest.js",
     "build:index": "node scripts/buildIndex.js",
     "resolve:week": "node scripts/resolveWeek.js",
+    "check:env": "node scripts/checkEnv.js",
     "test": "node trainer/tests/model_ann.test.js && node trainer/tests/smoke.js"
   },
   "dependencies": {
@@ -17,6 +19,7 @@
     "ml-logistic-regression": "^2.0.0",
     "ml-matrix": "^6.11.0",
     "csv-parse": "^5.5.6",
-    "papaparse": "^5.4.1"
+    "papaparse": "^5.4.1",
+    "dotenv": "^16.4.5"
   }
 }

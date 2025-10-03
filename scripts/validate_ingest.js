@@ -1,6 +1,9 @@
+import { CONFIG } from "../config/env.js";
 import { loadSchedules, loadTeamWeekly, loadTeamGameAdvanced } from "../trainer/dataSources.js";
 import { buildFeatures } from "../trainer/featureBuild.js";
 import { buildBTFeatures } from "../trainer/featureBuild_bt.js";
+
+void CONFIG;
 
 const season = Number(process.env.SEASON ?? 2025);
 

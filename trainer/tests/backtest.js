@@ -2,7 +2,16 @@
 // Backtest ensemble performance across recent weeks.
 
 import { runTraining } from "../train_multi.js";
-import { loadSchedules, loadTeamWeekly } from "../dataSources.js";
+import {
+  loadBettingOdds,
+  loadDepthCharts,
+  loadInjuries,
+  loadPlayerProjections,
+  loadPlayerWeekly,
+  loadRostersWeekly,
+  loadSchedules,
+  loadTeamWeekly
+} from "../dataSources.js";
 
 const logloss = (probs, labels) => {
   if (!labels.length) return null;
@@ -35,6 +44,7 @@ function regression(points) {
 
 async function main() {
   const season = Number(process.env.SEASON ?? new Date().getFullYear());
+  await maybeExerciseTankSources(season);
   const schedules = await loadSchedules(season);
   const teamWeekly = await loadTeamWeekly(season);
   let prev = [];
@@ -145,3 +155,18 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+async function maybeExerciseTankSources(season) {
+  if (process.env.USE_TANK01_LOADERS?.toLowerCase() !== "true") return;
+  const tasks = [
+    loadSchedules(season),
+    loadTeamWeekly(season),
+    loadPlayerWeekly(season),
+    loadRostersWeekly(season),
+    loadDepthCharts(season),
+    loadInjuries(season),
+    loadBettingOdds(season),
+    loadPlayerProjections(season)
+  ];
+  await Promise.allSettled(tasks);
+}

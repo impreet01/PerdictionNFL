@@ -2,6 +2,20 @@
 import { parse } from 'csv-parse/sync';
 import zlib from 'node:zlib';
 
+import { fetchTank01, tank01EnabledForSeason } from './tank01Client.js';
+import {
+  extractFirstArray,
+  mapTank01DepthChart,
+  mapTank01Injury,
+  mapTank01Odds,
+  mapTank01PlayerWeek,
+  mapTank01Play,
+  mapTank01Projection,
+  mapTank01Roster,
+  mapTank01Schedule,
+  mapTank01TeamWeek
+} from './tank01Transforms.js';
+
 // ---------- discovery helpers ----------
 const GH_ROOT = 'https://api.github.com/repos/nflverse/nflverse-data';
 const GH_HEADERS = {
@@ -326,13 +340,73 @@ export const caches = {
   ftnCharts:   new Map(),
   pbp:         new Map(),
   pfrAdv:      new Map(), // merged weekly map (season)
+  injuries:    new Map(),
+  odds:        new Map(),
+  projections: new Map()
 };
+
+const tankCaches = {
+  schedules:   new Map(),
+  teamWeekly:  new Map(),
+  playerWeekly:new Map(),
+  rosterWeekly:new Map(),
+  depthCharts: new Map(),
+  injuries:    new Map(),
+  odds:        new Map(),
+  projections: new Map(),
+  pbp:         new Map()
+};
+
+const tankLogOnce = new Set();
+const tankMemo = new Map();
+
+const tankMemoKey = (dataset, season) => `${dataset}:${season}`;
 
 async function cached(store,key,loader){
   if(store.has(key)) return store.get(key);
   const val = await loader();
   store.set(key,val);
   return val;
+}
+
+async function withTankFallback(dataset, season, loader, fallback) {
+  const y = toInt(season);
+  const cache = tankCaches[dataset];
+  if (!tank01EnabledForSeason(y)) {
+    return fallback();
+  }
+  if (cache && cache.has(y)) {
+    const cachedValue = cache.get(y);
+    if (cachedValue != null) return cachedValue;
+  }
+  try {
+    const result = await loader();
+    if (Array.isArray(result) ? result.length > 0 : result != null) {
+      if (cache) cache.set(y, result);
+      if (process.env.LOG_LEVEL?.toLowerCase() === 'debug') {
+        const count = Array.isArray(result) ? result.length : typeof result;
+        console.debug(`[tank01] ${dataset} season=${y} using Tank01 (${count})`);
+      }
+      return result;
+    }
+    if (cache) cache.set(y, null);
+  } catch (err) {
+    const key = `${dataset}:${y}`;
+    if (!tankLogOnce.has(key)) {
+      console.warn(`[tank01] ${dataset} season=${y} failed: ${err?.message || err}`);
+      tankLogOnce.add(key);
+    }
+    if (cache) cache.set(y, null);
+  }
+  return fallback();
+}
+
+async function memoizedTank(dataset, season, loader) {
+  const key = tankMemoKey(dataset, season);
+  if (tankMemo.has(key)) return tankMemo.get(key);
+  const value = await loader();
+  tankMemo.set(key, value);
+  return value;
 }
 
 // ---------- canonical loaders (exact paths) ----------
@@ -343,26 +417,34 @@ export async function loadSchedules(season){
   const targetSeason = y ?? resolvedSeason;
   const cacheKey = targetSeason ?? ALL_SCHEDULES_KEY;
   return cached(caches.schedules, cacheKey, async()=>{
-    const targetUrl = resolved?.url ?? REL.schedules(targetSeason ?? y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    let effectiveSeason = targetSeason;
-    if (effectiveSeason == null) {
-      for (const row of rows) {
-        const rowSeason = toInt(row.season);
-        if (rowSeason != null && (effectiveSeason == null || rowSeason > effectiveSeason)) {
-          effectiveSeason = rowSeason;
+    const loadFallback = async () => {
+      const targetUrl = resolved?.url ?? REL.schedules(targetSeason ?? y);
+      const {rows,source} = await fetchCsvFlexible(targetUrl);
+      let effectiveSeason = targetSeason;
+      if (effectiveSeason == null) {
+        for (const row of rows) {
+          const rowSeason = toInt(row.season);
+          if (rowSeason != null && (effectiveSeason == null || rowSeason > effectiveSeason)) {
+            effectiveSeason = rowSeason;
+          }
         }
       }
+      const filteredRows = effectiveSeason == null ? rows : rows.filter((r)=>toInt(r.season) === effectiveSeason);
+      if (effectiveSeason != null && cacheKey === ALL_SCHEDULES_KEY) {
+        caches.schedules.set(effectiveSeason, filteredRows);
+      }
+      console.log(
+        `[loadSchedules] OK ${source} rows=${filteredRows.length}` +
+        (effectiveSeason != null ? ` season=${effectiveSeason}` : '')
+      );
+      return filteredRows;
+    };
+
+    if (Number.isFinite(targetSeason) && tank01EnabledForSeason(targetSeason)) {
+      return withTankFallback('schedules', targetSeason, () => loadTank01Schedules(targetSeason), loadFallback);
     }
-    const filteredRows = effectiveSeason == null ? rows : rows.filter((r)=>toInt(r.season) === effectiveSeason);
-    if (effectiveSeason != null && cacheKey === ALL_SCHEDULES_KEY) {
-      caches.schedules.set(effectiveSeason, filteredRows);
-    }
-    console.log(
-      `[loadSchedules] OK ${source} rows=${filteredRows.length}` +
-      (effectiveSeason != null ? ` season=${effectiveSeason}` : '')
-    );
-    return filteredRows;
+
+    return loadFallback();
   });
 }
 export async function loadESPNQBR(){
@@ -392,11 +474,19 @@ export async function loadSnapCounts(season){
 export async function loadTeamWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadTeamWeekly season');
   return cached(caches.teamWeekly, y, async()=>{
-    const resolved = await resolveDatasetUrl('teamWeekly', y, REL.teamWeekly);
-    const targetUrl = resolved?.url ?? REL.teamWeekly(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadTeamWeekly] OK ${source} rows=${rows.length}`);
-    return rows;
+    const loadFallback = async () => {
+      const resolved = await resolveDatasetUrl('teamWeekly', y, REL.teamWeekly);
+      const targetUrl = resolved?.url ?? REL.teamWeekly(y);
+      const {rows,source} = await fetchCsvFlexible(targetUrl);
+      console.log(`[loadTeamWeekly] OK ${source} rows=${rows.length}`);
+      return rows;
+    };
+
+    if (tank01EnabledForSeason(y)) {
+      return withTankFallback('teamWeekly', y, () => loadTank01TeamWeekly(y), loadFallback);
+    }
+
+    return loadFallback();
   });
 }
 // legacy alias in code -> keep signature
@@ -406,31 +496,55 @@ export async function loadTeamGameAdvanced(season){
 export async function loadPlayerWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadPlayerWeekly season');
   return cached(caches.playerWeekly, y, async()=>{
-    const resolved = await resolveDatasetUrl('playerWeekly', y, REL.playerWeekly);
-    const targetUrl = resolved?.url ?? REL.playerWeekly(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadPlayerWeekly] OK ${source} rows=${rows.length}`);
-    return rows;
+    const loadFallback = async () => {
+      const resolved = await resolveDatasetUrl('playerWeekly', y, REL.playerWeekly);
+      const targetUrl = resolved?.url ?? REL.playerWeekly(y);
+      const {rows,source} = await fetchCsvFlexible(targetUrl);
+      console.log(`[loadPlayerWeekly] OK ${source} rows=${rows.length}`);
+      return rows;
+    };
+
+    if (tank01EnabledForSeason(y)) {
+      return withTankFallback('playerWeekly', y, () => loadTank01PlayerWeekly(y), loadFallback);
+    }
+
+    return loadFallback();
   });
 }
 export async function loadRostersWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadRostersWeekly season');
   return cached(caches.rosterWeekly, y, async()=>{
-    const resolved = await resolveDatasetUrl('rosterWeekly', y, REL.rosterWeekly);
-    const targetUrl = resolved?.url ?? REL.rosterWeekly(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadRostersWeekly] OK ${source} rows=${rows.length}`);
-    return rows;
+    const loadFallback = async () => {
+      const resolved = await resolveDatasetUrl('rosterWeekly', y, REL.rosterWeekly);
+      const targetUrl = resolved?.url ?? REL.rosterWeekly(y);
+      const {rows,source} = await fetchCsvFlexible(targetUrl);
+      console.log(`[loadRostersWeekly] OK ${source} rows=${rows.length}`);
+      return rows;
+    };
+
+    if (tank01EnabledForSeason(y)) {
+      return withTankFallback('rosterWeekly', y, () => loadTank01Rosters(y), loadFallback);
+    }
+
+    return loadFallback();
   });
 }
 export async function loadDepthCharts(season){
   const y = toInt(season); if(y==null) throw new Error('loadDepthCharts season');
   return cached(caches.depthCharts, y, async()=>{
-    const resolved = await resolveDatasetUrl('depthCharts', y, REL.depthCharts);
-    const targetUrl = resolved?.url ?? REL.depthCharts(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadDepthCharts] OK ${source} rows=${rows.length}`);
-    return rows;
+    const loadFallback = async () => {
+      const resolved = await resolveDatasetUrl('depthCharts', y, REL.depthCharts);
+      const targetUrl = resolved?.url ?? REL.depthCharts(y);
+      const {rows,source} = await fetchCsvFlexible(targetUrl);
+      console.log(`[loadDepthCharts] OK ${source} rows=${rows.length}`);
+      return rows;
+    };
+
+    if (tank01EnabledForSeason(y)) {
+      return withTankFallback('depthCharts', y, () => loadTank01DepthCharts(y), loadFallback);
+    }
+
+    return loadFallback();
   });
 }
 export async function loadFTNCharts(season){
@@ -446,10 +560,438 @@ export async function loadFTNCharts(season){
 export async function loadPBP(season){
   const y = toInt(season); if(y==null) throw new Error('loadPBP season');
   return cached(caches.pbp, y, async()=>{
-    const resolved = await resolveDatasetUrl('pbp', y, REL.pbp);
-    const targetUrl = resolved?.url ?? REL.pbp(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadPBP] OK ${source} rows=${rows.length}`);
+    const loadFallback = async () => {
+      const resolved = await resolveDatasetUrl('pbp', y, REL.pbp);
+      const targetUrl = resolved?.url ?? REL.pbp(y);
+      const {rows,source} = await fetchCsvFlexible(targetUrl);
+      console.log(`[loadPBP] OK ${source} rows=${rows.length}`);
+      return rows;
+    };
+
+    if (tank01EnabledForSeason(y)) {
+      return withTankFallback('pbp', y, () => loadTank01PBP(y), loadFallback);
+    }
+
+    return loadFallback();
+  });
+}
+
+async function loadTank01Schedules(season){
+  const y = toInt(season);
+  if (!Number.isFinite(y)) return [];
+  return memoizedTank('tank-schedules', y, async () => {
+    const candidates = [
+      { path: '/getNFLGamesForSeason', params: { season: y } },
+      { path: '/getNFLGameSchedule', params: { season: y } }
+    ];
+    let rows = [];
+    for (const spec of candidates) {
+      try {
+        const payload = await fetchTank01(spec.path, { params: spec.params });
+        const arr = extractFirstArray(payload);
+        if (arr.length) {
+          rows = arr;
+          break;
+        }
+      } catch (err) {
+        // ignore and try next candidate
+      }
+    }
+    if (!rows.length) {
+      const weeks = Array.from({ length: 22 }, (_, idx) => idx + 1);
+      for (const week of weeks) {
+        try {
+          const payload = await fetchTank01('/getNFLGamesForWeek', {
+            params: { season: y, week, seasonType: 'REG' }
+          });
+          const arr = extractFirstArray(payload);
+          if (!arr.length) continue;
+          for (const row of arr) {
+            rows.push({ ...row, weekNumber: row.weekNumber ?? row.week ?? week });
+          }
+        } catch (err) {
+          // ignore individual week failures
+        }
+      }
+    }
+    const gameMap = new Map();
+    for (const raw of rows) {
+      const mapped = mapTank01Schedule(raw, {
+        season: y,
+        week: raw.weekNumber ?? raw.week ?? raw.week_no
+      });
+      if (!mapped) continue;
+      const key = mapped.game_id;
+      if (!gameMap.has(key)) {
+        gameMap.set(key, mapped);
+      } else {
+        gameMap.set(key, { ...gameMap.get(key), ...mapped });
+      }
+    }
+    const result = Array.from(gameMap.values());
+    result.sort((a, b) => (Number(a.week) || 0) - (Number(b.week) || 0));
+    return result;
+  });
+}
+
+function buildTankOpponentIndex(games = []) {
+  const map = new Map();
+  for (const game of games) {
+    const week = Number(game.week);
+    const home = String(game.home_team || '').toUpperCase();
+    const away = String(game.away_team || '').toUpperCase();
+    if (Number.isFinite(week) && home) {
+      map.set(`${week}|${home}`, away || null);
+    }
+    if (Number.isFinite(week) && away) {
+      map.set(`${week}|${away}`, home || null);
+    }
+  }
+  return map;
+}
+
+async function loadTank01TeamWeekly(season){
+  const y = toInt(season);
+  if (!Number.isFinite(y)) return [];
+  return memoizedTank('tank-teamWeekly', y, async () => {
+    const schedule = await loadTank01Schedules(y);
+    const opponentIndex = buildTankOpponentIndex(schedule);
+    const candidates = [
+      { path: '/getNFLTeamWeeklyStats', params: { season: y } },
+      { path: '/getNFLTeamStats', params: { season: y, seasonType: 'REG' } }
+    ];
+    let rows = [];
+    for (const spec of candidates) {
+      try {
+        const payload = await fetchTank01(spec.path, { params: spec.params });
+        const arr = extractFirstArray(payload);
+        if (arr.length) {
+          rows = arr;
+          break;
+        }
+      } catch (err) {
+        // continue
+      }
+    }
+    if (!rows.length) {
+      const teams = Array.from(new Set(schedule.flatMap((g) => [g.home_team, g.away_team].filter(Boolean))));
+      for (const team of teams) {
+        const perTeamCandidates = [
+          { path: '/getNFLTeamWeeklyStats', params: { season: y, teamID: team } },
+          { path: '/getNFLTeamStats', params: { season: y, teamID: team, seasonType: 'REG' } }
+        ];
+        for (const spec of perTeamCandidates) {
+          try {
+            const payload = await fetchTank01(spec.path, { params: spec.params });
+            const arr = extractFirstArray(payload);
+            if (!arr.length) continue;
+            rows.push(...arr.map((r) => ({ ...r, team: r.team ?? team, teamID: r.teamID ?? team })));
+            break;
+          } catch (err) {
+            // skip candidate
+          }
+        }
+      }
+    }
+    const mapped = [];
+    for (const raw of rows) {
+      const week = toInt(raw.week ?? raw.weekNumber ?? raw.week_no);
+      const team = String(raw.teamID ?? raw.team ?? '').toUpperCase();
+      const opponent = opponentIndex.get(`${week}|${team}`);
+      const mappedRow = mapTank01TeamWeek(raw, {
+        season: y,
+        week,
+        team,
+        opponent
+      });
+      if (mappedRow) mapped.push(mappedRow);
+    }
+    mapped.sort((a, b) =>
+      (Number(a.week) || 0) - (Number(b.week) || 0) || String(a.team).localeCompare(String(b.team))
+    );
+    return mapped;
+  });
+}
+
+async function loadTank01PlayerWeekly(season){
+  const y = toInt(season);
+  if (!Number.isFinite(y)) return [];
+  return memoizedTank('tank-playerWeekly', y, async () => {
+    const schedule = await loadTank01Schedules(y);
+    const opponentIndex = buildTankOpponentIndex(schedule);
+    const candidates = [
+      { path: '/getNFLPlayerWeeklyStats', params: { season: y } },
+      { path: '/getNFLPlayerStats', params: { season: y, seasonType: 'REG' } }
+    ];
+    let rows = [];
+    for (const spec of candidates) {
+      try {
+        const payload = await fetchTank01(spec.path, { params: spec.params });
+        const arr = extractFirstArray(payload);
+        if (arr.length) {
+          rows = arr;
+          break;
+        }
+      } catch (err) {
+        // continue
+      }
+    }
+    if (!rows.length) {
+      const teams = Array.from(new Set(schedule.flatMap((g) => [g.home_team, g.away_team].filter(Boolean))));
+      for (const team of teams) {
+        const perTeam = [
+          { path: '/getNFLPlayerWeeklyStats', params: { season: y, teamID: team } },
+          { path: '/getNFLPlayerStats', params: { season: y, teamID: team, seasonType: 'REG' } }
+        ];
+        for (const spec of perTeam) {
+          try {
+            const payload = await fetchTank01(spec.path, { params: spec.params });
+            const arr = extractFirstArray(payload);
+            if (!arr.length) continue;
+            rows.push(...arr.map((r) => ({ ...r, team: r.team ?? team, recentTeam: r.recentTeam ?? team })));
+            break;
+          } catch (err) {
+            // ignore
+          }
+        }
+      }
+    }
+    const mapped = [];
+    for (const raw of rows) {
+      const week = toInt(raw.week ?? raw.weekNumber ?? raw.week_no);
+      const team = String(raw.teamID ?? raw.team ?? raw.recentTeam ?? '').toUpperCase();
+      const opponent = opponentIndex.get(`${week}|${team}`);
+      const mappedRow = mapTank01PlayerWeek(raw, {
+        season: y,
+        week,
+        team,
+        opponent
+      });
+      if (mappedRow) mapped.push(mappedRow);
+    }
+    return mapped;
+  });
+}
+
+async function loadTank01Rosters(season){
+  const y = toInt(season);
+  if (!Number.isFinite(y)) return [];
+  return memoizedTank('tank-roster', y, async () => {
+    const schedule = await loadTank01Schedules(y);
+    const teams = Array.from(new Set(schedule.flatMap((g) => [g.home_team, g.away_team].filter(Boolean))));
+    const mapped = [];
+    const candidates = [
+      { path: '/getNFLRosters', params: { season: y } }
+    ];
+    for (const spec of candidates) {
+      try {
+        const payload = await fetchTank01(spec.path, { params: spec.params });
+        const arr = extractFirstArray(payload);
+        if (arr.length) {
+          for (const raw of arr) {
+            const mappedRow = mapTank01Roster(raw, { season: y });
+            if (mappedRow) mapped.push(mappedRow);
+          }
+          return mapped;
+        }
+      } catch (err) {
+        // fall back to per-team
+      }
+    }
+    for (const team of teams) {
+      const perTeamCandidates = [
+        { path: '/getNFLTeamRoster', params: { season: y, teamID: team } },
+        { path: '/getNFLTeamRoster', params: { teamID: team } }
+      ];
+      for (const spec of perTeamCandidates) {
+        try {
+          const payload = await fetchTank01(spec.path, { params: spec.params });
+          const arr = extractFirstArray(payload);
+          if (!arr.length) continue;
+          for (const raw of arr) {
+            const mappedRow = mapTank01Roster(raw, { season: y, team });
+            if (mappedRow) mapped.push(mappedRow);
+          }
+          break;
+        } catch (err) {
+          // ignore
+        }
+      }
+    }
+    return mapped;
+  });
+}
+
+async function loadTank01DepthCharts(season){
+  const y = toInt(season);
+  if (!Number.isFinite(y)) return [];
+  return memoizedTank('tank-depth', y, async () => {
+    const schedule = await loadTank01Schedules(y);
+    const teams = Array.from(new Set(schedule.flatMap((g) => [g.home_team, g.away_team].filter(Boolean))));
+    const mapped = [];
+    const candidates = [
+      { path: '/getNFLDepthCharts', params: { season: y } }
+    ];
+    for (const spec of candidates) {
+      try {
+        const payload = await fetchTank01(spec.path, { params: spec.params });
+        const arr = extractFirstArray(payload);
+        if (arr.length) {
+          for (const raw of arr) {
+            const mappedRow = mapTank01DepthChart(raw, { season: y });
+            if (mappedRow) mapped.push(mappedRow);
+          }
+          return mapped;
+        }
+      } catch (err) {
+        // continue
+      }
+    }
+    for (const team of teams) {
+      const perTeamCandidates = [
+        { path: '/getNFLTeamDepthChart', params: { season: y, teamID: team } },
+        { path: '/getNFLTeamDepthChart', params: { teamID: team } }
+      ];
+      for (const spec of perTeamCandidates) {
+        try {
+          const payload = await fetchTank01(spec.path, { params: spec.params });
+          const arr = extractFirstArray(payload);
+          if (!arr.length) continue;
+          for (const raw of arr) {
+            const mappedRow = mapTank01DepthChart(raw, { season: y, team });
+            if (mappedRow) mapped.push(mappedRow);
+          }
+          break;
+        } catch (err) {
+          // ignore
+        }
+      }
+    }
+    return mapped;
+  });
+}
+
+async function loadTank01Injuries(season){
+  const y = toInt(season);
+  if (!Number.isFinite(y)) return [];
+  return memoizedTank('tank-injuries', y, async () => {
+    const candidates = [
+      { path: '/getNFLInjuries', params: { season: y } }
+    ];
+    let rows = [];
+    for (const spec of candidates) {
+      try {
+        const payload = await fetchTank01(spec.path, { params: spec.params });
+        const arr = extractFirstArray(payload);
+        if (arr.length) {
+          rows = arr;
+          break;
+        }
+      } catch (err) {
+        // continue
+      }
+    }
+    const mapped = [];
+    for (const raw of rows) {
+      const mappedRow = mapTank01Injury(raw, { season: y });
+      if (mappedRow) mapped.push(mappedRow);
+    }
+    return mapped;
+  });
+}
+
+async function loadTank01BettingOdds(season){
+  const y = toInt(season);
+  if (!Number.isFinite(y)) return [];
+  return memoizedTank('tank-odds', y, async () => {
+    const candidates = [
+      { path: '/getNFLOdds', params: { season: y } },
+      { path: '/getNFLBettingOdds', params: { season: y } }
+    ];
+    let rows = [];
+    for (const spec of candidates) {
+      try {
+        const payload = await fetchTank01(spec.path, { params: spec.params });
+        const arr = extractFirstArray(payload);
+        if (arr.length) {
+          rows = arr;
+          break;
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+    const mapped = [];
+    for (const raw of rows) {
+      const mappedRow = mapTank01Odds(raw, { season: y });
+      if (mappedRow) mapped.push(mappedRow);
+    }
+    return mapped;
+  });
+}
+
+async function loadTank01Projections(season){
+  const y = toInt(season);
+  if (!Number.isFinite(y)) return [];
+  return memoizedTank('tank-projections', y, async () => {
+    const candidates = [
+      { path: '/getNFLPlayerProjections', params: { season: y } },
+      { path: '/getNFLProjections', params: { season: y } }
+    ];
+    let rows = [];
+    for (const spec of candidates) {
+      try {
+        const payload = await fetchTank01(spec.path, { params: spec.params });
+        const arr = extractFirstArray(payload);
+        if (arr.length) {
+          rows = arr;
+          break;
+        }
+      } catch (err) {
+        // continue
+      }
+    }
+    const mapped = [];
+    for (const raw of rows) {
+      const mappedRow = mapTank01Projection(raw, { season: y });
+      if (mappedRow) mapped.push(mappedRow);
+    }
+    return mapped;
+  });
+}
+
+async function loadTank01PBP(season){
+  const y = toInt(season);
+  if (!Number.isFinite(y)) return [];
+  return memoizedTank('tank-pbp', y, async () => {
+    const schedule = await loadTank01Schedules(y);
+    const rows = [];
+    for (const game of schedule) {
+      if (!game?.game_id) continue;
+      try {
+        const payload = await fetchTank01('/getNFLBoxScore', {
+          params: {
+            season: y,
+            gameID: game.game_id,
+            gameId: game.game_id,
+            playByPlay: 'true'
+          }
+        });
+        const playCandidates = extractFirstArray(payload?.playByPlay ?? payload?.plays ?? payload);
+        for (const play of playCandidates) {
+          const mappedPlay = mapTank01Play(play, {
+            season: y,
+            week: game.week,
+            season_type: game.season_type,
+            posteam: play.offenseTeam ?? play.offense ?? game.away_team,
+            defteam: play.defenseTeam ?? play.defense ?? game.home_team
+          });
+          if (mappedPlay) rows.push(mappedPlay);
+        }
+      } catch (err) {
+        // ignore missing play-by-play
+      }
+    }
     return rows;
   });
 }
@@ -519,8 +1061,43 @@ export async function loadPFRAdvTeam(season){
   // Return array for backward compatibility with existing callers
   return loadPFRAdvTeamWeeklyArray(season);
 }
-export async function loadInjuries(){
-  // Not available as a single canonical csv in nflverse-data; return empty & log once
-  console.warn('[loadInjuries] returning empty (no canonical weekly injuries csv in nflverse-data)');
-  return [];
+let nflverseInjuryWarned = false;
+
+export async function loadInjuries(season){
+  const y = toInt(season);
+  const fallback = async () => {
+    if (!nflverseInjuryWarned) {
+      console.warn('[loadInjuries] returning empty (no canonical weekly injuries csv in nflverse-data)');
+      nflverseInjuryWarned = true;
+    }
+    return [];
+  };
+
+  if (Number.isFinite(y) && tank01EnabledForSeason(y)) {
+    return withTankFallback('injuries', y, () => loadTank01Injuries(y), fallback);
+  }
+
+  return fallback();
+}
+
+export async function loadBettingOdds(season){
+  const y = toInt(season); if(y==null) throw new Error('loadBettingOdds season');
+  return cached(caches.odds, y, async()=>{
+    const fallback = async () => [];
+    if (tank01EnabledForSeason(y)) {
+      return withTankFallback('odds', y, () => loadTank01BettingOdds(y), fallback);
+    }
+    return fallback();
+  });
+}
+
+export async function loadPlayerProjections(season){
+  const y = toInt(season); if(y==null) throw new Error('loadPlayerProjections season');
+  return cached(caches.projections, y, async()=>{
+    const fallback = async () => [];
+    if (tank01EnabledForSeason(y)) {
+      return withTankFallback('projections', y, () => loadTank01Projections(y), fallback);
+    }
+    return fallback();
+  });
 }

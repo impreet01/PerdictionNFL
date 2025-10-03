@@ -3,9 +3,7 @@ import {
   loadSchedules,
   loadTeamWeekly,
   loadTeamGameAdvanced,
-  listDatasetSeasons,
-  PUBLIC_API_ENABLED,
-  PUBLIC_API_SEASON_CUTOFF
+  listDatasetSeasons
 } from "./dataSources.js";
 import { buildFeatures, FEATS } from "./featureBuild.js";
 import { writeFileSync, mkdirSync } from "fs";
@@ -34,12 +32,6 @@ for (let i = 0; i < argv.length; i++) {
   }
 }
 
-const parseSeason = (value) => {
-  if (value === undefined || value === null || value === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-};
-
 const TARGET_SEASON = Number(cliOpts.season ?? process.env.SEASON ?? new Date().getFullYear());
 const TARGET_WEEK = Number(cliOpts.week ?? process.env.WEEK ?? 6);
 const INCLUDE_ALL = Boolean(
@@ -47,14 +39,7 @@ const INCLUDE_ALL = Boolean(
     /^(1|true|yes)$/i.test(String(cliOpts.all ?? '')) ||
     /^(1|true|yes)$/i.test(String(process.env.ALL_SEASONS ?? process.env.ALL ?? ''))
 );
-const cliSince = parseSeason(cliOpts.since);
-const envSince = parseSeason(process.env.SINCE_SEASON);
-const SINCE_SEASON =
-  cliSince ??
-  envSince ??
-  (!INCLUDE_ALL && PUBLIC_API_ENABLED
-    ? (Number.isFinite(PUBLIC_API_SEASON_CUTOFF) ? PUBLIC_API_SEASON_CUTOFF : TARGET_SEASON)
-    : null);
+const SINCE_SEASON = cliOpts.since != null ? Number(cliOpts.since) : (process.env.SINCE_SEASON ? Number(process.env.SINCE_SEASON) : null);
 const MAX_SEASONS = cliOpts.max != null ? Number(cliOpts.max) : (process.env.MAX_SEASONS ? Number(process.env.MAX_SEASONS) : null);
 
 function Xy(rows) {
@@ -110,9 +95,7 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
     includeAll: INCLUDE_ALL,
     sinceSeason: SINCE_SEASON,
     maxSeasons: MAX_SEASONS,
-    availableSeasons: discoveredSeasons,
-    publicApiEnabled: PUBLIC_API_ENABLED,
-    publicApiCutoff: PUBLIC_API_SEASON_CUTOFF
+    availableSeasons: discoveredSeasons
   });
   const trainingSeasons = Array.from(new Set(seasonsResolved.filter((s) => Number(s) <= TARGET_SEASON).concat([TARGET_SEASON])))
     .map((s) => Number(s))

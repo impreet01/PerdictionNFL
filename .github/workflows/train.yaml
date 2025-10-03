@@ -74,6 +74,13 @@ jobs:
           fi
           echo "WEEK=$WEEK" >> $GITHUB_OUTPUT
 
+      - name: Fetch Rotowire injuries
+        env:
+          ROTOWIRE_ENABLED: 'true'
+          SEASON: ${{ env.SEASON }}
+          WEEK: ${{ steps.resolve.outputs.WEEK }}
+        run: npm run fetch:injuries -- --season=$SEASON --week=$WEEK
+
       - name: Build context
         env:
           SEASON: ${{ env.SEASON }}

@@ -90,7 +90,8 @@ async function main() {
       annMaxEpochs: 50,
       annCvMaxEpochs: 20,
       annCvSeeds: 2,
-      weightStep: 0.1
+      weightStep: 0.1,
+      skipSeasonDB: true
     }
   });
 

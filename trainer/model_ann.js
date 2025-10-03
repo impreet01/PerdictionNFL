@@ -157,15 +157,24 @@ function lossBCE(pred, target) {
   return -(target * Math.log(Math.max(pred, eps)) + (1 - target) * Math.log(Math.max(1 - pred, eps)));
 }
 
-function splitTrainVal(X, y, valFraction = 0.2) {
+export function splitTrainVal(X, y, valFraction = 0.2, rng = Math.random) {
   const n = X.length;
-  const valSize = Math.min(Math.max(1, Math.floor(n * valFraction)), Math.max(1, n - 1));
-  const trainSize = Math.max(1, n - valSize);
+  if (n <= 1) {
+    return { trainIdx: n ? [0] : [], valIdx: [] };
+  }
   const idx = Array.from({ length: n }, (_, i) => i);
-  return {
-    trainIdx: idx.slice(0, trainSize),
-    valIdx: idx.slice(trainSize)
-  };
+  for (let i = idx.length - 1; i > 0; i--) {
+    const j = Math.floor((rng() ?? Math.random()) * (i + 1));
+    [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+  const valSize = Math.min(Math.max(1, Math.floor(n * valFraction)), Math.max(1, n - 1));
+  let trainIdx = idx.slice(valSize);
+  let valIdx = idx.slice(0, valSize);
+  if (!trainIdx.length) {
+    trainIdx = [valIdx[0]];
+    valIdx = valIdx.slice(1);
+  }
+  return { trainIdx, valIdx };
 }
 
 function selectRows(X, idx) {
@@ -182,6 +191,7 @@ function trainSingleNetwork(
   { seed = 1, maxEpochs = 200, lr = 1e-3, patience = 10, architecture = [64, 32, 16] }
 ) {
   const rng = makeLCG(seed);
+  const splitRng = makeLCG((seed ^ 0xa5a5a5a5) >>> 0);
   const inputDim = X[0]?.length || 0;
   const net = initNetwork(inputDim, architecture, rng);
 
@@ -192,7 +202,8 @@ function trainSingleNetwork(
   const { trainIdx, valIdx } = splitTrainVal(
     X,
     y,
-    Math.min(0.2, Math.max(0.1, 1 / Math.max(2, X.length)))
+    Math.min(0.2, Math.max(0.1, 1 / Math.max(2, X.length))),
+    splitRng
   );
   const Xtrain = selectRows(X, trainIdx);
   const ytrain = selectVals(y, trainIdx);
@@ -202,8 +213,10 @@ function trainSingleNetwork(
   let best = copyNetwork(net);
   let bestLoss = Infinity;
   let badRounds = 0;
+  let epochs = 0;
 
   for (let epoch = 0; epoch < maxEpochs; epoch++) {
+    epochs = epoch + 1;
     const grads = {
       gradW: net.weights.map((W) => zeroLike(W)),
       gradB: net.biases.map((b) => initVector(b.length))
@@ -251,7 +264,7 @@ function trainSingleNetwork(
     }
   }
 
-  return { network: best, epochs: 0, bestLoss };
+  return { network: best, epochs, bestLoss };
 }
 
 export function trainANNCommittee(
@@ -263,40 +276,81 @@ export function trainANNCommittee(
     lr = 1e-3,
     patience = 12,
     timeLimitMs = 70000,
-    architecture
+    architecture,
+    committeeSize: committeeSizeOption,
+    committees: committeesOption
   } = {}
 ) {
   if (!X?.length) {
-    return { models: [], seeds: [], architecture: [0, 1] };
+    return { models: [], committees: [], seeds: [], architecture: [0, 1], validationLosses: [] };
   }
   const start = Date.now();
-  const models = [];
-  const usedSeeds = [];
+  const results = [];
   const maxSeeds = Math.max(1, Math.round(seeds));
   const arch = Array.isArray(architecture) && architecture.length ? architecture : [64, 32, 16];
+  const committeeSize = Math.max(1, Math.round(committeeSizeOption ?? Math.min(3, maxSeeds)));
+  const maxCommitteesDefault = Math.max(1, Math.ceil(maxSeeds / committeeSize));
+  const committeeCount = Math.max(1, Math.round(committeesOption ?? Math.min(3, maxCommitteesDefault)));
   for (let i = 0; i < maxSeeds; i++) {
     const seed = i + 1;
     const result = trainSingleNetwork(X, y, { seed, maxEpochs, lr, patience, architecture: arch });
-    models.push(result.network);
-    usedSeeds.push(seed);
+    results.push({ ...result, seed });
+    const lossMsg = Number.isFinite(result.bestLoss) ? result.bestLoss.toFixed(4) : 'inf';
+    console.log(`[ANN] seed=${seed} valLoss=${lossMsg}`);
     if (Date.now() - start > timeLimitMs) break;
   }
+  results.sort((a, b) => (a.bestLoss ?? Infinity) - (b.bestLoss ?? Infinity));
+  const selectionCount = Math.min(results.length, committeeSize * committeeCount);
+  const selected = results.slice(0, selectionCount);
+  const committees = [];
+  for (let c = 0; c < committeeCount; c++) {
+    const slice = selected.slice(c * committeeSize, (c + 1) * committeeSize);
+    if (!slice.length) break;
+    committees.push({
+      networks: slice.map((r) => r.network),
+      seeds: slice.map((r) => r.seed),
+      losses: slice.map((r) => r.bestLoss)
+    });
+  }
+  if (!committees.length && results.length) {
+    const best = results[0];
+    committees.push({ networks: [best.network], seeds: [best.seed], losses: [best.bestLoss] });
+  }
+  const flatModels = committees.flatMap((c) => c.networks);
+  const flatSeeds = committees.flatMap((c) => c.seeds);
   return {
-    models,
-    seeds: usedSeeds,
-    architecture: [X[0]?.length || 0, ...arch, 1]
+    committees,
+    models: flatModels,
+    seeds: flatSeeds,
+    architecture: [X[0]?.length || 0, ...arch, 1],
+    validationLosses: results.map(({ seed, bestLoss }) => ({ seed, bestLoss })),
+    selected: selected.map(({ seed, bestLoss }) => ({ seed, bestLoss }))
   };
 }
 
 export function predictANNCommittee(model, X) {
-  if (!model?.models?.length) return X.map(() => 0.5);
-  const probs = new Array(X.length).fill(0);
-  for (const net of model.models) {
+  const committees = model?.committees?.length
+    ? model.committees
+    : (model?.models?.length ? [{ networks: model.models }] : []);
+  if (!committees.length) return X.map(() => 0.5);
+  const scores = new Array(X.length).fill(0);
+  let activeCount = 0;
+  for (const committee of committees) {
+    if (!committee.networks?.length) continue;
+    activeCount += 1;
+    const committeeScores = new Array(X.length).fill(0);
+    for (const net of committee.networks) {
+      for (let i = 0; i < X.length; i++) {
+        committeeScores[i] += forward(net, X[i]).out;
+      }
+    }
     for (let i = 0; i < X.length; i++) {
-      probs[i] += forward(net, X[i]).out;
+      committeeScores[i] /= committee.networks.length;
+      scores[i] += committeeScores[i];
     }
   }
-  return probs.map((p) => p / model.models.length);
+  if (!activeCount) return X.map(() => 0.5);
+  return scores.map((p) => p / activeCount);
 }
 
 function gradientInput(network, x) {
@@ -338,13 +392,26 @@ function gradientInput(network, x) {
 }
 
 export function gradientANNCommittee(model, x) {
-  if (!model?.models?.length) return new Array(x.length).fill(0);
+  const committees = model?.committees?.length
+    ? model.committees
+    : (model?.models?.length ? [{ networks: model.models }] : []);
+  if (!committees.length) return new Array(x.length).fill(0);
   const grad = new Array(x.length).fill(0);
-  for (const net of model.models) {
-    const g = gradientInput(net, x);
-    for (let i = 0; i < grad.length; i++) grad[i] += g[i];
+  let activeCount = 0;
+  for (const committee of committees) {
+    if (!committee.networks?.length) continue;
+    activeCount += 1;
+    const committeeGrad = new Array(x.length).fill(0);
+    for (const net of committee.networks) {
+      const g = gradientInput(net, x);
+      for (let i = 0; i < grad.length; i++) committeeGrad[i] += g[i];
+    }
+    for (let i = 0; i < grad.length; i++) {
+      grad[i] += committeeGrad[i] / committee.networks.length;
+    }
   }
-  for (let i = 0; i < grad.length; i++) grad[i] /= model.models.length;
+  if (!activeCount) return new Array(x.length).fill(0);
+  for (let i = 0; i < grad.length; i++) grad[i] /= activeCount;
   return grad;
 }
 

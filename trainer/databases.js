@@ -24,7 +24,8 @@ import {
   loadDepthCharts as loadDepthChartsDS,
   loadFTNCharts as loadFTNChartsDS,
   loadPBP as loadPBPDS,
-  loadPFRAdvTeamWeekly as loadPFRAdvTeamWeeklyDS
+  loadPFRAdvTeamWeekly as loadPFRAdvTeamWeeklyDS,
+  listDatasetSeasons
 } from "./dataSources.js";
 
 const BASE_REL = "https://github.com/nflverse/nflverse-data/releases/download";
@@ -41,6 +42,57 @@ function toInt(x) {
 }
 function uniq(arr) { return Array.from(new Set(arr)); }
 function ensureDir(p) { fs.mkdirSync(p, { recursive: true }); }
+
+export async function resolveSeasonList({
+  targetSeason,
+  includeAll = false,
+  sinceSeason = null,
+  maxSeasons = null,
+  availableSeasons = [],
+  dataset = "teamWeekly"
+} = {}) {
+  const seasons = Array.isArray(availableSeasons) && availableSeasons.length
+    ? availableSeasons.slice()
+    : await listDatasetSeasons(dataset).catch((err) => {
+        console.warn(`[resolveSeasonList] manifest seasons unavailable (${err?.message || err})`);
+        return [];
+      });
+  const canonical = Array.from(
+    new Set(
+      seasons
+        .concat(targetSeason != null ? [targetSeason] : [])
+        .map((s) => toInt(s))
+        .filter((s) => Number.isFinite(s))
+    )
+  ).sort((a, b) => a - b);
+
+  if (!canonical.length && Number.isFinite(targetSeason)) {
+    return [Number(targetSeason)];
+  }
+
+  let filtered = canonical;
+  const since = toInt(sinceSeason);
+  if (Number.isFinite(since)) {
+    filtered = filtered.filter((s) => s >= since);
+  }
+
+  const tgt = Number.isFinite(targetSeason) ? Number(targetSeason) : null;
+  if (!includeAll) {
+    if (tgt != null) {
+      filtered = filtered.filter((s) => s <= tgt);
+      if (!filtered.includes(tgt)) filtered.push(tgt);
+    } else if (filtered.length) {
+      filtered = [filtered[filtered.length - 1]];
+    }
+  }
+
+  const max = toInt(maxSeasons);
+  if (Number.isFinite(max) && max > 0) {
+    filtered = filtered.slice(-max);
+  }
+
+  return Array.from(new Set(filtered.filter((s) => Number.isFinite(s)).sort((a, b) => a - b)));
+}
 
 async function fetchCsvFlexible(url) {
   const tryUrls = [url];
@@ -652,9 +704,66 @@ export function listWeekGames(db, week) {
 
 // CLI
 if (import.meta && import.meta.url === `file://${process.argv[1]}`) {
-  const SEASON = toInt(process.env.SEASON) || new Date().getFullYear();
-  const WEEK = process.env.WEEK ? toInt(process.env.WEEK) : null;
-  buildContextDB(SEASON, WEEK).catch(e => {
+  const argv = process.argv.slice(2);
+  const opts = {};
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (!arg.startsWith('--')) continue;
+    const [rawKey, rawVal] = arg.split('=', 2);
+    const key = rawKey.replace(/^--/, '');
+    if (rawVal !== undefined) {
+      opts[key] = rawVal;
+    } else if (argv[i + 1] && !argv[i + 1].startsWith('--')) {
+      opts[key] = argv[i + 1];
+      i += 1;
+    } else {
+      opts[key] = true;
+    }
+  }
+
+  const envSeason = toInt(process.env.SEASON);
+  const targetSeason = toInt(opts.season) || envSeason || new Date().getFullYear();
+  const targetWeek = opts.week != null ? toInt(opts.week) : (process.env.WEEK ? toInt(process.env.WEEK) : null);
+  const includeAll = Boolean(
+    opts.all === true ||
+      /^(1|true|yes)$/i.test(String(opts.all ?? '')) ||
+      /^(1|true|yes)$/i.test(String(process.env.ALL_SEASONS ?? process.env.ALL ?? ''))
+  );
+  const sinceSeason = opts.since != null ? toInt(opts.since) : (process.env.SINCE_SEASON ? toInt(process.env.SINCE_SEASON) : null);
+  const maxSeasons = opts.max != null ? toInt(opts.max) : (process.env.MAX_SEASONS ? toInt(process.env.MAX_SEASONS) : null);
+  const outDir = opts.out || process.env.ARTIFACT_DIR || 'artifacts';
+
+  (async () => {
+    const discovered = await listDatasetSeasons('teamWeekly').catch(() => []);
+    const seasons = await resolveSeasonList({
+      targetSeason,
+      includeAll,
+      sinceSeason,
+      maxSeasons,
+      availableSeasons: discovered
+    });
+    if (!seasons.length) {
+      throw new Error('No seasons resolved for context build');
+    }
+    console.log(`[context] seasons selected: ${seasons.join(', ')}`);
+    ensureDir(outDir);
+    const indexEntries = [];
+    for (const season of seasons) {
+      const payload = await buildContextDB(season, targetWeek, outDir);
+      const fileName = `context_${season}_to_W${String(payload.built_through_week ?? 0).padStart(2, '0')}.json`;
+      indexEntries.push({
+        season,
+        built_through_week: payload.built_through_week ?? null,
+        artifact: path.join(outDir, fileName)
+      });
+    }
+    const indexPath = path.join(outDir, 'context_index.json');
+    fs.writeFileSync(
+      indexPath,
+      JSON.stringify({ generated_at: new Date().toISOString(), seasons: indexEntries }, null, 2)
+    );
+    console.log(`[context] WROTE ${indexPath}`);
+  })().catch((e) => {
     console.error(e);
     process.exit(1);
   });

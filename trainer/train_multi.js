@@ -502,7 +502,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   let resolvedWeek = Number(week ?? process.env.WEEK ?? 6);
   if (!Number.isFinite(resolvedWeek)) resolvedWeek = 6;
 
-  const DB = await buildSeasonDB(resolvedSeason);
+  const skipSeasonDB = Boolean(options.skipSeasonDB);
+  const DB = skipSeasonDB ? null : await buildSeasonDB(resolvedSeason);
 
   const schedules = data.schedules ?? (await loadSchedules(resolvedSeason));
   const teamWeekly = data.teamWeekly ?? (await loadTeamWeekly(resolvedSeason));
@@ -567,13 +568,15 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   });
 
   // --- Enrich feature rows with PFR advanced weekly differentials ---
-  for (const r of featureRows) {
-    // r.team is home team for home=1 rows in your pipeline
-    if (r.home === 1) {
-      attachAdvWeeklyDiff(DB, r, r.week, r.team, r.opponent);
-    } else {
-      // away rows exist in featureRows too; safe to enrich anyway:
-      attachAdvWeeklyDiff(DB, r, r.week, r.opponent, r.team);
+  if (DB) {
+    for (const r of featureRows) {
+      // r.team is home team for home=1 rows in your pipeline
+      if (r.home === 1) {
+        attachAdvWeeklyDiff(DB, r, r.week, r.team, r.opponent);
+      } else {
+        // away rows exist in featureRows too; safe to enrich anyway:
+        attachAdvWeeklyDiff(DB, r, r.week, r.opponent, r.team);
+      }
     }
   }
 

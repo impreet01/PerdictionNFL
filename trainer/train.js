@@ -1,16 +1,46 @@
 // trainer/train.js
-import { loadSchedules, loadTeamWeekly, loadTeamGameAdvanced } from "./dataSources.js";
+import {
+  loadSchedules,
+  loadTeamWeekly,
+  loadTeamGameAdvanced,
+  listDatasetSeasons
+} from "./dataSources.js";
 import { buildFeatures, FEATS } from "./featureBuild.js";
 import { writeFileSync, mkdirSync } from "fs";
 import LogisticRegression from "ml-logistic-regression";
 import { DecisionTreeClassifier as CART } from "ml-cart";
 import { Matrix } from "ml-matrix";
+import { resolveSeasonList } from "./databases.js";
 
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
 
-const TARGET_SEASON = Number(process.env.SEASON || new Date().getFullYear());
-const TARGET_WEEK = Number(process.env.WEEK || 6);
+const argv = process.argv.slice(2);
+const cliOpts = {};
+for (let i = 0; i < argv.length; i++) {
+  const arg = argv[i];
+  if (!arg.startsWith('--')) continue;
+  const [rawKey, rawVal] = arg.split('=', 2);
+  const key = rawKey.replace(/^--/, '');
+  if (rawVal !== undefined) {
+    cliOpts[key] = rawVal;
+  } else if (argv[i + 1] && !argv[i + 1].startsWith('--')) {
+    cliOpts[key] = argv[i + 1];
+    i += 1;
+  } else {
+    cliOpts[key] = true;
+  }
+}
+
+const TARGET_SEASON = Number(cliOpts.season ?? process.env.SEASON ?? new Date().getFullYear());
+const TARGET_WEEK = Number(cliOpts.week ?? process.env.WEEK ?? 6);
+const INCLUDE_ALL = Boolean(
+  cliOpts.all === true ||
+    /^(1|true|yes)$/i.test(String(cliOpts.all ?? '')) ||
+    /^(1|true|yes)$/i.test(String(process.env.ALL_SEASONS ?? process.env.ALL ?? ''))
+);
+const SINCE_SEASON = cliOpts.since != null ? Number(cliOpts.since) : (process.env.SINCE_SEASON ? Number(process.env.SINCE_SEASON) : null);
+const MAX_SEASONS = cliOpts.max != null ? Number(cliOpts.max) : (process.env.MAX_SEASONS ? Number(process.env.MAX_SEASONS) : null);
 
 function Xy(rows) {
   const X = rows.map(r => FEATS.map(k => Number(r[k] ?? 0)));
@@ -18,7 +48,10 @@ function Xy(rows) {
   return { X, y };
 }
 function splitTrainTest(all, season, week) {
-  const train = all.filter(r => r.season === season && r.week < week);
+  const train = all.filter(r => {
+    if (r.season === season) return r.week < week;
+    return r.season < season;
+  });
   const test  = all.filter(r => r.season === season && r.week === week);
   return { train, test };
 }
@@ -56,23 +89,49 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
 (async function main(){
   console.log(`Training season ${TARGET_SEASON}, week ${TARGET_WEEK}`);
 
-  const schedules = await loadSchedules(TARGET_SEASON);
-  const teamWeekly = await loadTeamWeekly(TARGET_SEASON);
-  let teamGame = [];
-  try { teamGame = await loadTeamGameAdvanced(TARGET_SEASON); } catch (_) {}
-  let prevTeamWeekly = [];
-  try { prevTeamWeekly = await loadTeamWeekly(TARGET_SEASON - 1); } catch (_) {}
-
-  const featRows = buildFeatures({
-    teamWeekly,
-    teamGame,
-    schedules,
-    season: TARGET_SEASON,
-    prevTeamWeekly
+  const discoveredSeasons = await listDatasetSeasons('teamWeekly').catch(() => []);
+  const seasonsResolved = await resolveSeasonList({
+    targetSeason: TARGET_SEASON,
+    includeAll: INCLUDE_ALL,
+    sinceSeason: SINCE_SEASON,
+    maxSeasons: MAX_SEASONS,
+    availableSeasons: discoveredSeasons
   });
-  const { train, test } = splitTrainTest(featRows, TARGET_SEASON, TARGET_WEEK);
+  const trainingSeasons = Array.from(new Set(seasonsResolved.filter((s) => Number(s) <= TARGET_SEASON).concat([TARGET_SEASON])))
+    .map((s) => Number(s))
+    .sort((a, b) => a - b);
 
-  console.log(`DEBUG: featRows=${featRows.length}, train=${train.length}, test=${test.length}`);
+  console.log(`[train] seasons in scope: ${trainingSeasons.join(', ')}`);
+
+  const allRows = [];
+  const seasonSummaries = [];
+  for (const season of trainingSeasons) {
+    const [schedules, teamWeekly] = await Promise.all([
+      loadSchedules(season),
+      loadTeamWeekly(season)
+    ]);
+    let teamGame = [];
+    try { teamGame = await loadTeamGameAdvanced(season); } catch (_) {}
+    let prevTeamWeekly = [];
+    try { prevTeamWeekly = await loadTeamWeekly(season - 1); } catch (_) {}
+    const featRows = buildFeatures({
+      teamWeekly,
+      teamGame,
+      schedules,
+      season,
+      prevTeamWeekly
+    });
+    allRows.push(...featRows);
+    seasonSummaries.push({ season, rows: featRows.length });
+  }
+
+  const { train, test } = splitTrainTest(allRows, TARGET_SEASON, TARGET_WEEK);
+
+  const totalRows = allRows.length;
+  console.log(`DEBUG: featRows=${totalRows}, train=${train.length}, test=${test.length}`);
+  for (const meta of seasonSummaries) {
+    console.log(`DEBUG: season ${meta.season} rows=${meta.rows}`);
+  }
   if (!train.length || !test.length) {
     console.log("No train/test rows (calendar or data timing). Skipping gracefully.");
     process.exit(0);

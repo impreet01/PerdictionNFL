@@ -4,6 +4,8 @@ This project relies exclusively on [nflverse](https://github.com/nflverse/) publ
 module wraps every feed with:
 
 - **Redundant mirrors** – GitHub release assets, `main` and `master` branches, and legacy `nfldata` fallbacks.
+- **Dynamic discovery** – manifests are resolved via the GitHub API so loaders know which seasons/files are available before
+  downloading anything. The manifest results are cached in-process to avoid repeated API calls during long runs.
 - **Automatic gzip handling** – URLs are tried with and without the `.gz` suffix.
 - **Per-season caching** – repeated calls within a single training run reuse in-memory copies so we only download each table once.
 
@@ -24,12 +26,25 @@ Use this table to understand what we load, how often nflverse updates it, and wh
 | PFR advanced team | `releases/download/pfr_advstats/pfr_advstats_team_<season>.csv` | Weekly | Team efficiency context |
 | Officials | `releases/download/officials/officials.csv` | Sporadic | Optional officiating context |
 
+## Season discovery & range controls
+
+`trainer/databases.js` now exposes a `resolveSeasonList` helper that folds together manifest discovery, CLI flags, and
+environment variables:
+
+- `--all` / `ALL_SEASONS` – use the entire discovered history (still capped by `SINCE_SEASON`/`MAX_SEASONS`).
+- `--since <year>` / `SINCE_SEASON` – drop anything older than the given season.
+- `--max <n>` / `MAX_SEASONS` – keep only the most recent `n` seasons after other filters are applied.
+
+The context builder CLI iterates that bounded list, writes one context shard per season, and produces
+`artifacts/context_index.json` summarising what was generated. Training inherits the same controls, aggregates
+features across the resolved seasons, and still evaluates only on the target season/week so rolling statistics reset cleanly.
+
 ## Extending the loaders
 
 1. Identify the nflverse dataset (check [nflverse-data README](https://github.com/nflverse/nflverse-data)).
 2. Add a loader in `trainer/dataSources.js` following the same pattern: declare mirrors, wrap in `cached(...)`, and export it.
 3. Consume the new data in feature builders or context packs as needed.
 
-Because every loader now caches by `(season, dataset)`, you can safely call them inside loops or Promise.all chains without
+Because every loader now caches by `(season, dataset)`, you can safely call them inside loops or `Promise.all` chains without
 re-downloading. If you need to force a refresh (for example when running long-lived services), clear the corresponding cache
-map before invoking the loader again.
+map before invoking the loader again. The manifest helper will refetch if you evict the cached entry.

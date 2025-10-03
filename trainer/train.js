@@ -1,5 +1,4 @@
 // trainer/train.js
-import { CONFIG } from "../config/env.js";
 import {
   loadSchedules,
   loadTeamWeekly,
@@ -14,8 +13,6 @@ import LogisticRegression from "ml-logistic-regression";
 import { DecisionTreeClassifier as CART } from "ml-cart";
 import { Matrix } from "ml-matrix";
 import { resolveSeasonList } from "./databases.js";
-
-void CONFIG;
 
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });

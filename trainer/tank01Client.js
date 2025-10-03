@@ -1,19 +1,15 @@
 // trainer/tank01Client.js
 // Shared RapidAPI client for Tank01 endpoints with retry/backoff handling.
 
-import { CONFIG } from "../config/env.js";
-
 const DEFAULT_HOST = "tank01-nfl-live-in-game-real-time-statistics-nfl.p.rapidapi.com";
-const DEFAULT_BASE = `https://${DEFAULT_HOST}`;
-const BASE_URL = CONFIG.TANK01_API_BASE_URL || DEFAULT_BASE;
-const API_HOST = CONFIG.TANK01_API_HOST || DEFAULT_HOST;
+const BASE_URL = `https://${DEFAULT_HOST}`;
 const RETRYABLE = new Set([401, 429]);
 const MAX_DELAY_MS = 10000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const coercePath = (path = "") => {
-  if (!path) return BASE_URL;
+  if (!path) return "/";
   if (/^https?:/i.test(path)) return path;
   return `${BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 };
@@ -38,12 +34,11 @@ const appendSearchParams = (url, params) => {
 };
 
 export const tank01Config = {
-  host: API_HOST,
-  baseUrl: BASE_URL,
+  host: DEFAULT_HOST,
   minSeason: 2022
 };
 
-export const hasTank01Key = () => Boolean(CONFIG.TANK01_API_KEY);
+export const hasTank01Key = () => Boolean(process.env.TANK01_API_KEY);
 
 export function tank01EnabledForSeason(season) {
   if (!hasTank01Key()) return false;
@@ -79,7 +74,7 @@ export async function fetchTank01(path, { params, method = "GET", retries = 3, s
   const url = new URL(coercePath(path));
   appendSearchParams(url, params);
   const headers = {
-    "X-RapidAPI-Key": CONFIG.TANK01_API_KEY,
+    "X-RapidAPI-Key": process.env.TANK01_API_KEY,
     "X-RapidAPI-Host": tank01Config.host,
     Accept: "application/json"
   };

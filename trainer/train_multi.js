@@ -1,7 +1,6 @@
 // trainer/train_multi.js
 // Multi-model ensemble trainer with logistic+CART, Bradley-Terry, and ANN committee.
 
-import { CONFIG } from "../config/env.js";
 import fs from "node:fs";
 import {
   loadSchedules,
@@ -27,8 +26,6 @@ import { DecisionTreeClassifier as CART } from "ml-cart";
 import { Matrix, SVD } from "ml-matrix";
 import { logLoss, brier, accuracy, aucRoc, calibrationBins } from "./metrics.js";
 import { buildSeasonDB, attachAdvWeeklyDiff } from "./databases.js";
-
-void CONFIG;
 
 const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 

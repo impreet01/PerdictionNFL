@@ -7,6 +7,7 @@
 
 import { aggregatePBP } from "./featureBuild_pbp.js";
 import { aggregatePlayerUsage } from "./featureBuild_players.js";
+import { assertScheduleRow, assertTeamWeeklyRow } from "./schemaChecks.js";
 
 export const FEATS = [
   "off_1st_down_s2d",
@@ -307,10 +308,31 @@ function indexTeamGame(rows = [], season) {
   const idx = new Map();
   for (const row of rows) {
     if (Number(row.season) !== Number(season)) continue;
-    const team = normTeam(row.team ?? row.team_abbr ?? row.team_code ?? row.posteam);
-    if (!team) continue;
     const week = Number(row.week ?? row.game_week ?? row.week_number);
     if (!Number.isFinite(week)) continue;
+    if (row.home_context && row.away_context) {
+      const homeTeam = normTeam(row.home_context.team ?? row.home_team);
+      const awayTeam = normTeam(row.away_context.team ?? row.away_team);
+      if (homeTeam) {
+        idx.set(`${season}-${week}-${homeTeam}`, {
+          ...row.home_context,
+          season: Number(row.season),
+          week,
+          opponent: awayTeam
+        });
+      }
+      if (awayTeam) {
+        idx.set(`${season}-${week}-${awayTeam}`, {
+          ...row.away_context,
+          season: Number(row.season),
+          week,
+          opponent: homeTeam
+        });
+      }
+      continue;
+    }
+    const team = normTeam(row.team ?? row.team_abbr ?? row.team_code ?? row.posteam);
+    if (!team) continue;
     idx.set(`${season}-${week}-${team}`, row);
   }
   return idx;
@@ -492,6 +514,17 @@ export function buildFeatures({
 }) {
   const seasonNum = Number(season);
   if (!Number.isFinite(seasonNum)) return [];
+
+  try {
+    (schedules || []).forEach(assertScheduleRow);
+  } catch (err) {
+    throw new Error(`buildFeatures schedule schema: ${err.message}`);
+  }
+  try {
+    (teamWeekly || []).forEach(assertTeamWeeklyRow);
+  } catch (err) {
+    throw new Error(`buildFeatures teamWeekly schema: ${err.message}`);
+  }
 
   const regSched = (schedules || []).filter(
     (game) => Number(game.season) === seasonNum && isReg(game.season_type)

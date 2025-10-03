@@ -608,7 +608,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     }
   }
 
-  const featureRows = buildFeatures({
+  let featureRows = buildFeatures({
     teamWeekly,
     teamGame,
     schedules,
@@ -617,13 +617,20 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     pbp: pbpData,
     playerWeekly
   });
-  const btRows = buildBTFeatures({
+  let btRows = buildBTFeatures({
     teamWeekly,
     teamGame,
     schedules,
     season: resolvedSeason,
     prevTeamWeekly
   });
+
+  const boundedWeek = (row) => {
+    const w = Number(row.week);
+    return Number.isFinite(w) && w >= 1 && w <= resolvedWeek;
+  };
+  featureRows = featureRows.filter(boundedWeek);
+  btRows = btRows.filter(boundedWeek);
 
   // --- Enrich feature rows with PFR advanced weekly differentials ---
   if (DB) {
@@ -656,17 +663,46 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     (r) => r.season === resolvedSeason && r.week === resolvedWeek && r.home === 1
   );
 
+  const ensureBtFeatures = (btRow, context) => {
+    if (!btRow) return false;
+    const missing = BT_FEATURES.filter((key) => !Number.isFinite(btRow.features?.[key]));
+    if (missing.length) {
+      console.warn(
+        `[train_multi] skipping ${context} missing BT features: ${missing.join(', ')}`
+      );
+      return false;
+    }
+    return true;
+  };
+
   const trainGames = trainRowsRaw
     .map((row) => ({ row, bt: btTrainMap.get(makeGameId(row)) }))
-    .filter((g) => g.bt);
+    .filter((g) => ensureBtFeatures(g.bt, `train ${makeGameId(g.row)}`));
   const testGames = testRowsRaw
     .map((row) => ({ row, bt: btTestMap.get(makeGameId(row)) }))
-    .filter((g) => g.bt);
+    .filter((g) => ensureBtFeatures(g.bt, `test ${makeGameId(g.row)}`));
 
   const trainRows = trainGames.map((g) => g.row);
   const btTrainRows = trainGames.map((g) => g.bt);
   const testRows = testGames.map((g) => g.row);
   const btTestRows = testGames.map((g) => g.bt);
+  const trainWeeksList = [...new Set(trainRows.map((r) => Number(r.week)).filter(Number.isFinite))].sort(
+    (a, b) => a - b
+  );
+  console.log(
+    `Train rows (home=1): ${trainRows.length}, weeks: ${trainWeeksList.join(',')}`
+  );
+  console.log(`Test rows: ${testRows.length} (week ${resolvedWeek})`);
+  if (!trainRows.length) {
+    throw new Error(
+      'No training rows available after filtering; check adapters, season/week inputs, and schedule alignment.'
+    );
+  }
+  if (!testRows.length) {
+    throw new Error(
+      `No test rows available for week ${resolvedWeek}; ensure schedules and adapters returned current week games.`
+    );
+  }
   const leagueMeans = computeLeagueMeans(trainRows);
 
   const labels = trainRows.map((r) => Number(r.win));
@@ -835,6 +871,14 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const logitTest = predictLogit(testStd, logitModelFull).map(safeProb);
   const treeTest = predictTree(cartFull, leafStatsFull, testStd).map(safeProb);
   const annTest = predictANNCommittee(annModelFull, testStd).map(safeProb);
+  if (annTest.length) {
+    const annSpread = Math.max(...annTest) - Math.min(...annTest);
+    if (annSpread < 0.01) {
+      console.warn(
+        `[ANN] flat week spread=${annSpread.toFixed(4)}; check adapters & feature variance.`
+      );
+    }
+  }
   const btBootstrap = options.btBootstrapSamples ?? Number(process.env.BT_B ?? 1000);
   const btPreds = predictBT({
     model: btModelFull,
@@ -1432,7 +1476,7 @@ async function loadSeasonData(season) {
 
   let officials;
   try {
-    officials = await loadOfficials();
+    officials = await loadOfficials(season);
   } catch (err) {
     officials = [];
   }

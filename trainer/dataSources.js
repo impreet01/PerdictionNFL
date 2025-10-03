@@ -2,6 +2,23 @@
 import { parse } from 'csv-parse/sync';
 import zlib from 'node:zlib';
 
+import {
+  adaptDepthCharts,
+  adaptESPNQBR,
+  adaptInjuries,
+  adaptPlayerWeekly,
+  adaptRostersWeekly,
+  adaptSchedules,
+  adaptSnapCounts,
+  adaptTeamGameAdvanced,
+  adaptTeamWeekly,
+  adaptOfficials
+} from './apiAdapter.js';
+import {
+  assertBTFeatureRow,
+  assertScheduleRow,
+  assertTeamWeeklyRow
+} from './schemaChecks.js';
 import { fetchTank01, tank01EnabledForSeason } from './tank01Client.js';
 import {
   extractFirstArray,
@@ -27,6 +44,93 @@ if (process.env.GITHUB_TOKEN) {
 }
 
 const manifestCache = new Map();
+
+const PUBLIC_ENDPOINT_ENV = {
+  schedules: process.env.PUBLIC_API_SCHEDULES_URL,
+  teamWeekly: process.env.PUBLIC_API_TEAM_WEEKLY_URL,
+  teamGameAdvanced: process.env.PUBLIC_API_TEAM_GAME_ADVANCED_URL,
+  playerWeekly: process.env.PUBLIC_API_PLAYER_WEEKLY_URL,
+  rostersWeekly: process.env.PUBLIC_API_ROSTERS_WEEKLY_URL,
+  depthCharts: process.env.PUBLIC_API_DEPTH_CHARTS_URL,
+  injuries: process.env.PUBLIC_API_INJURIES_URL,
+  snapCounts: process.env.PUBLIC_API_SNAP_COUNTS_URL,
+  espnQbr: process.env.PUBLIC_API_ESPN_QBR_URL,
+  officials: process.env.PUBLIC_API_OFFICIALS_URL
+};
+
+const PUBLIC_API_BASE = process.env.PUBLIC_API_BASE?.replace(/\/+$/, '');
+const PUBLIC_API_TIMEOUT_MS = Number(process.env.PUBLIC_API_TIMEOUT_MS ?? 15000);
+const PUBLIC_API_HEADERS = {
+  'user-agent': 'perdiction-nfl-adapter',
+  accept: 'application/json'
+};
+
+const applyTemplate = (template, context = {}) =>
+  template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    const value = context[key];
+    return value == null ? '' : String(value);
+  });
+
+const resolvePublicUrl = (kind, context = {}) => {
+  const template = PUBLIC_ENDPOINT_ENV[kind];
+  if (template) return applyTemplate(template, context);
+  if (!PUBLIC_API_BASE) return null;
+  if (!context?.season) return null;
+  switch (kind) {
+    case 'schedules':
+      return `${PUBLIC_API_BASE}/seasons/${context.season}/schedule`;
+    case 'teamWeekly':
+      return `${PUBLIC_API_BASE}/seasons/${context.season}/teams/weekly`;
+    case 'teamGameAdvanced':
+      return `${PUBLIC_API_BASE}/seasons/${context.season}/games/advanced`;
+    case 'playerWeekly':
+      return `${PUBLIC_API_BASE}/seasons/${context.season}/players/weekly`;
+    case 'rostersWeekly':
+      return `${PUBLIC_API_BASE}/seasons/${context.season}/rosters/weekly`;
+    case 'depthCharts':
+      return `${PUBLIC_API_BASE}/seasons/${context.season}/depth-charts`;
+    case 'injuries':
+      return `${PUBLIC_API_BASE}/seasons/${context.season}/injuries`;
+    case 'snapCounts':
+      return `${PUBLIC_API_BASE}/seasons/${context.season}/snap-counts`;
+    case 'espnQbr':
+      return `${PUBLIC_API_BASE}/seasons/${context.season}/espn-qbr`;
+    case 'officials':
+      return `${PUBLIC_API_BASE}/seasons/${context.season}/officials`;
+    default:
+      return null;
+  }
+};
+
+async function fetchPublicDataset(kind, context = {}) {
+  const url = resolvePublicUrl(kind, context);
+  if (!url) throw new Error('public API endpoint not configured');
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(() => {
+        controller.abort();
+      }, PUBLIC_API_TIMEOUT_MS)
+    : null;
+  try {
+    const res = await fetch(url, {
+      headers: PUBLIC_API_HEADERS,
+      signal: controller?.signal
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => res.statusText);
+      throw new Error(`HTTP ${res.status}: ${txt}`);
+    }
+    const data = await res.json();
+    return data;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+const logPublicFallback = (label, err) => {
+  const reason = err?.message || err?.statusText || String(err);
+  console.warn(`[${label}] public API failed, falling back to nflverse: ${reason}`);
+};
 
 async function fetchGithubJson(url) {
   const res = await fetch(url, { headers: GH_HEADERS });
@@ -338,6 +442,7 @@ export const caches = {
   rosterWeekly:new Map(),
   depthCharts: new Map(),
   ftnCharts:   new Map(),
+  teamGameAdvanced: new Map(),
   pbp:         new Map(),
   pfrAdv:      new Map(), // merged weekly map (season)
   injuries:    new Map(),
@@ -440,6 +545,25 @@ export async function loadSchedules(season){
       return filteredRows;
     };
 
+    const seasonForPublic = Number.isFinite(targetSeason) ? targetSeason : Number.isFinite(y) ? y : null;
+    if (Number.isFinite(seasonForPublic)) {
+      try {
+        const payload = await fetchPublicDataset('schedules', { season: seasonForPublic });
+        const rows = adaptSchedules(payload);
+        rows.forEach(assertScheduleRow);
+        if (rows.length) {
+          console.log(`[loadSchedules] OK public rows=${rows.length} season=${seasonForPublic}`);
+          if (cacheKey === ALL_SCHEDULES_KEY) {
+            caches.schedules.set(seasonForPublic, rows);
+          }
+          return rows;
+        }
+        throw new Error('no schedule rows returned');
+      } catch (err) {
+        logPublicFallback('loadSchedules', err);
+      }
+    }
+
     if (Number.isFinite(targetSeason) && tank01EnabledForSeason(targetSeason)) {
       return withTankFallback('schedules', targetSeason, () => loadTank01Schedules(targetSeason), loadFallback);
     }
@@ -447,15 +571,45 @@ export async function loadSchedules(season){
     return loadFallback();
   });
 }
-export async function loadESPNQBR(){
-  return cached(caches.qbr, 0, async()=>{
+export async function loadESPNQBR(season){
+  const y = toInt(season);
+  const cacheKey = Number.isFinite(y) ? y : 0;
+  return cached(caches.qbr, cacheKey, async()=>{
+    if (Number.isFinite(y)) {
+      try {
+        const payload = await fetchPublicDataset('espnQbr', { season: y });
+        const rows = adaptESPNQBR(payload);
+        if (rows.length) {
+          console.log(`[loadESPNQBR] OK public rows=${rows.length} season=${y}`);
+          return rows;
+        }
+        throw new Error('no qbr rows returned');
+      } catch (err) {
+        logPublicFallback('loadESPNQBR', err);
+      }
+    }
     const {rows,source} = await fetchCsvFlexible(REL.qbr());
     console.log(`[loadESPNQBR] OK ${source} rows=${rows.length}`);
     return rows;
   });
 }
-export async function loadOfficials(){
-  return cached(caches.officials, 0, async()=>{
+export async function loadOfficials(season){
+  const y = toInt(season);
+  const cacheKey = Number.isFinite(y) ? y : 0;
+  return cached(caches.officials, cacheKey, async()=>{
+    if (Number.isFinite(y)) {
+      try {
+        const payload = await fetchPublicDataset('officials', { season: y });
+        const rows = adaptOfficials(payload);
+        if (rows.length) {
+          console.log(`[loadOfficials] OK public rows=${rows.length} season=${y}`);
+          return rows;
+        }
+        throw new Error('no officials rows returned');
+      } catch (err) {
+        logPublicFallback('loadOfficials', err);
+      }
+    }
     const {rows,source} = await fetchCsvFlexible(REL.officials());
     console.log(`[loadOfficials] OK ${source} rows=${rows.length}`);
     return rows;
@@ -464,6 +618,18 @@ export async function loadOfficials(){
 export async function loadSnapCounts(season){
   const y = toInt(season); if(y==null) throw new Error('loadSnapCounts season');
   return cached(caches.snapCounts, y, async()=>{
+    try {
+      const payload = await fetchPublicDataset('snapCounts', { season: y });
+      const rows = adaptSnapCounts(payload);
+      if (rows.length) {
+        console.log(`[loadSnapCounts] OK public rows=${rows.length}`);
+        return rows;
+      }
+      throw new Error('no snap count rows returned');
+    } catch (err) {
+      logPublicFallback('loadSnapCounts', err);
+    }
+
     const resolved = await resolveDatasetUrl('snapCounts', y, REL.snapCounts);
     const targetUrl = resolved?.url ?? REL.snapCounts(y);
     const {rows,source} = await fetchCsvFlexible(targetUrl);
@@ -474,12 +640,27 @@ export async function loadSnapCounts(season){
 export async function loadTeamWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadTeamWeekly season');
   return cached(caches.teamWeekly, y, async()=>{
+    try {
+      const payload = await fetchPublicDataset('teamWeekly', { season: y });
+      const rows = adaptTeamWeekly(payload);
+      rows.forEach(assertTeamWeeklyRow);
+      if (rows.length) {
+        console.log(`[loadTeamWeekly] OK public rows=${rows.length}`);
+        return rows;
+      }
+      throw new Error('no team weekly rows returned');
+    } catch (err) {
+      logPublicFallback('loadTeamWeekly', err);
+    }
+
     const loadFallback = async () => {
       const resolved = await resolveDatasetUrl('teamWeekly', y, REL.teamWeekly);
       const targetUrl = resolved?.url ?? REL.teamWeekly(y);
       const {rows,source} = await fetchCsvFlexible(targetUrl);
-      console.log(`[loadTeamWeekly] OK ${source} rows=${rows.length}`);
-      return rows;
+      const adapted = adaptTeamWeekly(rows);
+      adapted.forEach(assertTeamWeeklyRow);
+      console.log(`[loadTeamWeekly] OK ${source} rows=${adapted.length}`);
+      return adapted;
     };
 
     if (tank01EnabledForSeason(y)) {
@@ -489,13 +670,40 @@ export async function loadTeamWeekly(season){
     return loadFallback();
   });
 }
-// legacy alias in code -> keep signature
 export async function loadTeamGameAdvanced(season){
-  return loadTeamWeekly(season);
+  const y = toInt(season); if(y==null) throw new Error('loadTeamGameAdvanced season');
+  return cached(caches.teamGameAdvanced, y, async()=>{
+    try {
+      const payload = await fetchPublicDataset('teamGameAdvanced', { season: y });
+      const rows = adaptTeamGameAdvanced(payload);
+      rows.forEach(assertBTFeatureRow);
+      if (rows.length) {
+        console.log(`[loadTeamGameAdvanced] OK public rows=${rows.length}`);
+        return rows;
+      }
+      throw new Error('no team game advanced rows returned');
+    } catch (err) {
+      logPublicFallback('loadTeamGameAdvanced', err);
+    }
+
+    return loadTeamWeekly(y);
+  });
 }
 export async function loadPlayerWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadPlayerWeekly season');
   return cached(caches.playerWeekly, y, async()=>{
+    try {
+      const payload = await fetchPublicDataset('playerWeekly', { season: y });
+      const rows = adaptPlayerWeekly(payload);
+      if (rows.length) {
+        console.log(`[loadPlayerWeekly] OK public rows=${rows.length}`);
+        return rows;
+      }
+      throw new Error('no player weekly rows returned');
+    } catch (err) {
+      logPublicFallback('loadPlayerWeekly', err);
+    }
+
     const loadFallback = async () => {
       const resolved = await resolveDatasetUrl('playerWeekly', y, REL.playerWeekly);
       const targetUrl = resolved?.url ?? REL.playerWeekly(y);
@@ -514,6 +722,18 @@ export async function loadPlayerWeekly(season){
 export async function loadRostersWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadRostersWeekly season');
   return cached(caches.rosterWeekly, y, async()=>{
+    try {
+      const payload = await fetchPublicDataset('rostersWeekly', { season: y });
+      const rows = adaptRostersWeekly(payload);
+      if (rows.length) {
+        console.log(`[loadRostersWeekly] OK public rows=${rows.length}`);
+        return rows;
+      }
+      throw new Error('no roster rows returned');
+    } catch (err) {
+      logPublicFallback('loadRostersWeekly', err);
+    }
+
     const loadFallback = async () => {
       const resolved = await resolveDatasetUrl('rosterWeekly', y, REL.rosterWeekly);
       const targetUrl = resolved?.url ?? REL.rosterWeekly(y);
@@ -532,6 +752,18 @@ export async function loadRostersWeekly(season){
 export async function loadDepthCharts(season){
   const y = toInt(season); if(y==null) throw new Error('loadDepthCharts season');
   return cached(caches.depthCharts, y, async()=>{
+    try {
+      const payload = await fetchPublicDataset('depthCharts', { season: y });
+      const rows = adaptDepthCharts(payload);
+      if (rows.length) {
+        console.log(`[loadDepthCharts] OK public rows=${rows.length}`);
+        return rows;
+      }
+      throw new Error('no depth chart rows returned');
+    } catch (err) {
+      logPublicFallback('loadDepthCharts', err);
+    }
+
     const loadFallback = async () => {
       const resolved = await resolveDatasetUrl('depthCharts', y, REL.depthCharts);
       const targetUrl = resolved?.url ?? REL.depthCharts(y);
@@ -1072,6 +1304,20 @@ export async function loadInjuries(season){
     }
     return [];
   };
+
+  if (Number.isFinite(y)) {
+    try {
+      const payload = await fetchPublicDataset('injuries', { season: y });
+      const rows = adaptInjuries(payload);
+      if (rows.length) {
+        console.log(`[loadInjuries] OK public rows=${rows.length}`);
+        return rows;
+      }
+      throw new Error('no injury rows returned');
+    } catch (err) {
+      logPublicFallback('loadInjuries', err);
+    }
+  }
 
   if (Number.isFinite(y) && tank01EnabledForSeason(y)) {
     return withTankFallback('injuries', y, () => loadTank01Injuries(y), fallback);

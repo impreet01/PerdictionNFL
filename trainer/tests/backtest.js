@@ -51,19 +51,39 @@ async function main() {
   const results = [];
   const calibrationPoints = [];
 
+  const baseOptions = {
+    btBootstrapSamples: Number(process.env.BT_B ?? 300),
+    annSeeds: Number(process.env.ANN_SEEDS ?? 7),
+    annMaxEpochs: 150,
+    annCvMaxEpochs: 90,
+    annCvSeeds: 4,
+    weightStep: 0.05
+  };
+
+  const weekOneRun = await runTraining({
+    season,
+    week: 1,
+    data: { schedules, teamWeekly, prevTeamWeekly: prev },
+    options: baseOptions
+  });
+  if (!Array.isArray(weekOneRun.predictions) || !weekOneRun.predictions.length) {
+    throw new Error("Backtest: week 1 predictions missing");
+  }
+  const invalidWeekOne = weekOneRun.predictions?.filter((p) => {
+    if (!Number.isFinite(p?.forecast)) return true;
+    if (!p?.probs || typeof p.probs !== "object") return true;
+    return Object.values(p.probs).some((v) => !Number.isFinite(v));
+  });
+  if (invalidWeekOne?.length) {
+    throw new Error("Backtest: week 1 predictions contain non-finite probabilities");
+  }
+
   for (const week of targetWeeks) {
     const run = await runTraining({
       season,
       week,
       data: { schedules, teamWeekly, prevTeamWeekly: prev },
-      options: {
-        btBootstrapSamples: Number(process.env.BT_B ?? 300),
-        annSeeds: Number(process.env.ANN_SEEDS ?? 7),
-        annMaxEpochs: 150,
-        annCvMaxEpochs: 90,
-        annCvSeeds: 4,
-        weightStep: 0.05
-      }
+      options: baseOptions
     });
     const actualRows = run.predictions.filter((p) => p.actual === 0 || p.actual === 1);
     if (!actualRows.length) continue;

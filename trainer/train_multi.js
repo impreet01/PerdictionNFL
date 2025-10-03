@@ -32,7 +32,23 @@ const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
 
-const round3 = (x) => Math.round(Number(x) * 1000) / 1000;
+const toFiniteNumber = (value, fallback = 0.5) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+const safeProb = (value) => {
+  const num = toFiniteNumber(value, 0.5);
+  if (!Number.isFinite(num)) return 0.5;
+  if (num < 0) return 0;
+  if (num > 1) return 1;
+  return num;
+};
+
+const round3 = (x, fallback = 0.5) => {
+  const num = toFiniteNumber(x, fallback);
+  return Math.round(num * 1000) / 1000;
+};
 
 function matrixFromRows(rows, keys) {
   return rows.map((row) => keys.map((k) => Number(row[k] ?? 0)));
@@ -67,31 +83,73 @@ function applyScaler(X, scaler) {
 
 const sigmoid = (z) => 1 / (1 + Math.exp(-z));
 
-function trainLogisticGD(X, y, { steps = 3000, lr = 5e-3, l2 = 2e-4 } = {}) {
+function trainLogisticGD(
+  X,
+  y,
+  { steps = 3000, lr = 5e-3, l2 = 2e-4, featureLength } = {}
+) {
   const n = X.length;
-  const d = X[0]?.length || 0;
-  let w = new Array(d).fill(0);
+  const observedDim = X[0]?.length || 0;
+  const dim = Number.isInteger(featureLength) && featureLength > 0 ? featureLength : observedDim;
+  let w = new Array(dim).fill(0);
   let b = 0;
-  if (!n || !d) return { w, b };
+  if (!n || !observedDim || !dim) return { w, b, neutral: true };
   for (let t = 0; t < steps; t++) {
     let gb = 0;
-    const gw = new Array(d).fill(0);
+    const gw = new Array(dim).fill(0);
     for (let i = 0; i < n; i++) {
-      const z = X[i].reduce((s, v, idx) => s + v * w[idx], 0) + b;
+      const row = X[i] || [];
+      let z = b;
+      for (let j = 0; j < dim; j++) {
+        const weight = w[j];
+        const feature = Number(row[j] ?? 0);
+        if (!Number.isFinite(weight) || !Number.isFinite(feature)) continue;
+        z += weight * feature;
+      }
+      if (!Number.isFinite(z)) continue;
       const p = sigmoid(z);
       const err = p - y[i];
       gb += err;
-      for (let j = 0; j < d; j++) gw[j] += err * X[i][j];
+      for (let j = 0; j < dim; j++) {
+        const feature = Number(row[j] ?? 0);
+        if (!Number.isFinite(feature)) continue;
+        gw[j] += err * feature;
+      }
     }
     gb /= Math.max(1, n);
-    for (let j = 0; j < d; j++) gw[j] = gw[j] / Math.max(1, n) + l2 * w[j];
+    if (!Number.isFinite(gb)) gb = 0;
+    for (let j = 0; j < dim; j++) {
+      const grad = gw[j] / Math.max(1, n) + l2 * w[j];
+      gw[j] = Number.isFinite(grad) ? grad : 0;
+    }
     b -= lr * gb;
-    for (let j = 0; j < d; j++) w[j] -= lr * gw[j];
+    if (!Number.isFinite(b)) b = 0;
+    for (let j = 0; j < dim; j++) {
+      w[j] -= lr * gw[j];
+      if (!Number.isFinite(w[j])) w[j] = 0;
+    }
   }
   return { w, b };
 }
 
-const predictLogit = (X, model) => X.map((row) => sigmoid(row.reduce((s, v, idx) => s + v * model.w[idx], 0) + model.b));
+const predictLogit = (X, model = {}) => {
+  const weights = Array.isArray(model.w) ? model.w : [];
+  const bias = toFiniteNumber(model.b, 0);
+  const dim = weights.length;
+  if (!dim || model.neutral) return X.map(() => 0.5);
+  return X.map((row = []) => {
+    let z = bias;
+    for (let j = 0; j < dim; j++) {
+      const weight = toFiniteNumber(weights[j], 0);
+      const feature = Number(row[j] ?? 0);
+      if (!Number.isFinite(feature)) continue;
+      z += weight * feature;
+    }
+    if (!Number.isFinite(z)) return 0.5;
+    const prob = sigmoid(z);
+    return Number.isFinite(prob) ? prob : 0.5;
+  });
+};
 
 function leafPath(root, x) {
   let node = root;
@@ -644,7 +702,12 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       const scalerFold = fitScaler(Xtr.length ? Xtr : [new Array(FEATS_ENR.length).fill(0)]);
       const XtrS = applyScaler(Xtr, scalerFold);
       const XvaS = applyScaler(Xva, scalerFold);
-      const logitModel = trainLogisticGD(XtrS, ytr, { steps: 2500, lr: 4e-3, l2: 2e-4 });
+      const logitModel = trainLogisticGD(XtrS, ytr, {
+        steps: 2500,
+        lr: 4e-3,
+        l2: 2e-4,
+        featureLength: FEATS_ENR.length
+      });
       const params = chooseTreeParams(XtrS.length);
       const cart = new CART({ maxDepth: params.depth, minNumSamples: params.minSamples, gainFunction: "gini" });
       if (XtrS.length) cart.train(XtrS, ytr);
@@ -652,8 +715,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       const pLog = predictLogit(XvaS, logitModel);
       const pTree = predictTree(cart, leafStats, XvaS);
       for (let j = 0; j < iva.length; j++) {
-        oofLogit[iva[j]] = pLog[j];
-        oofTree[iva[j]] = pTree[j];
+        oofLogit[iva[j]] = safeProb(pLog[j]);
+        oofTree[iva[j]] = safeProb(pTree[j]);
       }
     }
   } else {
@@ -689,7 +752,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
         timeLimitMs: options.annCvTimeLimit ?? 25000
       });
       const preds = predictANNCommittee(annModel, XvaS);
-      for (let j = 0; j < iva.length; j++) annOOF[iva[j]] = preds[j];
+      for (let j = 0; j < iva.length; j++) annOOF[iva[j]] = safeProb(preds[j]);
     }
   }
   // --- END: robust ANN OOF ---
@@ -711,34 +774,47 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       }
       const model = trainBTModel(btTr);
       const preds = predictBTDeterministic(model, btVa);
-      for (let j = 0; j < iva.length; j++) btOOF[iva[j]] = preds[j]?.prob ?? 0.5;
+      for (let j = 0; j < iva.length; j++) btOOF[iva[j]] = safeProb(preds[j]?.prob);
     }
   }
 
   const weightsGrid = enumerateWeights(options.weightStep ?? 0.05);
   const metrics = [];
   for (const w of weightsGrid) {
-    const blend = labels.map((_, i) =>
-      w.logistic * (oofLogit[i] ?? 0.5) +
-      w.tree * (oofTree[i] ?? 0.5) +
-      w.bt * (btOOF[i] ?? 0.5) +
-      w.ann * (annOOF[i] ?? 0.5)
-    );
+    const wLog = toFiniteNumber(w.logistic, 0);
+    const wTree = toFiniteNumber(w.tree, 0);
+    const wBt = toFiniteNumber(w.bt, 0);
+    const wAnn = toFiniteNumber(w.ann, 0);
+    const blend = labels
+      .map(
+        (_, i) =>
+          wLog * safeProb(oofLogit[i]) +
+          wTree * safeProb(oofTree[i]) +
+          wBt * safeProb(btOOF[i]) +
+          wAnn * safeProb(annOOF[i])
+      )
+      .map(safeProb);
     metrics.push({ weights: w, loss: logLoss(labels, blend) ?? Infinity });
   }
   metrics.sort((a, b) => a.loss - b.loss);
   const bestWeights = metrics[0]?.weights ?? defaultWeights();
   const clampedWeights = clampWeights(bestWeights, weeksSeen || 1);
-  const oofBlend = labels.map((_, i) =>
-    clampedWeights.logistic * (oofLogit[i] ?? 0.5) +
-    clampedWeights.tree * (oofTree[i] ?? 0.5) +
-    clampedWeights.bt * (btOOF[i] ?? 0.5) +
-    clampedWeights.ann * (annOOF[i] ?? 0.5)
+  const oofBlendRaw = labels.map((_, i) =>
+    toFiniteNumber(clampedWeights.logistic, 0) * safeProb(oofLogit[i]) +
+    toFiniteNumber(clampedWeights.tree, 0) * safeProb(oofTree[i]) +
+    toFiniteNumber(clampedWeights.bt, 0) * safeProb(btOOF[i]) +
+    toFiniteNumber(clampedWeights.ann, 0) * safeProb(annOOF[i])
   );
+  const oofBlend = oofBlendRaw.map(safeProb);
   const calibrator = plattCalibrate(oofBlend, labels);
-  const oofBlendCal = oofBlend.map((p) => applyPlatt(p, calibrator));
+  const oofBlendCal = oofBlend.map((p) => safeProb(applyPlatt(p, calibrator)));
 
-  const logitModelFull = trainLogisticGD(trainStd, labels, { steps: 3500, lr: 4e-3, l2: 2e-4 });
+  const logitModelFull = trainLogisticGD(trainStd, labels, {
+    steps: 3500,
+    lr: 4e-3,
+    l2: 2e-4,
+    featureLength: FEATS_ENR.length
+  });
   const treeParams = chooseTreeParams(trainStd.length);
   const cartFull = new CART({ maxDepth: treeParams.depth, minNumSamples: treeParams.minSamples, gainFunction: "gini" });
   if (trainStd.length) cartFull.train(trainStd, labels);
@@ -756,9 +832,9 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
 
   const testMatrix = matrixFromRows(testRows, FEATS_ENR);
   const testStd = applyScaler(testMatrix, scaler);
-  const logitTest = predictLogit(testStd, logitModelFull);
-  const treeTest = predictTree(cartFull, leafStatsFull, testStd);
-  const annTest = predictANNCommittee(annModelFull, testStd);
+  const logitTest = predictLogit(testStd, logitModelFull).map(safeProb);
+  const treeTest = predictTree(cartFull, leafStatsFull, testStd).map(safeProb);
+  const annTest = predictANNCommittee(annModelFull, testStd).map(safeProb);
   const btBootstrap = options.btBootstrapSamples ?? Number(process.env.BT_B ?? 1000);
   const btPreds = predictBT({
     model: btModelFull,
@@ -776,17 +852,22 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     const btRow = btTestRows[i];
     const btInfo = btMapPred.get(btRow.game_id) || { prob: 0.5, ci90: [0.25, 0.75], features: btRow.features };
     const probs = {
-      logistic: logitTest[i] ?? 0.5,
-      tree: treeTest[i] ?? 0.5,
-      bt: btInfo.prob ?? 0.5,
-      ann: annTest[i] ?? 0.5
+      logistic: safeProb(logitTest[i]),
+      tree: safeProb(treeTest[i]),
+      bt: safeProb(btInfo.prob),
+      ann: safeProb(annTest[i])
     };
-    const preBlend =
-      clampedWeights.logistic * probs.logistic +
-      clampedWeights.tree * probs.tree +
-      clampedWeights.bt * probs.bt +
-      clampedWeights.ann * probs.ann;
-    const blended = applyPlatt(preBlend, calibrator);
+    const weightLogistic = toFiniteNumber(clampedWeights.logistic, 0);
+    const weightTree = toFiniteNumber(clampedWeights.tree, 0);
+    const weightBt = toFiniteNumber(clampedWeights.bt, 0);
+    const weightAnn = toFiniteNumber(clampedWeights.ann, 0);
+    const preBlendRaw =
+      weightLogistic * probs.logistic +
+      weightTree * probs.tree +
+      weightBt * probs.bt +
+      weightAnn * probs.ann;
+    const preBlend = safeProb(preBlendRaw);
+    const blended = safeProb(applyPlatt(preBlend, calibrator));
     probs.blended = blended;
 
     const contribLogit = logitModelFull.w.map((w, idx) => ({
@@ -826,10 +907,10 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
         blended: round3(blended)
       },
       blend_weights: {
-        logistic: round3(clampedWeights.logistic),
-        tree: round3(clampedWeights.tree),
-        bt: round3(clampedWeights.bt),
-        ann: round3(clampedWeights.ann)
+        logistic: round3(clampedWeights.logistic, 0),
+        tree: round3(clampedWeights.tree, 0),
+        bt: round3(clampedWeights.bt, 0),
+        ann: round3(clampedWeights.ann, 0)
       },
       calibration: {
         pre: round3(preBlend),
@@ -908,20 +989,26 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     })()
   };
 
-  const trainLogitFull = predictLogit(trainStd, logitModelFull);
-  const trainTreeFull = predictTree(cartFull, leafStatsFull, trainStd);
-  const trainAnnFull = predictANNCommittee(annModelFull, trainStd);
+  const trainLogitFull = predictLogit(trainStd, logitModelFull).map(safeProb);
+  const trainTreeFull = predictTree(cartFull, leafStatsFull, trainStd).map(safeProb);
+  const trainAnnFull = predictANNCommittee(annModelFull, trainStd).map(safeProb);
   const trainBtFull = btTrainRows.length
-    ? predictBTDeterministic(btModelFull, btTrainRows).map((p) => p?.prob ?? 0.5)
+    ? predictBTDeterministic(btModelFull, btTrainRows).map((p) => safeProb(p?.prob))
     : new Array(labels.length).fill(0.5);
+  const weightLogistic = toFiniteNumber(clampedWeights.logistic, 0);
+  const weightTree = toFiniteNumber(clampedWeights.tree, 0);
+  const weightBt = toFiniteNumber(clampedWeights.bt, 0);
+  const weightAnn = toFiniteNumber(clampedWeights.ann, 0);
   const trainBlendRawFull = labels.map(
     (_, i) =>
-      clampedWeights.logistic * (trainLogitFull[i] ?? 0.5) +
-      clampedWeights.tree * (trainTreeFull[i] ?? 0.5) +
-      clampedWeights.bt * (trainBtFull[i] ?? 0.5) +
-      clampedWeights.ann * (trainAnnFull[i] ?? 0.5)
+      weightLogistic * trainLogitFull[i] +
+      weightTree * trainTreeFull[i] +
+      weightBt * trainBtFull[i] +
+      weightAnn * trainAnnFull[i]
   );
-  const trainBlendFull = trainBlendRawFull.map((p) => applyPlatt(p, calibrator));
+  const trainBlendFull = trainBlendRawFull
+    .map(safeProb)
+    .map((p) => safeProb(applyPlatt(p, calibrator)));
   const latestTrainWeek = Math.max(0, ...trainRows.map((r) => Number(r.week) || 0));
   const errorIndices = [];
   for (let i = 0; i < trainRows.length; i++) {

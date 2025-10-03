@@ -80,19 +80,38 @@ async function main() {
     );
   }
 
+  const options = {
+    btBootstrapSamples: 20,
+    annSeeds: 3,
+    annMaxEpochs: 50,
+    annCvMaxEpochs: 20,
+    annCvSeeds: 2,
+    weightStep: 0.1,
+    skipSeasonDB: true
+  };
+
+  const week1 = await runTraining({
+    season,
+    week: 1,
+    data: { schedules, teamWeekly, teamGame, prevTeamWeekly: [] },
+    options
+  });
+
+  if (!Array.isArray(week1.predictions) || !week1.predictions.length) {
+    throw new Error("Smoke test: week 1 predictions missing");
+  }
+  const hasNonFinite = week1.predictions.some((p) => {
+    if (!Number.isFinite(p?.forecast)) return true;
+    if (!p?.probs || typeof p.probs !== "object") return true;
+    return Object.values(p.probs).some((v) => !Number.isFinite(v));
+  });
+  if (hasNonFinite) throw new Error("Smoke test: week 1 predictions must be finite");
+
   const result = await runTraining({
     season,
     week: 3,
     data: { schedules, teamWeekly, teamGame, prevTeamWeekly: [] },
-    options: {
-      btBootstrapSamples: 20,
-      annSeeds: 3,
-      annMaxEpochs: 50,
-      annCvMaxEpochs: 20,
-      annCvSeeds: 2,
-      weightStep: 0.1,
-      skipSeasonDB: true
-    }
+    options
   });
 
   if (!Array.isArray(result.predictions) || !result.predictions.length) {

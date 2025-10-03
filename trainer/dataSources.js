@@ -200,26 +200,7 @@ const DATASET_MANIFEST = {
   pfrRush: { tag: 'pfr_advstats', parser: PATTERN(/advstats_week_rush_(\d{4})\.csv$/) },
   pfrDef: { tag: 'pfr_advstats', parser: PATTERN(/advstats_week_def_(\d{4})\.csv$/) },
   pfrPass: { tag: 'pfr_advstats', parser: PATTERN(/advstats_week_pass_(\d{4})\.csv$/) },
-  pfrRec: { tag: 'pfr_advstats', parser: PATTERN(/advstats_week_rec_(\d{4})\.csv$/) },
-  injuries: {
-    tag: 'injuries',
-    parser(asset) {
-      if (/injuries_(\d{4})\.csv(\.gz)?$/i.test(asset.name)) {
-        return PATTERN(/injuries_(\d{4})\.csv(\.gz)?$/)(asset);
-      }
-      if (/^injuries\.csv(\.gz)?$/i.test(asset.name)) {
-        return {
-          season: null,
-          url: asset.browser_download_url,
-          name: asset.name,
-          size: asset.size,
-          updated_at: asset.updated_at,
-          content_type: asset.content_type
-        };
-      }
-      return null;
-    }
-  }
+  pfrRec: { tag: 'pfr_advstats', parser: PATTERN(/advstats_week_rec_(\d{4})\.csv$/) }
 };
 
 async function discoverManifest(dataset) {
@@ -314,7 +295,6 @@ const REL = {
   pfrDef:     (y) => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_def_${y}.csv`,
   pfrPass:    (y) => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_pass_${y}.csv`,
   pfrRec:     (y) => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_rec_${y}.csv`,
-  injuries:   (y) => `https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_${y}.csv`,
 };
 
 // ---------- helpers/caches ----------
@@ -358,14 +338,7 @@ async function cached(store,key,loader){
   return val;
 }
 
-const ROTOWIRE_FLAG = (() => {
-  const raw = String(process.env.ROTOWIRE_ENABLED ?? '').trim().toLowerCase();
-  if (!raw) return false;
-  return raw === 'true' || raw === '1' || raw === 'yes';
-})();
-
 const ROTOWIRE_ARTIFACTS_DIR = path.resolve(process.cwd(), process.env.ROTOWIRE_ARTIFACTS_DIR ?? 'artifacts');
-const NFLVERSE_INJURY_MIN_ROWS = 5;
 
 function normalizeRotowireRecord(row, defaults = {}) {
   if (!row || typeof row !== 'object') return null;
@@ -659,36 +632,17 @@ export async function loadInjuries(season){
   const y = toInt(season);
   if (y == null) throw new Error('loadInjuries season');
   return cached(caches.injuries, y, async()=>{
-    let rows = [];
     try {
-      const resolved = await resolveDatasetUrl('injuries', y, REL.injuries);
-      if (resolved?.url) {
-        const { rows: csvRows, source } = await fetchCsvFlexible(resolved.url);
-        rows = csvRows;
-        console.log(`[loadInjuries] nflverse ${source ?? resolved.url} rows=${rows.length}`);
-      }
-    } catch (err) {
-      console.warn(`[loadInjuries] nflverse fetch failed: ${err?.message || err}`);
-    }
-
-    if (rows.length >= NFLVERSE_INJURY_MIN_ROWS) return rows;
-
-    if (!ROTOWIRE_FLAG) {
-      if (!rows.length) console.warn('[loadInjuries] nflverse injuries empty; ROTOWIRE_ENABLED not set');
-      return rows;
-    }
-
-    try {
-      const fallback = await loadRotowireArtifacts(y);
-      if (fallback.length) {
-        console.log(`[loadInjuries] using Rotowire artifacts rows=${fallback.length}`);
-        return fallback;
+      const rows = await loadRotowireArtifacts(y);
+      if (rows.length) {
+        console.log(`[loadInjuries] using Rotowire artifacts rows=${rows.length}`);
+        return rows;
       }
       console.warn('[loadInjuries] Rotowire artifacts empty');
+      return rows;
     } catch (err) {
-      console.warn(`[loadInjuries] Rotowire fallback failed: ${err?.message || err}`);
+      console.warn(`[loadInjuries] Rotowire artifacts load failed: ${err?.message || err}`);
+      return [];
     }
-
-    return rows;
   });
 }

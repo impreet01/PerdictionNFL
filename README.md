@@ -22,6 +22,7 @@ Train, evaluate, and serve NFL win probabilities using only open nflverse data â
    - `SEASON` (defaults to current year)
    - `WEEK` (defaults to 6; the trainer iterates from Week 1 up to this value if historical data exists)
    - `ANN_SEEDS`, `ANN_MAX_EPOCHS`, `BT_B`, etc. to tune ensemble search.
+   - `TANK01_API_KEY` to enable Tank01 RapidAPI mirrors for seasons 2022 and newer.
 3. Run the full ensemble trainer:
    ```bash
    npm run train:multi
@@ -58,6 +59,8 @@ Each successful `train:multi` run refreshes or adds:
 - Play-by-play (`play_by_play_<season>.csv.gz`)
 - Weekly rosters, depth charts, injuries, snap counts, and officials for context packs
 - ESPN Total QBR and Pro-Football-Reference advanced team metrics for quarterback and efficiency context
+
+To layer in the Tank01 RapidAPI feed for seasons 2022 and newer, set `TANK01_API_KEY`. The loaders will prefer Tank01 schedules, team/player stats, rosters, depth charts, injuries, betting odds, and projections when an API key is present, caching the responses and falling back to nflverse automatically if Tank01 is unavailable. Set `USE_TANK01_LOADERS=true` when running the smoke/backtest scripts to exercise the Tank01 mirrors during CI.
 
 See `docs/data-ingestion.md` for a quick reference to every nflverse dataset we pull and how to extend the loaders. Set `LOG_LEVEL=debug` to trace which mirrors respond during a run.
 

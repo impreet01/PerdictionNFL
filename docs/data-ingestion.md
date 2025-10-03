@@ -1,6 +1,6 @@
 # Data ingestion cheat sheet
 
-This project relies exclusively on [nflverse](https://github.com/nflverse/) public datasets. The `trainer/dataSources.js`
+This project relies exclusively on [nflverse](https://github.com/nflverse/) public datasets by default. The `trainer/dataSources.js`
 module wraps every feed with:
 
 - **Redundant mirrors** – GitHub release assets, `main` and `master` branches, and legacy `nfldata` fallbacks.
@@ -8,6 +8,8 @@ module wraps every feed with:
   downloading anything. The manifest results are cached in-process to avoid repeated API calls during long runs.
 - **Automatic gzip handling** – URLs are tried with and without the `.gz` suffix.
 - **Per-season caching** – repeated calls within a single training run reuse in-memory copies so we only download each table once.
+
+If you set `TANK01_API_KEY`, the loaders will prefer Tank01 RapidAPI responses for seasons 2022 and newer (schedules, team/player weekly stats, rosters, depth charts, injuries, betting odds, projections, and play-by-play) before falling back to nflverse mirrors. This keeps the historical nflverse pipeline intact while layering in higher-frequency Tank01 updates when available.
 
 Use this table to understand what we load, how often nflverse updates it, and where it is consumed.
 

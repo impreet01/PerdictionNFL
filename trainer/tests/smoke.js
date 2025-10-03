@@ -3,6 +3,16 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync } from "fs";
 import { runTraining, writeArtifacts, updateHistoricalArtifacts } from "../train_multi.js";
+import {
+  loadBettingOdds as loadBettingOddsSource,
+  loadDepthCharts as loadDepthChartsSource,
+  loadInjuries as loadInjuriesSource,
+  loadPlayerProjections as loadPlayerProjectionsSource,
+  loadPlayerWeekly as loadPlayerWeeklySource,
+  loadRostersWeekly as loadRostersWeeklySource,
+  loadSchedules as loadSchedulesSource,
+  loadTeamWeekly as loadTeamWeeklySource
+} from "../dataSources.js";
 
 const teams = ["A", "B", "C", "D"];
 
@@ -52,6 +62,7 @@ function makeTeamGameRow(season, week, team, thirdAtt, thirdConv, redAtt, redTd,
 
 async function main() {
   const season = 2023;
+  await maybeExerciseTankSources(season);
   rmSync("artifacts", { recursive: true, force: true });
   mkdirSync("artifacts", { recursive: true });
   const schedules = [
@@ -161,3 +172,37 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+async function maybeExerciseTankSources(season) {
+  if (process.env.USE_TANK01_LOADERS?.toLowerCase() !== "true") return;
+  const tasks = [
+    loadSchedulesSource(season),
+    loadTeamWeeklySource(season),
+    loadPlayerWeeklySource(season),
+    loadRostersWeeklySource(season),
+    loadDepthChartsSource(season),
+    loadInjuriesSource(season),
+    loadBettingOddsSource(season),
+    loadPlayerProjectionsSource(season)
+  ];
+  const names = [
+    "schedules",
+    "teamWeekly",
+    "playerWeekly",
+    "rosters",
+    "depthCharts",
+    "injuries",
+    "odds",
+    "projections"
+  ];
+  const results = await Promise.allSettled(tasks);
+  results.forEach((result, idx) => {
+    if (result.status === "fulfilled") {
+      const value = result.value;
+      const count = Array.isArray(value) ? value.length : value?.length ?? 0;
+      console.log(`[smoke] tank01 ${names[idx]} ok (${count})`);
+    } else {
+      console.warn(`[smoke] tank01 ${names[idx]} failed: ${result.reason?.message || result.reason}`);
+    }
+  });
+}

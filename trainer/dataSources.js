@@ -65,6 +65,31 @@ const PUBLIC_API_HEADERS = {
   accept: 'application/json'
 };
 
+const parseSeasonEnv = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) ? n : null;
+};
+
+const PUBLIC_API_ENDPOINT_CONFIGURED = Boolean(PUBLIC_API_BASE) || Object.values(PUBLIC_ENDPOINT_ENV).some(Boolean);
+const PUBLIC_API_ENV_SINCE = parseSeasonEnv(process.env.PUBLIC_API_SINCE_SEASON);
+const GLOBAL_ENV_SINCE = parseSeasonEnv(process.env.SINCE_SEASON);
+const ENV_TARGET_SEASON = parseSeasonEnv(process.env.SEASON);
+const CURRENT_YEAR = new Date().getFullYear();
+
+export const PUBLIC_API_ENABLED = PUBLIC_API_ENDPOINT_CONFIGURED;
+export const PUBLIC_API_SEASON_CUTOFF =
+  (Number.isFinite(PUBLIC_API_ENV_SINCE) ? PUBLIC_API_ENV_SINCE : null) ??
+  (Number.isFinite(GLOBAL_ENV_SINCE) ? GLOBAL_ENV_SINCE : null) ??
+  (PUBLIC_API_ENABLED
+    ? (Number.isFinite(ENV_TARGET_SEASON) ? ENV_TARGET_SEASON : CURRENT_YEAR)
+    : null);
+
+const shouldUsePublicApiForSeason = (season) =>
+  PUBLIC_API_ENABLED &&
+  Number.isFinite(season) &&
+  (!Number.isFinite(PUBLIC_API_SEASON_CUTOFF) || season >= PUBLIC_API_SEASON_CUTOFF);
+
 const applyTemplate = (template, context = {}) =>
   template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
     const value = context[key];
@@ -546,7 +571,7 @@ export async function loadSchedules(season){
     };
 
     const seasonForPublic = Number.isFinite(targetSeason) ? targetSeason : Number.isFinite(y) ? y : null;
-    if (Number.isFinite(seasonForPublic)) {
+    if (shouldUsePublicApiForSeason(seasonForPublic)) {
       try {
         const payload = await fetchPublicDataset('schedules', { season: seasonForPublic });
         const rows = adaptSchedules(payload);
@@ -575,7 +600,7 @@ export async function loadESPNQBR(season){
   const y = toInt(season);
   const cacheKey = Number.isFinite(y) ? y : 0;
   return cached(caches.qbr, cacheKey, async()=>{
-    if (Number.isFinite(y)) {
+    if (shouldUsePublicApiForSeason(y)) {
       try {
         const payload = await fetchPublicDataset('espnQbr', { season: y });
         const rows = adaptESPNQBR(payload);
@@ -597,7 +622,7 @@ export async function loadOfficials(season){
   const y = toInt(season);
   const cacheKey = Number.isFinite(y) ? y : 0;
   return cached(caches.officials, cacheKey, async()=>{
-    if (Number.isFinite(y)) {
+    if (shouldUsePublicApiForSeason(y)) {
       try {
         const payload = await fetchPublicDataset('officials', { season: y });
         const rows = adaptOfficials(payload);
@@ -618,16 +643,18 @@ export async function loadOfficials(season){
 export async function loadSnapCounts(season){
   const y = toInt(season); if(y==null) throw new Error('loadSnapCounts season');
   return cached(caches.snapCounts, y, async()=>{
-    try {
-      const payload = await fetchPublicDataset('snapCounts', { season: y });
-      const rows = adaptSnapCounts(payload);
-      if (rows.length) {
-        console.log(`[loadSnapCounts] OK public rows=${rows.length}`);
-        return rows;
+    if (shouldUsePublicApiForSeason(y)) {
+      try {
+        const payload = await fetchPublicDataset('snapCounts', { season: y });
+        const rows = adaptSnapCounts(payload);
+        if (rows.length) {
+          console.log(`[loadSnapCounts] OK public rows=${rows.length}`);
+          return rows;
+        }
+        throw new Error('no snap count rows returned');
+      } catch (err) {
+        logPublicFallback('loadSnapCounts', err);
       }
-      throw new Error('no snap count rows returned');
-    } catch (err) {
-      logPublicFallback('loadSnapCounts', err);
     }
 
     const resolved = await resolveDatasetUrl('snapCounts', y, REL.snapCounts);
@@ -640,17 +667,19 @@ export async function loadSnapCounts(season){
 export async function loadTeamWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadTeamWeekly season');
   return cached(caches.teamWeekly, y, async()=>{
-    try {
-      const payload = await fetchPublicDataset('teamWeekly', { season: y });
-      const rows = adaptTeamWeekly(payload);
-      rows.forEach(assertTeamWeeklyRow);
-      if (rows.length) {
-        console.log(`[loadTeamWeekly] OK public rows=${rows.length}`);
-        return rows;
+    if (shouldUsePublicApiForSeason(y)) {
+      try {
+        const payload = await fetchPublicDataset('teamWeekly', { season: y });
+        const rows = adaptTeamWeekly(payload);
+        rows.forEach(assertTeamWeeklyRow);
+        if (rows.length) {
+          console.log(`[loadTeamWeekly] OK public rows=${rows.length}`);
+          return rows;
+        }
+        throw new Error('no team weekly rows returned');
+      } catch (err) {
+        logPublicFallback('loadTeamWeekly', err);
       }
-      throw new Error('no team weekly rows returned');
-    } catch (err) {
-      logPublicFallback('loadTeamWeekly', err);
     }
 
     const loadFallback = async () => {
@@ -673,17 +702,19 @@ export async function loadTeamWeekly(season){
 export async function loadTeamGameAdvanced(season){
   const y = toInt(season); if(y==null) throw new Error('loadTeamGameAdvanced season');
   return cached(caches.teamGameAdvanced, y, async()=>{
-    try {
-      const payload = await fetchPublicDataset('teamGameAdvanced', { season: y });
-      const rows = adaptTeamGameAdvanced(payload);
-      rows.forEach(assertBTFeatureRow);
-      if (rows.length) {
-        console.log(`[loadTeamGameAdvanced] OK public rows=${rows.length}`);
-        return rows;
+    if (shouldUsePublicApiForSeason(y)) {
+      try {
+        const payload = await fetchPublicDataset('teamGameAdvanced', { season: y });
+        const rows = adaptTeamGameAdvanced(payload);
+        rows.forEach(assertBTFeatureRow);
+        if (rows.length) {
+          console.log(`[loadTeamGameAdvanced] OK public rows=${rows.length}`);
+          return rows;
+        }
+        throw new Error('no team game advanced rows returned');
+      } catch (err) {
+        logPublicFallback('loadTeamGameAdvanced', err);
       }
-      throw new Error('no team game advanced rows returned');
-    } catch (err) {
-      logPublicFallback('loadTeamGameAdvanced', err);
     }
 
     return loadTeamWeekly(y);
@@ -692,16 +723,18 @@ export async function loadTeamGameAdvanced(season){
 export async function loadPlayerWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadPlayerWeekly season');
   return cached(caches.playerWeekly, y, async()=>{
-    try {
-      const payload = await fetchPublicDataset('playerWeekly', { season: y });
-      const rows = adaptPlayerWeekly(payload);
-      if (rows.length) {
-        console.log(`[loadPlayerWeekly] OK public rows=${rows.length}`);
-        return rows;
+    if (shouldUsePublicApiForSeason(y)) {
+      try {
+        const payload = await fetchPublicDataset('playerWeekly', { season: y });
+        const rows = adaptPlayerWeekly(payload);
+        if (rows.length) {
+          console.log(`[loadPlayerWeekly] OK public rows=${rows.length}`);
+          return rows;
+        }
+        throw new Error('no player weekly rows returned');
+      } catch (err) {
+        logPublicFallback('loadPlayerWeekly', err);
       }
-      throw new Error('no player weekly rows returned');
-    } catch (err) {
-      logPublicFallback('loadPlayerWeekly', err);
     }
 
     const loadFallback = async () => {
@@ -722,16 +755,18 @@ export async function loadPlayerWeekly(season){
 export async function loadRostersWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadRostersWeekly season');
   return cached(caches.rosterWeekly, y, async()=>{
-    try {
-      const payload = await fetchPublicDataset('rostersWeekly', { season: y });
-      const rows = adaptRostersWeekly(payload);
-      if (rows.length) {
-        console.log(`[loadRostersWeekly] OK public rows=${rows.length}`);
-        return rows;
+    if (shouldUsePublicApiForSeason(y)) {
+      try {
+        const payload = await fetchPublicDataset('rostersWeekly', { season: y });
+        const rows = adaptRostersWeekly(payload);
+        if (rows.length) {
+          console.log(`[loadRostersWeekly] OK public rows=${rows.length}`);
+          return rows;
+        }
+        throw new Error('no roster rows returned');
+      } catch (err) {
+        logPublicFallback('loadRostersWeekly', err);
       }
-      throw new Error('no roster rows returned');
-    } catch (err) {
-      logPublicFallback('loadRostersWeekly', err);
     }
 
     const loadFallback = async () => {
@@ -752,16 +787,18 @@ export async function loadRostersWeekly(season){
 export async function loadDepthCharts(season){
   const y = toInt(season); if(y==null) throw new Error('loadDepthCharts season');
   return cached(caches.depthCharts, y, async()=>{
-    try {
-      const payload = await fetchPublicDataset('depthCharts', { season: y });
-      const rows = adaptDepthCharts(payload);
-      if (rows.length) {
-        console.log(`[loadDepthCharts] OK public rows=${rows.length}`);
-        return rows;
+    if (shouldUsePublicApiForSeason(y)) {
+      try {
+        const payload = await fetchPublicDataset('depthCharts', { season: y });
+        const rows = adaptDepthCharts(payload);
+        if (rows.length) {
+          console.log(`[loadDepthCharts] OK public rows=${rows.length}`);
+          return rows;
+        }
+        throw new Error('no depth chart rows returned');
+      } catch (err) {
+        logPublicFallback('loadDepthCharts', err);
       }
-      throw new Error('no depth chart rows returned');
-    } catch (err) {
-      logPublicFallback('loadDepthCharts', err);
     }
 
     const loadFallback = async () => {
@@ -1305,7 +1342,7 @@ export async function loadInjuries(season){
     return [];
   };
 
-  if (Number.isFinite(y)) {
+  if (shouldUsePublicApiForSeason(y)) {
     try {
       const payload = await fetchPublicDataset('injuries', { season: y });
       const rows = adaptInjuries(payload);

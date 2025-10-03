@@ -37,11 +37,6 @@ environment variables:
 - `--since <year>` / `SINCE_SEASON` – drop anything older than the given season.
 - `--max <n>` / `MAX_SEASONS` – keep only the most recent `n` seasons after other filters are applied.
 
-When the public API (`PUBLIC_API_BASE` or dataset-specific overrides) is configured, the tooling now assumes the feed only
-needs net-new data. `resolveSeasonList` defaults to requesting the target season alone unless you set `SINCE_SEASON` (or the
-more specific `PUBLIC_API_SINCE_SEASON`) to widen the window. Historical pulls below that cutoff skip the public API entirely
-and fall back to the GitHub release archives so we avoid redundant requests.
-
 The context builder CLI iterates that bounded list, writes one context shard per season, and produces
 `artifacts/context_index.json` summarising what was generated. Training inherits the same controls, aggregates
 features across the resolved seasons, and still evaluates only on the target season/week so rolling statistics reset cleanly.

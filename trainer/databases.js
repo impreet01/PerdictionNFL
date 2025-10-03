@@ -519,7 +519,7 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       player_week: "nflverse-data stats_player_week",
       weekly_rosters: "nflverse-data roster_weekly",
       depth_charts: "nflverse-data depth_charts",
-      injuries: "nflverse-data injuries (fallback Rotowire artifacts)",
+      injuries: "Rotowire injury artifacts generated via scripts/fetchRotowireInjuries.js",
       snap_counts: "nflverse-data snap_counts",
       pfr_adv_team: "nflverse-data pfr advstats weekly merges",
       espn_qbr: "nflverse-data qbr_week_level",

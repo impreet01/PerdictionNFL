@@ -635,8 +635,6 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   featureRows = featureRows.filter(boundedWeek);
   btRows = btRows.filter(boundedWeek);
 
-  const featureRowsForExpansion = featureRows.slice();
-
   // --- Enrich feature rows with PFR advanced weekly differentials ---
   if (DB) {
     for (const r of featureRows) {
@@ -650,95 +648,23 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     }
   }
 
-  let btTrainRowsRaw = btRows.filter(
+  // Determine the final FEATS list (union of base + discovered diff_*):
+  const FEATS_ENR = expandFeats(FEATS_BASE, featureRows);
+
+  const btTrainRowsRaw = btRows.filter(
     (r) => r.season === resolvedSeason && r.week < resolvedWeek && (r.label_win === 0 || r.label_win === 1)
   );
   const btTestRowsRaw = btRows.filter((r) => r.season === resolvedSeason && r.week === resolvedWeek);
 
-  let trainRowsRaw = featureRows.filter(
+  const btTrainMap = new Map(btTrainRowsRaw.map((r) => [r.game_id, r]));
+  const btTestMap = new Map(btTestRowsRaw.map((r) => [r.game_id, r]));
+
+  const trainRowsRaw = featureRows.filter(
     (r) => r.season === resolvedSeason && r.week < resolvedWeek && r.home === 1 && (r.win === 0 || r.win === 1)
   );
   const testRowsRaw = featureRows.filter(
     (r) => r.season === resolvedSeason && r.week === resolvedWeek && r.home === 1
   );
-
-  let trainingSeason = resolvedSeason;
-
-  if (!trainRowsRaw.length) {
-    const fallbackSeason = Number(options.fallbackSeason ?? resolvedSeason - 1);
-    if (Number.isFinite(fallbackSeason) && fallbackSeason >= 1999) {
-      console.warn(
-        `[train_multi] no completed games before week ${resolvedWeek} in season ${resolvedSeason}; ` +
-          `attempting fallback to season ${fallbackSeason}.`
-      );
-      try {
-        const fallbackData = await loadSeasonData(fallbackSeason);
-        let fallbackFeatureRows = buildFeatures({
-          teamWeekly: fallbackData.teamWeekly,
-          teamGame: fallbackData.teamGame,
-          schedules: fallbackData.schedules,
-          season: fallbackSeason,
-          prevTeamWeekly: fallbackData.prevTeamWeekly,
-          pbp: fallbackData.pbp,
-          playerWeekly: fallbackData.playerWeekly
-        });
-        let fallbackBTRows = buildBTFeatures({
-          teamWeekly: fallbackData.teamWeekly,
-          teamGame: fallbackData.teamGame,
-          schedules: fallbackData.schedules,
-          season: fallbackSeason,
-          prevTeamWeekly: fallbackData.prevTeamWeekly
-        });
-
-        fallbackFeatureRows = fallbackFeatureRows.filter((r) => Number(r.season) === fallbackSeason);
-        fallbackBTRows = fallbackBTRows.filter((r) => Number(r.season) === fallbackSeason);
-
-        if (!skipSeasonDB) {
-          try {
-            const fallbackDB = await buildSeasonDB(fallbackSeason);
-            for (const row of fallbackFeatureRows) {
-              if (row.home === 1) {
-                attachAdvWeeklyDiff(fallbackDB, row, row.week, row.team, row.opponent);
-              } else {
-                attachAdvWeeklyDiff(fallbackDB, row, row.week, row.opponent, row.team);
-              }
-            }
-          } catch (err) {
-            console.warn(
-              `[train_multi] fallback season ${fallbackSeason} advanced diff enrichment failed: ${err?.message || err}`
-            );
-          }
-        }
-
-        const fallbackTrainRows = fallbackFeatureRows.filter(
-          (r) => r.home === 1 && (r.win === 0 || r.win === 1)
-        );
-        const fallbackBTTrainRows = fallbackBTRows.filter(
-          (r) => r.label_win === 0 || r.label_win === 1
-        );
-
-        if (fallbackTrainRows.length && fallbackBTTrainRows.length) {
-          trainRowsRaw = fallbackTrainRows;
-          btTrainRowsRaw = fallbackBTTrainRows;
-          trainingSeason = fallbackSeason;
-          featureRowsForExpansion.push(...fallbackFeatureRows);
-          console.warn(
-            `[train_multi] using fallback season ${fallbackSeason} training rows (${fallbackTrainRows.length} games).`
-          );
-        }
-      } catch (err) {
-        console.warn(
-          `[train_multi] fallback season ${fallbackSeason} load failed: ${err?.message || err}`
-        );
-      }
-    }
-  }
-
-  // Determine the final FEATS list (union of base + discovered diff_*):
-  const FEATS_ENR = expandFeats(FEATS_BASE, featureRowsForExpansion);
-
-  const btTrainMap = new Map(btTrainRowsRaw.map((r) => [r.game_id, r]));
-  const btTestMap = new Map(btTestRowsRaw.map((r) => [r.game_id, r]));
 
   const ensureBtFeatures = (btRow, context) => {
     if (!btRow) return false;
@@ -767,7 +693,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     (a, b) => a - b
   );
   console.log(
-    `Train rows (season ${trainingSeason}, home=1): ${trainRows.length}, weeks: ${trainWeeksList.join(',')}`
+    `Train rows (home=1): ${trainRows.length}, weeks: ${trainWeeksList.join(',')}`
   );
   console.log(`Test rows: ${testRows.length} (week ${resolvedWeek})`);
   if (!trainRows.length) {

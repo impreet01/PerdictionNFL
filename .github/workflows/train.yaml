@@ -79,12 +79,12 @@ jobs:
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
-        run: npm run build:context
+        run: TANK01_API_KEY="5e564a542bmsh72bbf0c4b0d7ce6p1b0891jsncb661f7b90d9" npm run build:context
 
       - name: Train + Predict (auto week)
         run: |
           echo "Training SEASON=$SEASON WEEK=$WEEK"
-          SEASON=$SEASON WEEK=$WEEK npm run train:multi
+          SEASON=$SEASON WEEK=$WEEK TANK01_API_KEY="5e564a542bmsh72bbf0c4b0d7ce6p1b0891jsncb661f7b90d9" npm run train:multi
 
       - name: Show artifacts
         run: |

@@ -3,6 +3,19 @@
 
 import { BT_FEATURES } from "./featureBuild_bt.js";
 
+const toFiniteNumber = (value, fallback = 0.5) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+const safeProb = (value) => {
+  const num = toFiniteNumber(value, 0.5);
+  if (!Number.isFinite(num)) return 0.5;
+  if (num < 0) return 0;
+  if (num > 1) return 1;
+  return num;
+};
+
 const sigmoid = (z) => 1 / (1 + Math.exp(-z));
 
 const fitScaler = (X) => {
@@ -32,33 +45,72 @@ const applyScaler = (X, scaler) => {
   return X.map((row) => row.map((v, j) => (v - mu[j]) / (sd[j] || 1)));
 };
 
-function trainLogisticGD(X, y, { steps = 2000, lr = 5e-3, l2 = 1e-4 } = {}) {
+function trainLogisticGD(
+  X,
+  y,
+  { steps = 2000, lr = 5e-3, l2 = 1e-4, featureLength } = {}
+) {
   const n = X.length;
-  const d = X[0]?.length || 0;
-  let w = new Array(d).fill(0);
+  const observedDim = X[0]?.length || 0;
+  const dim = Number.isInteger(featureLength) && featureLength > 0 ? featureLength : observedDim;
+  let w = new Array(dim).fill(0);
   let b = 0;
+  if (!n || !observedDim || !dim) return { w, b, neutral: true };
   for (let t = 0; t < steps; t++) {
     let gb = 0;
-    const gw = new Array(d).fill(0);
+    const gw = new Array(dim).fill(0);
     for (let i = 0; i < n; i++) {
-      const xi = X[i];
-      const z = xi.reduce((s, v, idx) => s + v * w[idx], 0) + b;
+      const row = X[i] || [];
+      let z = b;
+      for (let j = 0; j < dim; j++) {
+        const weight = w[j];
+        const feature = Number(row[j] ?? 0);
+        if (!Number.isFinite(weight) || !Number.isFinite(feature)) continue;
+        z += weight * feature;
+      }
+      if (!Number.isFinite(z)) continue;
       const p = sigmoid(z);
       const err = p - y[i];
       gb += err;
-      for (let j = 0; j < d; j++) gw[j] += err * xi[j];
+      for (let j = 0; j < dim; j++) {
+        const feature = Number(row[j] ?? 0);
+        if (!Number.isFinite(feature)) continue;
+        gw[j] += err * feature;
+      }
     }
     gb /= Math.max(1, n);
-    for (let j = 0; j < d; j++) gw[j] = gw[j] / Math.max(1, n) + l2 * w[j];
+    if (!Number.isFinite(gb)) gb = 0;
+    for (let j = 0; j < dim; j++) {
+      const grad = gw[j] / Math.max(1, n) + l2 * w[j];
+      gw[j] = Number.isFinite(grad) ? grad : 0;
+    }
     b -= lr * gb;
-    for (let j = 0; j < d; j++) w[j] -= lr * gw[j];
+    if (!Number.isFinite(b)) b = 0;
+    for (let j = 0; j < dim; j++) {
+      w[j] -= lr * gw[j];
+      if (!Number.isFinite(w[j])) w[j] = 0;
+    }
   }
   return { w, b };
 }
 
-const predictLogit = (X, model) => {
-  const { w, b } = model;
-  return X.map((row) => sigmoid(row.reduce((s, v, idx) => s + v * w[idx], 0) + b));
+const predictLogit = (X, model = {}) => {
+  const weights = Array.isArray(model.w) ? model.w : [];
+  const bias = toFiniteNumber(model.b, 0);
+  const dim = weights.length;
+  if (!dim || model.neutral) return X.map(() => 0.5);
+  return X.map((row = []) => {
+    let z = bias;
+    for (let j = 0; j < dim; j++) {
+      const weight = toFiniteNumber(weights[j], 0);
+      const feature = Number(row[j] ?? 0);
+      if (!Number.isFinite(feature)) continue;
+      z += weight * feature;
+    }
+    if (!Number.isFinite(z)) return 0.5;
+    const prob = sigmoid(z);
+    return Number.isFinite(prob) ? prob : 0.5;
+  });
 };
 
 const rowsToMatrix = (rows) => rows.map((r) => BT_FEATURES.map((k) => Number(r.features?.[k] ?? 0)));
@@ -98,7 +150,7 @@ export function trainBTModel(trainRows, { steps, lr, l2 } = {}) {
   const y = trainRows.map((r) => Number(r.label_win ?? 0));
   const scaler = fitScaler(X);
   const Xs = applyScaler(X, scaler);
-  const model = trainLogisticGD(Xs, y, { steps, lr, l2 });
+  const model = trainLogisticGD(Xs, y, { steps, lr, l2, featureLength: BT_FEATURES.length });
   return { ...model, scaler, features: BT_FEATURES.slice() };
 }
 
@@ -271,8 +323,8 @@ export function predictBT({
   for (const row of rows) {
     const base = BT_FEATURES.map((k) => Number(row.features?.[k] ?? 0));
     const standardizedBase = applyScaler([base], scaler)[0];
-    const baseProb = sigmoid(
-      standardizedBase.reduce((s, v, idx) => s + v * coeffs[idx], 0) + model.b
+    const baseProb = safeProb(
+      sigmoid(standardizedBase.reduce((s, v, idx) => s + v * coeffs[idx], 0) + model.b)
     );
     const hHist = history.get(row.home_team) || [];
     const aHist = history.get(row.away_team) || [];
@@ -313,12 +365,12 @@ export function predictBT({
       ];
       const std = applyScaler([featVec], scaler)[0];
       const prob = sigmoid(std.reduce((s, v, idx) => s + v * coeffs[idx], 0) + model.b);
-      probs.push(prob);
+      probs.push(safeProb(prob));
     }
     probs.sort((a, b) => a - b);
-    const mean = probs.reduce((s, v) => s + v, 0) / Math.max(1, probs.length);
-    const lo = percentile(probs, 0.05);
-    const hi = percentile(probs, 0.95);
+    const mean = safeProb(probs.reduce((s, v) => s + v, 0) / Math.max(1, probs.length));
+    const lo = safeProb(percentile(probs, 0.05));
+    const hi = safeProb(percentile(probs, 0.95));
     preds.push({
       game_id: row.game_id,
       prob: mean,

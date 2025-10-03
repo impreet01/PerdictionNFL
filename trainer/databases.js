@@ -597,8 +597,8 @@ export async function buildSeasonDB(season) {
     pfrAdvMap
   ] = await Promise.all([
     loadSchedulesDS(),
-    loadESPNQBRDS(),
-    loadOfficialsDS(),
+    loadESPNQBRDS(y),
+    loadOfficialsDS(y),
     loadSnapCountsDS(y),
     loadTeamWeeklyDS(y),
     loadTeamGameAdvancedDS(y),

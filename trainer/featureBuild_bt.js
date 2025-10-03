@@ -3,6 +3,8 @@
 // Build Bradley-Terry feature set using nflverse team-week stats.
 // Output one row per game (home-team perspective) with differential features.
 
+import { assertScheduleRow, assertBTFeatureRow } from "./schemaChecks.js";
+
 const BT_FEATURES = [
   "diff_total_yards",
   "diff_turnovers",
@@ -187,6 +189,21 @@ function indexTeamGame(rows = [], season) {
 }
 
 export function buildBTFeatures({ schedules, teamWeekly, teamGame = [], season, prevTeamWeekly }) {
+  try {
+    (schedules || []).forEach(assertScheduleRow);
+  } catch (err) {
+    throw new Error(`buildBTFeatures schedule schema: ${err.message}`);
+  }
+  try {
+    for (const row of teamGame || []) {
+      if (row && typeof row === "object" && row.features) {
+        assertBTFeatureRow(row);
+      }
+    }
+  } catch (err) {
+    throw new Error(`buildBTFeatures teamGame schema: ${err.message}`);
+  }
+
   const regSched = (schedules || []).filter(
     (g) => Number(g.season) === Number(season) && isReg(g.season_type)
   );
@@ -285,8 +302,16 @@ export function buildBTFeatures({ schedules, teamWeekly, teamGame = [], season, 
         diff_elo_pre: hEloPre - aEloPre
       };
 
-      const label = winLabel(g);
       const game_id = mkGameId(season, W, home, away);
+      const missing = BT_FEATURES.filter((key) => !Number.isFinite(features[key]));
+      if (missing.length) {
+        console.warn(
+          `[buildBTFeatures] skipping ${game_id} missing features: ${missing.join(', ')}`
+        );
+        continue;
+      }
+
+      const label = winLabel(g);
 
       out.push({
         season: Number(season),

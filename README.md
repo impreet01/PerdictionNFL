@@ -22,12 +22,12 @@ Train, evaluate, and serve NFL win probabilities using only open nflverse data â
    - `SEASON` (defaults to current year)
    - `WEEK` (defaults to 6; the trainer iterates from Week 1 up to this value if historical data exists)
    - `ANN_SEEDS`, `ANN_MAX_EPOCHS`, `BT_B`, etc. to tune ensemble search.
-   - `ROTOWIRE_ENABLED` (`true` to allow Rotowire injury fallbacks when nflverse rows are missing)
+   - `ROTOWIRE_ENABLED` (`true` is required for the Rotowire injury fetcher to run and write artifacts)
 3. Run the full ensemble trainer:
    ```bash
    npm run train:multi
    ```
-   This downloads nflverse data, builds features, fits every model, calibrates the blend, and writes artifacts under `artifacts/` for each completed week up to `WEEK`.
+   This downloads nflverse data, consumes the Rotowire injury artifacts, builds features, fits every model, calibrates the blend, and writes artifacts under `artifacts/` for each completed week up to `WEEK`.
 4. (Optional) Run the legacy single-week trainer for the logistic/tree hybrid only:
    ```bash
    npm run train
@@ -37,9 +37,9 @@ GitHub Actions can automate Step 3 on a schedule; copy `.github/workflows/train.
 
 ## Injury ingestion workflow
 
-`trainer/dataSources.js` still prefers the nflverse weekly injury CSVs. When those are empty or lag behind, you can enable the Rotowire fallback and refresh the artifacts before generating context packs:
+Injury data now ships exclusively from the Rotowire scraper artifacts emitted by `scripts/fetchRotowireInjuries.js`. Refresh the artifacts before generating context packs or rerunning training:
 
-1. Set `ROTOWIRE_ENABLED=true` in your shell.
+1. Set `ROTOWIRE_ENABLED=true` in your shell (required for the fetcher to execute).
 2. Run the fetcher for the target snapshot (pass any season/week you need):
    ```bash
    npm run fetch:injuries -- --season=2025 --week=6

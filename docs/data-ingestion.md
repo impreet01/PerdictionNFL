@@ -20,7 +20,7 @@ Use this table to understand what we load, how often nflverse updates it, and wh
 | Play-by-play | `releases/download/pbp/play_by_play_<season>.csv.gz` | Daily/weekly | EPA & success aggregates |
 | Weekly rosters | `releases/download/weekly_rosters/weekly_rosters_<season>.csv` | Daily | Context packs (starters) |
 | Depth charts | `releases/download/depth_charts/depth_charts_<season>.csv` | Daily | Context packs (starter mapping) |
-| Injuries | `releases/download/injuries/injuries_<season>.csv` | Daily (Thu-Sun heavy) | Context packs (injury report summaries) |
+| Injuries | `releases/download/injuries/injuries_<season>.csv` (fallback `scripts/fetchRotowireInjuries.js`) | Daily (Thu-Sun heavy) | Context packs (injury report summaries) |
 | Snap counts | `releases/download/snap_counts/snap_counts_<season>.csv` | Weekly | Available for usage-based context |
 | ESPN Total QBR | `releases/download/espn_data/espn_qbr_<season>.csv` | Weekly | QB form overlay |
 | PFR advanced team | `releases/download/pfr_advstats/pfr_advstats_team_<season>.csv` | Weekly | Team efficiency context |

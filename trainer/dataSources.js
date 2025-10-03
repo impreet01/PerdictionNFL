@@ -1,4 +1,6 @@
 // trainer/dataSources.js
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { parse } from 'csv-parse/sync';
 import zlib from 'node:zlib';
 
@@ -198,7 +200,26 @@ const DATASET_MANIFEST = {
   pfrRush: { tag: 'pfr_advstats', parser: PATTERN(/advstats_week_rush_(\d{4})\.csv$/) },
   pfrDef: { tag: 'pfr_advstats', parser: PATTERN(/advstats_week_def_(\d{4})\.csv$/) },
   pfrPass: { tag: 'pfr_advstats', parser: PATTERN(/advstats_week_pass_(\d{4})\.csv$/) },
-  pfrRec: { tag: 'pfr_advstats', parser: PATTERN(/advstats_week_rec_(\d{4})\.csv$/) }
+  pfrRec: { tag: 'pfr_advstats', parser: PATTERN(/advstats_week_rec_(\d{4})\.csv$/) },
+  injuries: {
+    tag: 'injuries',
+    parser(asset) {
+      if (/injuries_(\d{4})\.csv(\.gz)?$/i.test(asset.name)) {
+        return PATTERN(/injuries_(\d{4})\.csv(\.gz)?$/)(asset);
+      }
+      if (/^injuries\.csv(\.gz)?$/i.test(asset.name)) {
+        return {
+          season: null,
+          url: asset.browser_download_url,
+          name: asset.name,
+          size: asset.size,
+          updated_at: asset.updated_at,
+          content_type: asset.content_type
+        };
+      }
+      return null;
+    }
+  }
 };
 
 async function discoverManifest(dataset) {
@@ -293,6 +314,7 @@ const REL = {
   pfrDef:     (y) => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_def_${y}.csv`,
   pfrPass:    (y) => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_pass_${y}.csv`,
   pfrRec:     (y) => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_rec_${y}.csv`,
+  injuries:   (y) => `https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_${y}.csv`,
 };
 
 // ---------- helpers/caches ----------
@@ -326,6 +348,7 @@ export const caches = {
   ftnCharts:   new Map(),
   pbp:         new Map(),
   pfrAdv:      new Map(), // merged weekly map (season)
+  injuries:    new Map(),
 };
 
 async function cached(store,key,loader){
@@ -333,6 +356,118 @@ async function cached(store,key,loader){
   const val = await loader();
   store.set(key,val);
   return val;
+}
+
+const ROTOWIRE_FLAG = (() => {
+  const raw = String(process.env.ROTOWIRE_ENABLED ?? '').trim().toLowerCase();
+  if (!raw) return false;
+  return raw === 'true' || raw === '1' || raw === 'yes';
+})();
+
+const ROTOWIRE_ARTIFACTS_DIR = path.resolve(process.cwd(), process.env.ROTOWIRE_ARTIFACTS_DIR ?? 'artifacts');
+const NFLVERSE_INJURY_MIN_ROWS = 5;
+
+function normalizeRotowireRecord(row, defaults = {}) {
+  if (!row || typeof row !== 'object') return null;
+  const teamRaw = row.team ?? row.team_abbr ?? defaults.team;
+  const playerRaw = row.player ?? row.player_name ?? row.name;
+  if (!teamRaw || !playerRaw) return null;
+  const team = String(teamRaw).trim().toUpperCase();
+  const player = String(playerRaw).trim();
+  if (!team || !player) return null;
+  const season = toInt(row.season ?? row.snapshot_season ?? defaults.season);
+  const week = toInt(row.week ?? row.snapshot_week ?? defaults.week);
+  const position = row.position ?? row.pos ?? row.player_position ?? null;
+  const status = row.status ?? row.injury_status ?? row.designation ?? null;
+  const injury = row.injury ?? row.injury_detail ?? row.description ?? row.detail ?? null;
+  const practice = row.practice ?? row.practice_status ?? row.practice_text ?? row.practice_notes ?? null;
+  const fetchedAt = row.fetched_at ?? row.snapshot_fetched_at ?? row.snapshot?.fetched_at ?? defaults.fetchedAt ?? null;
+  const noteBits = [];
+  if (row.notes) noteBits.push(String(row.notes));
+  if (row.note) noteBits.push(String(row.note));
+  if (row.report) noteBits.push(String(row.report));
+  if (!noteBits.length && injury) noteBits.push(String(injury));
+  if (practice && !noteBits.includes(String(practice))) noteBits.push(String(practice));
+  const notes = noteBits.length ? noteBits.join(' | ') : null;
+  return {
+    season,
+    week,
+    team,
+    player,
+    position,
+    status,
+    injury,
+    practice,
+    notes,
+    fetched_at: fetchedAt,
+    source: row.source ?? 'rotowire'
+  };
+}
+
+async function readJsonArray(filePath) {
+  const text = await fs.readFile(filePath, 'utf8');
+  const parsed = JSON.parse(text);
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray(parsed.rows)) return parsed.rows;
+  return [];
+}
+
+async function loadRotowireArtifacts(season) {
+  let files;
+  try {
+    files = await fs.readdir(ROTOWIRE_ARTIFACTS_DIR);
+  } catch (err) {
+    if (err?.code === 'ENOENT') return [];
+    throw err;
+  }
+
+  const weekEntries = files
+    .map((name) => {
+      const m = name.match(new RegExp(`^injuries_${season}_W(\\d{2})\\.json$`, 'i'));
+      if (!m) return null;
+      return { name, week: toInt(m[1]) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.week ?? 0) - (b.week ?? 0));
+
+  const dedup = new Map();
+  const out = [];
+
+  for (const entry of weekEntries) {
+    try {
+      const rows = await readJsonArray(path.join(ROTOWIRE_ARTIFACTS_DIR, entry.name));
+      for (const raw of rows) {
+        const normalized = normalizeRotowireRecord(raw, { season, week: entry.week });
+        if (!normalized) continue;
+        const key = `${normalized.season ?? ''}|${normalized.week ?? ''}|${normalized.team}|${normalized.player}|${normalized.status ?? ''}`;
+        if (dedup.has(key)) continue;
+        dedup.set(key, true);
+        out.push(normalized);
+      }
+    } catch (err) {
+      console.warn(`[loadInjuries] failed to read ${entry.name}: ${err?.message || err}`);
+    }
+  }
+
+  if (!out.length) {
+    try {
+      const currentRows = await readJsonArray(path.join(ROTOWIRE_ARTIFACTS_DIR, 'injuries_current.json'));
+      for (const raw of currentRows) {
+        const normalized = normalizeRotowireRecord(raw, { season });
+        if (!normalized) continue;
+        const key = `${normalized.season ?? ''}|${normalized.week ?? ''}|${normalized.team}|${normalized.player}|${normalized.status ?? ''}`;
+        if (dedup.has(key)) continue;
+        dedup.set(key, true);
+        out.push(normalized);
+      }
+    } catch (err) {
+      if (err?.code !== 'ENOENT') {
+        console.warn(`[loadInjuries] failed to read injuries_current.json: ${err?.message || err}`);
+      }
+    }
+  }
+
+  return out;
 }
 
 // ---------- canonical loaders (exact paths) ----------
@@ -519,8 +654,41 @@ export async function loadPFRAdvTeam(season){
   // Return array for backward compatibility with existing callers
   return loadPFRAdvTeamWeeklyArray(season);
 }
-export async function loadInjuries(){
-  // Not available as a single canonical csv in nflverse-data; return empty & log once
-  console.warn('[loadInjuries] returning empty (no canonical weekly injuries csv in nflverse-data)');
-  return [];
+
+export async function loadInjuries(season){
+  const y = toInt(season);
+  if (y == null) throw new Error('loadInjuries season');
+  return cached(caches.injuries, y, async()=>{
+    let rows = [];
+    try {
+      const resolved = await resolveDatasetUrl('injuries', y, REL.injuries);
+      if (resolved?.url) {
+        const { rows: csvRows, source } = await fetchCsvFlexible(resolved.url);
+        rows = csvRows;
+        console.log(`[loadInjuries] nflverse ${source ?? resolved.url} rows=${rows.length}`);
+      }
+    } catch (err) {
+      console.warn(`[loadInjuries] nflverse fetch failed: ${err?.message || err}`);
+    }
+
+    if (rows.length >= NFLVERSE_INJURY_MIN_ROWS) return rows;
+
+    if (!ROTOWIRE_FLAG) {
+      if (!rows.length) console.warn('[loadInjuries] nflverse injuries empty; ROTOWIRE_ENABLED not set');
+      return rows;
+    }
+
+    try {
+      const fallback = await loadRotowireArtifacts(y);
+      if (fallback.length) {
+        console.log(`[loadInjuries] using Rotowire artifacts rows=${fallback.length}`);
+        return fallback;
+      }
+      console.warn('[loadInjuries] Rotowire artifacts empty');
+    } catch (err) {
+      console.warn(`[loadInjuries] Rotowire fallback failed: ${err?.message || err}`);
+    }
+
+    return rows;
+  });
 }

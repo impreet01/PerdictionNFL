@@ -123,7 +123,15 @@ function parseArgs() {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg.startsWith("--")) continue;
-    const key = arg.slice(2);
+    const withoutPrefix = arg.slice(2);
+    if (withoutPrefix.includes("=")) {
+      const [rawKey, ...rest] = withoutPrefix.split("=");
+      const key = rawKey;
+      const value = rest.join("=");
+      options[key] = value === "" ? true : value;
+      continue;
+    }
+    const key = withoutPrefix;
     const value = args[i + 1];
     if (value && !value.startsWith("--")) {
       options[key] = value;

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const ROTOWIRE_ENABLED = process.env.ROTOWIRE_ENABLED === 'true';
+const ROTOWIRE_MARKETS_ENDPOINT = 'https://www.rotowire.com/betting/nfl/tables/nfl-games-by-market.php';
 
 if (!ROTOWIRE_ENABLED) {
   console.log('[fetchRotowireMarkets] ROTOWIRE_ENABLED !== "true"; skipping fetch.');
@@ -335,7 +336,10 @@ async function main() {
   const artifactsDir = path.resolve(process.cwd(), 'artifacts');
   await fs.mkdir(artifactsDir, { recursive: true });
 
-  const url = new URL('https://www.rotowire.com/betting/nfl/tables/nfl-games-by-market.php');
+  // `trainer/dataSources.js#loadMarkets` reads the JSON artifacts generated here.
+  // The upstream feed lives at:
+  //   https://www.rotowire.com/betting/nfl/tables/nfl-games-by-market.php?week=<WEEK>
+  const url = new URL(ROTOWIRE_MARKETS_ENDPOINT);
   url.searchParams.set('week', String(week));
 
   let payload;

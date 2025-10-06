@@ -920,6 +920,8 @@ export async function loadMarkets(season){
   if (y == null) throw new Error('loadMarkets season');
   return cached(caches.markets, y, async()=>{
     try {
+      // Artifacts created by `scripts/fetchRotowireMarkets.js`, which fetches
+      // https://www.rotowire.com/betting/nfl/tables/nfl-games-by-market.php?week=<week>
       const rows = await loadRotowireMarketArtifacts(y);
       if (rows.length) {
         console.log(`[loadMarkets] using Rotowire market artifacts rows=${rows.length}`);

@@ -92,6 +92,16 @@ jobs:
           echo "Training SEASON=$SEASON WEEK=$WEEK"
           SEASON=$SEASON WEEK=$WEEK npm run train:multi
 
+      - name: Recalculate Hybrid v2 artifacts
+        run: |
+          HYBRID_WEEK=$((WEEK - 1))
+          if [ "$HYBRID_WEEK" -lt 1 ]; then
+            echo "Hybrid v2 requires a completed prior week; skipping."
+            exit 0
+          fi
+          echo "Recomputing Hybrid v2 for SEASON=$SEASON WEEK=$HYBRID_WEEK"
+          npm run hybrid:v2 -- --season=$SEASON --week=$HYBRID_WEEK
+
       - name: Show artifacts
         run: |
           echo "Artifacts directory:"
@@ -111,7 +121,7 @@ jobs:
           # Ensure origin uses token (avoids 403)
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
 
-          git add artifacts/*.json || true
+          git add artifacts/*.json artifacts/hybrid_v2/* || true
           if git diff --cached --quiet; then
             echo "no_changes=true" >> $GITHUB_OUTPUT
             echo "No artifact changes to commit."
@@ -132,3 +142,4 @@ jobs:
           branch: "bot/artifacts-S${{ env.SEASON }}-W${{ env.WEEK }}"
           add-paths: |
             artifacts/*.json
+            artifacts/hybrid_v2/*

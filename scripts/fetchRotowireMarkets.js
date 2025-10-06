@@ -1,8 +1,51 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { execFile as execFileCallback } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const ROTOWIRE_ENABLED = process.env.ROTOWIRE_ENABLED === 'true';
 const ROTOWIRE_MARKETS_ENDPOINT = 'https://www.rotowire.com/betting/nfl/tables/nfl-games-by-market.php';
+
+const execFile = promisify(execFileCallback);
+
+async function fetchJsonWithFallback(url) {
+  const headers = {
+    'User-Agent': 'PerdictionNFL/rotowire-markets (+https://github.com/Perdiction-NFL)',
+    Accept: 'application/json,text/javascript;q=0.9'
+  };
+
+  if (typeof fetch === 'function') {
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (err) {
+      const code = err?.cause?.code ?? err?.code ?? null;
+      const message = err?.message ?? String(err);
+      if (code !== 'ENETUNREACH') {
+        console.warn(`[fetchRotowireMarkets] fetch() failed (${message}); falling back to curl`);
+      } else {
+        console.warn('[fetchRotowireMarkets] fetch() reported ENETUNREACH; falling back to curl');
+      }
+    }
+  }
+
+  try {
+    const args = ['-sS', '-H', `User-Agent: ${headers['User-Agent']}`, '-H', `Accept: ${headers.Accept}`, url.toString()];
+    const { stdout } = await execFile('curl', args);
+    return JSON.parse(stdout);
+  } catch (err) {
+    if (err?.code === 'ENOENT') {
+      throw new Error('curl not found (required for fallback fetch)');
+    }
+    if (err?.stderr) {
+      throw new Error(`curl exited with error: ${err.stderr.trim()}`);
+    }
+    throw err;
+  }
+}
 
 if (!ROTOWIRE_ENABLED) {
   console.log('[fetchRotowireMarkets] ROTOWIRE_ENABLED !== "true"; skipping fetch.');
@@ -344,16 +387,7 @@ async function main() {
 
   let payload;
   try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'PerdictionNFL/rotowire-markets (+https://github.com/Perdiction-NFL)',
-        Accept: 'application/json,text/javascript;q=0.9'
-      }
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    payload = await res.json();
+    payload = await fetchJsonWithFallback(url);
   } catch (err) {
     console.error(`[fetchRotowireMarkets] Failed to fetch markets: ${err?.message || err}`);
     process.exit(1);

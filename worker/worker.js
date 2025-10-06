@@ -41,6 +41,13 @@ const coerceInt = (value) => {
   return Number.isFinite(num) && Number.isInteger(num) ? num : null;
 };
 
+const toNumberOrNull = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const escapeRegex = (value) => value.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+
 async function listArtifacts() {
   const resp = await fetch(GH_API_LIST, { headers: GH_HEADERS });
   if (!resp.ok) {
@@ -53,9 +60,9 @@ async function listArtifacts() {
   }
 }
 
-function parseWeekFiles(listing, prefix) {
+function parseWeekFiles(listing, prefix, ext = ".json") {
   const out = [];
-  const regex = new RegExp(`^${prefix}_(\\d{4})_W(\\d{2})\\.json$`, "i");
+  const regex = new RegExp(`^${prefix}_(\\d{4})_W(\\d{2})${escapeRegex(ext)}$`, "i");
   for (const item of listing || []) {
     if (!item || item.type !== "file") continue;
     const match = regex.exec(item.name);
@@ -95,11 +102,23 @@ async function fetchJsonFile(file) {
   }
 }
 
-async function resolveSeasonWeek(prefix, seasonParam, weekParam, listing) {
+async function fetchTextFile(file) {
+  const url = `${RAW_BASE}/${file}`;
+  const resp = await fetch(url, { cf: { cacheEverything: true, cacheTtl: CACHE_TTL } });
+  if (!resp.ok) {
+    if (resp.status === 404) {
+      throw new HttpError(404, `artifact not found: ${file}`);
+    }
+    throw new HttpError(502, `failed to fetch artifact ${file} (status ${resp.status})`);
+  }
+  return resp.text();
+}
+
+async function resolveSeasonWeek(prefix, seasonParam, weekParam, listing, options = {}) {
   const seasonInput = toInt(seasonParam, "season");
   const weekInput = toInt(weekParam, "week");
   const data = listing || (await listArtifacts());
-  const parsed = parseWeekFiles(data, prefix);
+  const parsed = parseWeekFiles(data, prefix, options.ext);
   if (!parsed.length) {
     throw new HttpError(404, `no ${prefix} artifacts found`);
   }
@@ -141,7 +160,13 @@ async function resolveSeasonFile(prefix, seasonParam, listing) {
 }
 
 async function respondWithArtifact(prefix, url, options = {}) {
-  const resolved = await resolveSeasonWeek(prefix, url.searchParams.get("season"), url.searchParams.get("week"), options.listing);
+  const resolved = await resolveSeasonWeek(
+    prefix,
+    url.searchParams.get("season"),
+    url.searchParams.get("week"),
+    options.listing,
+    options
+  );
   const data = await fetchJsonFile(resolved.file);
   return json({ season: resolved.season, week: resolved.week, data });
 }
@@ -225,6 +250,94 @@ async function artifactResponse(url) {
   const relative = normalized.startsWith("artifacts/") ? normalized.slice("artifacts/".length) : normalized;
   const data = await fetchJsonFile(relative);
   return json(data);
+}
+
+function parseCsvLine(line) {
+  const fields = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === "\"") {
+        if (line[i + 1] === "\"") {
+          current += "\"";
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else if (char === ",") {
+      fields.push(current);
+      current = "";
+    } else if (char === "\"") {
+      inQuotes = true;
+    } else {
+      current += char;
+    }
+  }
+  fields.push(current);
+  return fields;
+}
+
+function parseCsv(content) {
+  const lines = content.split(/\r?\n/u).filter((line) => line.trim().length);
+  if (!lines.length) return [];
+  const header = parseCsvLine(lines[0]).map((h) => h.trim());
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = parseCsvLine(lines[i]);
+    const row = {};
+    for (let j = 0; j < header.length; j++) {
+      row[header[j]] = cells[j] != null ? cells[j] : "";
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+async function predictionsV2Response(url) {
+  const resolved = await resolveSeasonWeek(
+    "predictions_v2",
+    url.searchParams.get("season"),
+    url.searchParams.get("week"),
+    undefined,
+    { ext: ".csv" }
+  );
+  const content = await fetchTextFile(resolved.file);
+  const rows = parseCsv(content);
+  const games = rows.map((row) => ({
+    game_id: row.game_id || null,
+    home_team: row.home_team || null,
+    away_team: row.away_team || null,
+    forecast: toNumberOrNull(row.forecast),
+    base_score: toNumberOrNull(row.base_score),
+    drivers: {
+      context_adjustment: toNumberOrNull(row.context_adjustment),
+      qb_ypa_delta: toNumberOrNull(row.qb_ypa_delta),
+      rush_epa_drift: toNumberOrNull(row.rush_epa_drift),
+      turnover_drift: toNumberOrNull(row.turnover_drift),
+      market_shift: toNumberOrNull(row.market_shift)
+    },
+    weights: {
+      logistic: toNumberOrNull(row.weight_logistic),
+      tree: toNumberOrNull(row.weight_tree),
+      bt: toNumberOrNull(row.weight_bt),
+      ann: toNumberOrNull(row.weight_ann)
+    },
+    calibration: {
+      beta: toNumberOrNull(row.calibration_beta),
+      intercept: toNumberOrNull(row.calibration_intercept)
+    }
+  }));
+  return json({
+    season: resolved.season,
+    week: resolved.week,
+    model: "AdaptiveHybrid_v2",
+    games
+  });
 }
 
 async function leaderboardResponse(url) {
@@ -353,6 +466,9 @@ export default {
       }
       if (path === "/predictions/current") {
         return await respondWithArtifact("predictions", url);
+      }
+      if (path === "/predictions/v2") {
+        return await predictionsV2Response(url);
       }
       if (path === "/context") {
         return await respondWithArtifact("context", url);

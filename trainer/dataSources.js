@@ -329,6 +329,7 @@ export const caches = {
   pbp:         new Map(),
   pfrAdv:      new Map(), // merged weekly map (season)
   injuries:    new Map(),
+  markets:     new Map(),
 };
 
 async function cached(store,key,loader){
@@ -374,6 +375,218 @@ function normalizeRotowireRecord(row, defaults = {}) {
     notes,
     fetched_at: fetchedAt,
     source: row.source ?? 'rotowire'
+  };
+}
+
+function toNumberLoose(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const str = String(value).trim();
+  if (!str) return null;
+  if (/^pk$/i.test(str) || /^pick'em$/i.test(str) || /^pickem$/i.test(str) || /^pick$/i.test(str)) return 0;
+  if (/^ev$/i.test(str) || /^even$/i.test(str)) return 100;
+  const cleaned = str.replace(/[,]/g, '');
+  const num = Number.parseFloat(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
+function normalizeMarketBooks(rawBooks) {
+  if (!rawBooks || typeof rawBooks !== 'object') return {};
+  const books = {};
+  for (const [name, rawVal] of Object.entries(rawBooks)) {
+    if (!rawVal || typeof rawVal !== 'object') continue;
+    const key = name.toLowerCase();
+    const moneyline = rawVal.moneyline || {};
+    const spread = rawVal.spread || {};
+    const spreadHome = spread.home || {};
+    const spreadAway = spread.away || {};
+    const total = rawVal.total || {};
+    const teamTotal = rawVal.team_total || rawVal.teamTotal || {};
+    const teamTotalHome = teamTotal.home || {};
+    const teamTotalAway = teamTotal.away || {};
+    books[key] = {
+      moneyline: {
+        home: toNumberLoose(moneyline.home),
+        away: toNumberLoose(moneyline.away)
+      },
+      spread: {
+        home: {
+          line: toNumberLoose(spreadHome.line ?? spread.home_line ?? spread.homeLine),
+          price: toNumberLoose(spreadHome.price ?? spread.home_price ?? spread.homePrice)
+        },
+        away: {
+          line: toNumberLoose(spreadAway.line ?? spread.away_line ?? spread.awayLine),
+          price: toNumberLoose(spreadAway.price ?? spread.away_price ?? spread.awayPrice)
+        }
+      },
+      total: {
+        points: toNumberLoose(total.points ?? total.line ?? total.value),
+        over_price: toNumberLoose(total.over_price ?? total.overPrice ?? total.over),
+        under_price: toNumberLoose(total.under_price ?? total.underPrice ?? total.under)
+      },
+      team_total: {
+        home: {
+          points: toNumberLoose(teamTotalHome.points ?? teamTotal.home_points ?? teamTotalHome.value),
+          over_price: toNumberLoose(teamTotalHome.over_price ?? teamTotal.home_over_price ?? teamTotalHome.overPrice ?? teamTotalHome.over),
+          under_price: toNumberLoose(teamTotalHome.under_price ?? teamTotal.home_under_price ?? teamTotalHome.underPrice ?? teamTotalHome.under)
+        },
+        away: {
+          points: toNumberLoose(teamTotalAway.points ?? teamTotal.away_points ?? teamTotalAway.value),
+          over_price: toNumberLoose(teamTotalAway.over_price ?? teamTotal.away_over_price ?? teamTotalAway.overPrice ?? teamTotalAway.over),
+          under_price: toNumberLoose(teamTotalAway.under_price ?? teamTotal.away_under_price ?? teamTotalAway.underPrice ?? teamTotalAway.under)
+        }
+      }
+    };
+  }
+  return books;
+}
+
+function normalizeMarketBest(rawBest) {
+  if (!rawBest || typeof rawBest !== 'object') {
+    return {
+      moneyline: { home: { book: null, price: null }, away: { book: null, price: null } },
+      spread: { home: { book: null, line: null, price: null }, away: { book: null, line: null, price: null } },
+      total: { over: { book: null, points: null, price: null }, under: { book: null, points: null, price: null } },
+      team_total: {
+        home: { over: { book: null, points: null, price: null }, under: { book: null, points: null, price: null } },
+        away: { over: { book: null, points: null, price: null }, under: { book: null, points: null, price: null } }
+      }
+    };
+  }
+  const safe = (obj, path, fallback = null) => {
+    let cur = obj;
+    for (const key of path) {
+      if (!cur || typeof cur !== 'object') return fallback;
+      cur = cur[key];
+    }
+    return cur ?? fallback;
+  };
+  return {
+    moneyline: {
+      home: {
+        book: safe(rawBest, ['moneyline', 'home', 'book'], null),
+        price: toNumberLoose(safe(rawBest, ['moneyline', 'home', 'price'], null))
+      },
+      away: {
+        book: safe(rawBest, ['moneyline', 'away', 'book'], null),
+        price: toNumberLoose(safe(rawBest, ['moneyline', 'away', 'price'], null))
+      }
+    },
+    spread: {
+      home: {
+        book: safe(rawBest, ['spread', 'home', 'book'], null),
+        line: toNumberLoose(safe(rawBest, ['spread', 'home', 'line'], null)),
+        price: toNumberLoose(safe(rawBest, ['spread', 'home', 'price'], null))
+      },
+      away: {
+        book: safe(rawBest, ['spread', 'away', 'book'], null),
+        line: toNumberLoose(safe(rawBest, ['spread', 'away', 'line'], null)),
+        price: toNumberLoose(safe(rawBest, ['spread', 'away', 'price'], null))
+      }
+    },
+    total: {
+      over: {
+        book: safe(rawBest, ['total', 'over', 'book'], null),
+        points: toNumberLoose(safe(rawBest, ['total', 'over', 'points'], null)),
+        price: toNumberLoose(safe(rawBest, ['total', 'over', 'price'], null))
+      },
+      under: {
+        book: safe(rawBest, ['total', 'under', 'book'], null),
+        points: toNumberLoose(safe(rawBest, ['total', 'under', 'points'], null)),
+        price: toNumberLoose(safe(rawBest, ['total', 'under', 'price'], null))
+      }
+    },
+    team_total: {
+      home: {
+        over: {
+          book: safe(rawBest, ['team_total', 'home', 'over', 'book'], null),
+          points: toNumberLoose(safe(rawBest, ['team_total', 'home', 'over', 'points'], null)),
+          price: toNumberLoose(safe(rawBest, ['team_total', 'home', 'over', 'price'], null))
+        },
+        under: {
+          book: safe(rawBest, ['team_total', 'home', 'under', 'book'], null),
+          points: toNumberLoose(safe(rawBest, ['team_total', 'home', 'under', 'points'], null)),
+          price: toNumberLoose(safe(rawBest, ['team_total', 'home', 'under', 'price'], null))
+        }
+      },
+      away: {
+        over: {
+          book: safe(rawBest, ['team_total', 'away', 'over', 'book'], null),
+          points: toNumberLoose(safe(rawBest, ['team_total', 'away', 'over', 'points'], null)),
+          price: toNumberLoose(safe(rawBest, ['team_total', 'away', 'over', 'price'], null))
+        },
+        under: {
+          book: safe(rawBest, ['team_total', 'away', 'under', 'book'], null),
+          points: toNumberLoose(safe(rawBest, ['team_total', 'away', 'under', 'points'], null)),
+          price: toNumberLoose(safe(rawBest, ['team_total', 'away', 'under', 'price'], null))
+        }
+      }
+    }
+  };
+}
+
+function normalizeMarketObject(rawMarket) {
+  if (!rawMarket || typeof rawMarket !== 'object') return null;
+  const out = {
+    spread: toNumberLoose(rawMarket.spread ?? rawMarket.spread_home ?? rawMarket.close_spread ?? rawMarket.open_spread),
+    close_spread: toNumberLoose(rawMarket.close_spread ?? rawMarket.spread ?? rawMarket.spread_home),
+    open_spread: toNumberLoose(rawMarket.open_spread ?? rawMarket.spread ?? rawMarket.spread_home),
+    spread_home: toNumberLoose(rawMarket.spread_home ?? rawMarket.spread),
+    spread_away: toNumberLoose(rawMarket.spread_away ?? (rawMarket.spread_home != null ? -toNumberLoose(rawMarket.spread_home) : null)),
+    spread_price_home: toNumberLoose(rawMarket.spread_price_home),
+    spread_price_away: toNumberLoose(rawMarket.spread_price_away),
+    moneyline_home: toNumberLoose(rawMarket.moneyline_home),
+    moneyline_away: toNumberLoose(rawMarket.moneyline_away),
+    total: toNumberLoose(rawMarket.total ?? rawMarket.total_points),
+    total_points: toNumberLoose(rawMarket.total_points ?? rawMarket.total),
+    total_over_price: toNumberLoose(rawMarket.total_over_price),
+    total_under_price: toNumberLoose(rawMarket.total_under_price),
+    team_total_home: toNumberLoose(rawMarket.team_total_home),
+    team_total_home_over_price: toNumberLoose(rawMarket.team_total_home_over_price),
+    team_total_home_under_price: toNumberLoose(rawMarket.team_total_home_under_price),
+    team_total_away: toNumberLoose(rawMarket.team_total_away),
+    team_total_away_over_price: toNumberLoose(rawMarket.team_total_away_over_price),
+    team_total_away_under_price: toNumberLoose(rawMarket.team_total_away_under_price),
+    consensus_samples: toInt(rawMarket.consensus_samples ?? rawMarket.sample_size ?? rawMarket.samples ?? null) ?? 0,
+    books: normalizeMarketBooks(rawMarket.books || rawMarket.markets || {}),
+    best: normalizeMarketBest(rawMarket.best),
+    fetched_at: rawMarket.fetched_at ?? null,
+    source: rawMarket.source ?? 'rotowire'
+  };
+  if (!Number.isFinite(out.spread) && Number.isFinite(out.spread_home)) out.spread = out.spread_home;
+  if (!Number.isFinite(out.total) && Number.isFinite(out.total_points)) out.total = out.total_points;
+  return out;
+}
+
+function normalizeMarketRow(row, defaults = {}) {
+  if (!row || typeof row !== 'object') return null;
+  const season = toInt(row.season ?? defaults.season);
+  const week = toInt(row.week ?? defaults.week);
+  const homeRaw = row.home_team ?? row.home ?? row.homeTeam ?? defaults.home;
+  const awayRaw = row.away_team ?? row.away ?? row.awayTeam ?? defaults.away;
+  const home = homeRaw ? String(homeRaw).trim().toUpperCase() : null;
+  const away = awayRaw ? String(awayRaw).trim().toUpperCase() : null;
+  if (!home || !away) return null;
+  const gameKey = row.game_key ?? `${season ?? ''}-W${week != null ? String(week).padStart(2, '0') : '??'}-${home}-${away}`;
+  const market = normalizeMarketObject(row.market ?? row.markets ?? null);
+  const fetchedAt = row.fetched_at ?? market?.fetched_at ?? defaults.fetchedAt ?? null;
+  if (market && !market.fetched_at) market.fetched_at = fetchedAt;
+  return {
+    season,
+    week,
+    rotowire_game_id: row.rotowire_game_id ?? row.game_id ?? row.gameID ?? null,
+    game_key: gameKey,
+    game_date: row.game_date ?? row.kickoff_local ?? row.gameDate ?? null,
+    game_day: row.game_day ?? row.gameDay ?? null,
+    kickoff_display: row.kickoff_display ?? row.gameDateTime ?? null,
+    market_url: row.market_url ?? (row.gameURL ? `https://www.rotowire.com${row.gameURL}` : null),
+    home_team: home,
+    away_team: away,
+    home_name: row.home_name ?? row.homeName ?? null,
+    away_name: row.away_name ?? row.awayName ?? null,
+    fetched_at: fetchedAt,
+    source: row.source ?? market?.source ?? 'rotowire',
+    market
   };
 }
 
@@ -441,6 +654,67 @@ async function loadRotowireArtifacts(season) {
   }
 
   return out;
+}
+
+async function loadRotowireMarketArtifacts(season) {
+  let files;
+  try {
+    files = await fs.readdir(ROTOWIRE_ARTIFACTS_DIR);
+  } catch (err) {
+    if (err?.code === 'ENOENT') return [];
+    throw err;
+  }
+
+  const weekEntries = files
+    .map((name) => {
+      const m = name.match(new RegExp(`^markets_${season}_W(\\d{2})\\.json$`, 'i'));
+      if (!m) return null;
+      return { name, week: toInt(m[1]) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.week ?? 0) - (b.week ?? 0));
+
+  const dedup = new Map();
+
+  const addRows = (rows, defaults = {}) => {
+    for (const raw of rows || []) {
+      const normalized = normalizeMarketRow(raw, defaults);
+      if (!normalized || !normalized.market) continue;
+      const key = normalized.game_key ?? `${normalized.home_team ?? ''}|${normalized.away_team ?? ''}|${normalized.week ?? ''}`;
+      const prev = dedup.get(key);
+      if (!prev) {
+        dedup.set(key, normalized);
+        continue;
+      }
+      const prevTs = Date.parse(prev.market?.fetched_at ?? prev.fetched_at ?? '');
+      const nextTs = Date.parse(normalized.market?.fetched_at ?? normalized.fetched_at ?? '');
+      if (!Number.isFinite(prevTs) || (Number.isFinite(nextTs) && nextTs >= prevTs)) {
+        dedup.set(key, normalized);
+      }
+    }
+  };
+
+  for (const entry of weekEntries) {
+    try {
+      const rows = await readJsonArray(path.join(ROTOWIRE_ARTIFACTS_DIR, entry.name));
+      addRows(rows, { season, week: entry.week });
+    } catch (err) {
+      console.warn(`[loadMarkets] failed to read ${entry.name}: ${err?.message || err}`);
+    }
+  }
+
+  if (!dedup.size) {
+    try {
+      const currentRows = await readJsonArray(path.join(ROTOWIRE_ARTIFACTS_DIR, 'markets_current.json'));
+      addRows(currentRows, { season });
+    } catch (err) {
+      if (err?.code !== 'ENOENT') {
+        console.warn(`[loadMarkets] failed to read markets_current.json: ${err?.message || err}`);
+      }
+    }
+  }
+
+  return Array.from(dedup.values());
 }
 
 // ---------- canonical loaders (exact paths) ----------
@@ -626,6 +900,25 @@ export async function loadPFRAdvTeamWeeklyArray(season){
 export async function loadPFRAdvTeam(season){
   // Return array for backward compatibility with existing callers
   return loadPFRAdvTeamWeeklyArray(season);
+}
+
+export async function loadMarkets(season){
+  const y = toInt(season);
+  if (y == null) throw new Error('loadMarkets season');
+  return cached(caches.markets, y, async()=>{
+    try {
+      const rows = await loadRotowireMarketArtifacts(y);
+      if (rows.length) {
+        console.log(`[loadMarkets] using Rotowire market artifacts rows=${rows.length}`);
+      } else {
+        console.warn('[loadMarkets] Rotowire market artifacts empty');
+      }
+      return rows;
+    } catch (err) {
+      console.warn(`[loadMarkets] Rotowire market artifacts load failed: ${err?.message || err}`);
+      return [];
+    }
+  });
 }
 
 export async function loadInjuries(season){

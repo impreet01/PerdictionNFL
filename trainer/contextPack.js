@@ -6,7 +6,8 @@ import {
   loadTeamWeekly,
   loadPlayerWeekly,
   loadInjuries,
-  loadESPNQBR
+  loadESPNQBR,
+  loadMarkets
 } from "./dataSources.js";
 import { loadElo } from "./eloLoader.js";
 
@@ -113,6 +114,47 @@ function buildEloMap(rows, season, week) {
   return map;
 }
 
+function cloneMarket(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  try {
+    return JSON.parse(JSON.stringify(raw));
+  } catch {
+    return { ...raw };
+  }
+}
+
+function buildMarketMap(rows, season, week) {
+  const map = new Map();
+  for (const r of rows || []) {
+    if (Number(r.season) !== season) continue;
+    const wk = Number(r.week);
+    if (Number.isFinite(week) && Number.isFinite(wk) && wk !== week) continue;
+    const home = String(r.home_team || r.home || "").toUpperCase();
+    const away = String(r.away_team || r.away || "").toUpperCase();
+    if (!home || !away) continue;
+    const key = gameKey(season, Number.isFinite(wk) ? wk : week, home, away);
+    const marketRaw = r.market || r.markets || null;
+    if (!marketRaw || typeof marketRaw !== "object") continue;
+    const market = cloneMarket(marketRaw) || {};
+    if (market && !Number.isFinite(market.spread) && Number.isFinite(market.spread_home)) {
+      market.spread = market.spread_home;
+    }
+    if (market && !Number.isFinite(market.total) && Number.isFinite(market.total_points)) {
+      market.total = market.total_points;
+    }
+    market.rotowire_game_id = r.rotowire_game_id ?? r.game_id ?? r.gameID ?? null;
+    market.market_url = r.market_url ?? market.market_url ?? null;
+    market.home_team = home;
+    market.away_team = away;
+    market.season = season;
+    market.week = Number.isFinite(wk) ? wk : week;
+    if (!market.fetched_at) market.fetched_at = r.fetched_at ?? null;
+    market.source = market.source ?? r.source ?? "rotowire";
+    map.set(key, market);
+  }
+  return map;
+}
+
 function buildQBRHistory(rows, season) {
   const map = new Map();
   for (const r of rows || []) {
@@ -150,11 +192,13 @@ export async function buildContextForWeek(season, week) {
   let injuries = [];
   let qbrRows = [];
   let eloRows = [];
+  let marketRows = [];
   try { teamWeekly = await loadTeamWeekly(y); } catch (err) { console.warn("teamWeekly load failed", err?.message ?? err); }
   try { playerWeekly = await loadPlayerWeekly(y); } catch (err) { console.warn("playerWeekly load failed", err?.message ?? err); }
   try { injuries = await loadInjuries(y); } catch (err) { console.warn("injuries load failed", err?.message ?? err); }
   try { qbrRows = await loadESPNQBR(y); } catch (err) { /* optional */ }
   try { eloRows = await loadElo(y); } catch (err) { console.warn("elo load failed", err?.message ?? err); }
+  try { marketRows = await loadMarkets(y); } catch (err) { console.warn("market load failed", err?.message ?? err); }
 
   const games = schedules.filter((g) => Number(g.season) === y && Number(g.week) === w);
   if (!games.length) return [];
@@ -173,6 +217,7 @@ export async function buildContextForWeek(season, week) {
   const qbHistory = buildQBRHistory(qbrRows, y);
   const injuryMap = buildInjuryMap(injuries, y, w);
   const eloMap = buildEloMap(eloRows, y, w);
+  const marketMap = buildMarketMap(marketRows, y, w);
 
   for (const [team, rows] of byTeam.entries()) {
     rows.sort((a, b) => a._week - b._week);
@@ -246,6 +291,7 @@ export async function buildContextForWeek(season, week) {
     const qbrAway = latestQBR(qbHistory.get(away) || [], w);
 
     const eloInfo = eloMap.get(gid) || null;
+    const marketInfo = marketMap.get(gid) || null;
 
     out.push({
       game_id: gid,
@@ -300,9 +346,16 @@ export async function buildContextForWeek(season, week) {
           surface: surfaceRaw || null
         },
         elo: eloInfo,
-        market: eloInfo && Number.isFinite(eloInfo.spread_home)
-          ? { spread_home: eloInfo.spread_home }
-          : null
+        market: marketInfo
+          ?? (eloInfo && Number.isFinite(eloInfo.spread_home)
+            ? {
+                spread: eloInfo.spread_home,
+                spread_home: eloInfo.spread_home,
+                spread_away: Number.isFinite(eloInfo.spread_home) ? -eloInfo.spread_home : null,
+                source: 'elo',
+                fetched_at: null
+              }
+            : null)
       }
     });
   }

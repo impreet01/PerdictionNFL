@@ -534,8 +534,15 @@ async function main() {
 
   if (!fs.existsSync(outcomesFile)) throw new Error(`Missing outcomes file ${outcomesFile}`);
   if (!fs.existsSync(diagnosticsFile)) throw new Error(`Missing diagnostics file ${diagnosticsFile}`);
-  if (!fs.existsSync(predictionsNextFile)) throw new Error(`Missing next week predictions ${predictionsNextFile}`);
-  if (!fs.existsSync(contextNextFile)) throw new Error(`Missing next week context ${contextNextFile}`);
+  const hasNextPredictions = fs.existsSync(predictionsNextFile);
+  const hasNextContext = fs.existsSync(contextNextFile);
+
+  if (!hasNextPredictions) {
+    console.warn(`Upcoming week predictions not found at ${predictionsNextFile}; skipping prediction exports.`);
+  }
+  if (!hasNextContext) {
+    console.warn(`Upcoming week context not found at ${contextNextFile}; skipping context exports.`);
+  }
 
   const outcomes = await readJson(outcomesFile);
   const diagnostics = await readJson(diagnosticsFile);
@@ -584,8 +591,8 @@ async function main() {
   }
   const weights = fallbackUsed ? prevWeights : updatedWeights;
 
-  const nextPredictions = await readJson(predictionsNextFile);
-  const nextContext = await readJson(contextNextFile);
+  const nextPredictions = hasNextPredictions ? await readJson(predictionsNextFile) : [];
+  const nextContext = hasNextContext ? await readJson(contextNextFile) : [];
 
   const outputs = new Map();
   for (const game of nextPredictions) {
@@ -606,9 +613,9 @@ async function main() {
     });
   }
 
-  const predictionsCsv = buildPredictionsCsvRows(nextPredictions, outputs);
+  const predictionsCsv = hasNextPredictions ? buildPredictionsCsvRows(nextPredictions, outputs) : [];
   const outcomesCsv = buildOutcomesCsvRows(outcomes);
-  const contextCsv = buildContextCsvRows(nextContext);
+  const contextCsv = hasNextContext ? buildContextCsvRows(nextContext) : [];
 
   const diagnosticsOutput = {
     season,
@@ -632,8 +639,12 @@ async function main() {
   await writeJson(path.join(HYBRID_DIR, `hybrid_v2_weights_week${padWeek(week)}.json`), weightsOutput);
   await writeJson(path.join(HYBRID_DIR, `calibration_week${padWeek(week)}.json`), calibrationOutput);
   await writeCsv(path.join(HYBRID_DIR, `outcomes_week${padWeek(week)}.csv`), outcomesCsv);
-  await writeCsv(path.join(HYBRID_DIR, `context_week${padWeek(week + 1)}.csv`), contextCsv);
-  await writeCsv(path.join(HYBRID_DIR, `predictions_v2_${season}_W${padWeek(week + 1)}.csv`), predictionsCsv);
+  if (hasNextContext) {
+    await writeCsv(path.join(HYBRID_DIR, `context_week${padWeek(week + 1)}.csv`), contextCsv);
+  }
+  if (hasNextPredictions) {
+    await writeCsv(path.join(HYBRID_DIR, `predictions_v2_${season}_W${padWeek(week + 1)}.csv`), predictionsCsv);
+  }
 
   await appendPerformanceLog({
     season,

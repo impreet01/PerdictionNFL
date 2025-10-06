@@ -35,17 +35,22 @@ Train, evaluate, and serve NFL win probabilities using only open nflverse data â
 
 GitHub Actions can automate Step 3 on a schedule; copy `.github/workflows/train.yml`, set secrets if required, and enable Actions in your fork.
 
-## Injury ingestion workflow
+## Rotowire ingestion workflow
 
-Injury data now ships exclusively from the Rotowire scraper artifacts emitted by `scripts/fetchRotowireInjuries.js`. Refresh the artifacts before generating context packs or rerunning training:
+Injury and betting market context both ship from Rotowire scraper artifacts emitted by the scripts under `scripts/`. Refresh them before generating context packs or rerunning training so the trainer has the latest reports and odds snapshot:
 
-1. Set `ROTOWIRE_ENABLED=true` in your shell (required for the fetcher to execute).
-2. Run the fetcher for the target snapshot (pass any season/week you need):
+1. Set `ROTOWIRE_ENABLED=true` in your shell (required for the fetchers to execute).
+2. Run the injury fetcher for the target snapshot (pass any season/week you need):
    ```bash
    npm run fetch:injuries -- --season=2025 --week=6
    ```
    The script throttles between team requests, parses the Rotowire HTML table, and writes `artifacts/injuries_<season>_W<week>.json` plus `artifacts/injuries_current.json`.
-3. Re-run `npm run build:context` or `npm run train:multi` so the new injury rows flow into the summaries and per-game context.
+3. Run the betting markets fetcher for the same snapshot:
+   ```bash
+   npm run fetch:markets -- --season=2025 --week=6
+   ```
+   This pulls the Rotowire betting tables, normalises prices/lines, and writes `artifacts/markets_<season>_W<week>.json` plus `artifacts/markets_current.json`.
+4. Re-run `npm run build:context` or `npm run train:multi` so the refreshed artifacts flow into summaries, per-game context, and ensemble training.
 
 ## Produced artifacts
 Each successful `train:multi` run refreshes or adds:

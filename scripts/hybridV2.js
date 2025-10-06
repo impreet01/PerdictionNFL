@@ -398,16 +398,8 @@ async function appendPerformanceLog(filePath, record) {
   await fsp.writeFile(filePath, `${filtered.join("\n")}\n`);
 }
 
-async function main() {
-  const args = parseArgs();
-  const season = Number(args.season);
-  const week = Number(args.week);
-  if (!Number.isInteger(season) || !Number.isInteger(week)) {
-    console.error("hybrid:v2 requires --season and --week integers");
-    process.exit(1);
-  }
+async function processWeek(season, week) {
   const nextWeek = week + 1;
-  fs.mkdirSync(HYBRID_DIR, { recursive: true });
 
   const pad = padWeek(week);
   const padNext = padWeek(nextWeek);
@@ -419,21 +411,34 @@ async function main() {
   const nextPredictionsPath = path.join(ARTIFACT_DIR, `predictions_${season}_W${padNext}.json`);
   const nextContextPath = path.join(ARTIFACT_DIR, `context_${season}_W${padNext}.json`);
 
-  for (const file of [predictionsPath, outcomesPath, contextPath, diagnosticsPath, nextPredictionsPath, nextContextPath]) {
+  for (const file of [predictionsPath, outcomesPath, contextPath, diagnosticsPath]) {
     if (!fs.existsSync(file)) {
-      console.error(`Required artifact missing: ${file}`);
-      process.exit(1);
+      throw new Error(`Required artifact missing: ${file}`);
     }
   }
 
-  const [predictionsPrev, outcomesPrev, contextPrev, diagnostics, predictionsNext, contextNext] = await Promise.all([
+  const nextPredictionsExists = fs.existsSync(nextPredictionsPath);
+  const nextContextExists = fs.existsSync(nextContextPath);
+  const missingNextFiles = [
+    !nextPredictionsExists ? path.basename(nextPredictionsPath) : null,
+    !nextContextExists ? path.basename(nextContextPath) : null
+  ].filter(Boolean);
+  if (missingNextFiles.length > 0) {
+    console.warn(
+      `Next week artifacts missing for season ${season} week ${week}: ${missingNextFiles.join(", ")}`
+    );
+  }
+
+  const [predictionsPrev, outcomesPrev, contextPrev, diagnostics, predictionsNextRaw, contextNextRaw] = await Promise.all([
     loadJson(predictionsPath),
     loadJson(outcomesPath),
     loadJson(contextPath),
     loadJson(diagnosticsPath),
-    loadJson(nextPredictionsPath),
-    loadJson(nextContextPath)
+    nextPredictionsExists ? loadJson(nextPredictionsPath) : Promise.resolve([]),
+    nextContextExists ? loadJson(nextContextPath) : Promise.resolve([])
   ]);
+  const predictionsNext = Array.isArray(predictionsNextRaw) ? predictionsNextRaw : [];
+  const contextNext = Array.isArray(contextNextRaw) ? contextNextRaw : [];
 
   const actualMap = new Map();
   for (const outcome of outcomesPrev || []) {
@@ -635,7 +640,7 @@ async function main() {
     }
   };
 
-  await Promise.all([
+  const writeTasks = [
     writeJson(path.join(HYBRID_DIR, `diagnostics_week${pad}.json`), diagnosticsOutput),
     writeJson(
       path.join(HYBRID_DIR, `hybrid_v2_weights_week${pad}.json`),
@@ -669,43 +674,52 @@ async function main() {
       "home_points",
       "away_points",
       "home_win"
-    ]),
-    writeCsv(path.join(HYBRID_DIR, `context_week${padNext}.csv`), contextRows, [
-      "season",
-      "week",
-      "game_id",
-      "home_team",
-      "away_team",
-      "qb_ypa_home",
-      "qb_ypa_away",
-      "net_yds_home",
-      "net_yds_away",
-      "pred_logistic",
-      "pred_tree",
-      "pred_bt",
-      "pred_ann"
-    ]),
-    writeCsv(path.join(HYBRID_DIR, `predictions_v2_${season}_W${padNext}.csv`), nextRows, [
-      "season",
-      "week",
-      "game_id",
-      "home_team",
-      "away_team",
-      "forecast",
-      "base_score",
-      "context_adjustment",
-      "qb_ypa_delta",
-      "rush_epa_drift",
-      "turnover_drift",
-      "market_shift",
-      "weight_logistic",
-      "weight_tree",
-      "weight_bt",
-      "weight_ann",
-      "calibration_beta",
-      "calibration_intercept"
     ])
-  ]);
+  ];
+
+  if (nextRows.length > 0) {
+    writeTasks.push(
+      writeCsv(path.join(HYBRID_DIR, `context_week${padNext}.csv`), contextRows, [
+        "season",
+        "week",
+        "game_id",
+        "home_team",
+        "away_team",
+        "qb_ypa_home",
+        "qb_ypa_away",
+        "net_yds_home",
+        "net_yds_away",
+        "pred_logistic",
+        "pred_tree",
+        "pred_bt",
+        "pred_ann"
+      ])
+    );
+    writeTasks.push(
+      writeCsv(path.join(HYBRID_DIR, `predictions_v2_${season}_W${padNext}.csv`), nextRows, [
+        "season",
+        "week",
+        "game_id",
+        "home_team",
+        "away_team",
+        "forecast",
+        "base_score",
+        "context_adjustment",
+        "qb_ypa_delta",
+        "rush_epa_drift",
+        "turnover_drift",
+        "market_shift",
+        "weight_logistic",
+        "weight_tree",
+        "weight_bt",
+        "weight_ann",
+        "calibration_beta",
+        "calibration_intercept"
+      ])
+    );
+  }
+
+  await Promise.all(writeTasks);
 
   await appendPerformanceLog(path.join(HYBRID_DIR, "performance_log.csv"), {
     season,
@@ -729,6 +743,27 @@ async function main() {
 
   console.log(`Adaptive Hybrid v2 recalibrated for season ${season} week ${week}`);
   console.log(`Saved ${nextRows.length} predictions for week ${nextWeek}`);
+}
+
+async function main() {
+  const args = parseArgs();
+  const season = Number(args.season);
+  const currentWeek = Number(args.week);
+  if (!Number.isInteger(season) || !Number.isInteger(currentWeek)) {
+    console.error("hybrid:v2 requires --season and --week integers");
+    process.exit(1);
+  }
+
+  fs.mkdirSync(HYBRID_DIR, { recursive: true });
+
+  for (let week = 1; week <= currentWeek; week += 1) {
+    try {
+      await processWeek(season, week);
+    } catch (err) {
+      console.error(`hybrid:v2 failed for week ${week}`, err);
+      process.exit(1);
+    }
+  }
 }
 
 main().catch((err) => {

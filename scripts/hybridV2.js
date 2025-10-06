@@ -643,7 +643,9 @@ async function main() {
     await writeCsv(path.join(HYBRID_DIR, `context_week${padWeek(week + 1)}.csv`), contextCsv);
   }
   if (hasNextPredictions) {
-    await writeCsv(path.join(HYBRID_DIR, `predictions_v2_${season}_W${padWeek(week + 1)}.csv`), predictionsCsv);
+    const predictionsFile = `predictions_v2_${season}_W${padWeek(week + 1)}.csv`;
+    await writeCsv(path.join(HYBRID_DIR, predictionsFile), predictionsCsv);
+    await writeCsv(path.join(ARTIFACT_DIR, predictionsFile), predictionsCsv);
   }
 
   await appendPerformanceLog({

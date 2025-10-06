@@ -23,6 +23,7 @@ import {
   loadRostersWeekly as loadRostersWeeklyDS,
   loadDepthCharts as loadDepthChartsDS,
   loadInjuries as loadInjuriesDS,
+  loadMarkets as loadMarketsDS,
   loadFTNCharts as loadFTNChartsDS,
   loadPBP as loadPBPDS,
   loadPFRAdvTeamWeekly as loadPFRAdvTeamWeeklyDS,
@@ -387,6 +388,90 @@ function summarizeSnaps(snaps, weekCap) {
   return byTeamWeek;
 }
 
+function cloneMarketSnapshot(market) {
+  if (!market || typeof market !== "object") return null;
+  try {
+    const copy = JSON.parse(JSON.stringify(market));
+    if (!Number.isFinite(copy.spread) && Number.isFinite(copy.spread_home)) copy.spread = copy.spread_home;
+    if (!Number.isFinite(copy.total) && Number.isFinite(copy.total_points)) copy.total = copy.total_points;
+    return copy;
+  } catch {
+    const spreadHome = Number.isFinite(market.spread_home) ? market.spread_home : null;
+    const totalPoints = Number.isFinite(market.total_points) ? market.total_points : null;
+    return {
+      ...market,
+      spread: Number.isFinite(market.spread) ? market.spread : spreadHome,
+      total: Number.isFinite(market.total) ? market.total : totalPoints
+    };
+  }
+}
+
+function summarizeMarkets(markets, schedules, weekCap) {
+  if (!Array.isArray(markets) || !markets.length) return { index: {}, by_week: {} };
+
+  const matchupKey = (season, week, home, away) => `${season}|${week}|${home}|${away}`;
+  const scheduleLookup = new Map();
+  for (const r of schedules || []) {
+    const season = toInt(r.season ?? r.year);
+    const week = toInt(r.week ?? r.game_week ?? r.gameday);
+    const home = (r.home_team ?? r.home ?? r.home_team_abbr ?? r.team_home ?? "").toString().trim().toUpperCase();
+    const away = (r.away_team ?? r.away ?? r.away_team_abbr ?? r.team_away ?? "").toString().trim().toUpperCase();
+    if (!season || !week || !home || !away) continue;
+    const key = matchupKey(season, week, home, away);
+    if (!scheduleLookup.has(key)) {
+      scheduleLookup.set(key, {
+        game_id: r.game_id ?? r.gsis ?? r.game_id_pfr ?? `${season}-W${String(week).padStart(2, "0")}-${away}-${home}`,
+        game_date: r.gameday ?? r.game_date ?? null,
+        game_time_utc: r.game_time_utc ?? r.start_time ?? null
+      });
+    }
+  }
+
+  const index = {};
+  const byWeek = {};
+
+  for (const row of markets) {
+    const season = toInt(row.season);
+    const week = toInt(row.week);
+    if (!season || !week) continue;
+    if (weekCap && week > weekCap) continue;
+    const home = (row.home_team ?? row.home ?? "").toString().trim().toUpperCase();
+    const away = (row.away_team ?? row.away ?? "").toString().trim().toUpperCase();
+    if (!home || !away) continue;
+
+    const schedKey = matchupKey(season, week, home, away);
+    const schedInfo = scheduleLookup.get(schedKey) || null;
+    const market = cloneMarketSnapshot(row.market ?? row.markets ?? null);
+    if (!market) continue;
+
+    const fetchedAt = row.fetched_at ?? market.fetched_at ?? null;
+    if (!market.fetched_at && fetchedAt) market.fetched_at = fetchedAt;
+
+    const gameId = schedInfo?.game_id ?? row.game_key ?? `${season}-W${String(week).padStart(2, "0")}-${away}-${home}`;
+    const entry = {
+      season,
+      week,
+      game_id: gameId,
+      matchup_key: schedKey,
+      rotowire_game_id: row.rotowire_game_id ?? row.game_id ?? row.gameID ?? null,
+      home_team: home,
+      away_team: away,
+      market_url: row.market_url ?? null,
+      fetched_at: fetchedAt,
+      source: row.source ?? market.source ?? "rotowire",
+      market
+    };
+    if (schedInfo?.game_date) entry.game_date = schedInfo.game_date;
+    if (schedInfo?.game_time_utc) entry.game_time_utc = schedInfo.game_time_utc;
+
+    index[gameId] = entry;
+    if (!byWeek[week]) byWeek[week] = {};
+    byWeek[week][gameId] = entry;
+  }
+
+  return { index, by_week: byWeek };
+}
+
 function summarizeForm(teamWeek, weekCap) {
   // rolling 3-game averages for points for/against and total yards (if available)
   const byTeam = {};
@@ -482,7 +567,7 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
   const latestDone = latestCompletedWeek(schedules);
   const cap = weekCap ? Math.min(weekCap, latestDone ?? weekCap) : latestDone ?? null;
 
-  const [playerWeek, rostersWeekly, depthCharts, injuries, snaps, pfrAdvTeam, qbr, teamGameAdv] =
+  const [playerWeek, rostersWeekly, depthCharts, injuries, snaps, pfrAdvTeam, qbr, teamGameAdv, marketRows] =
     await Promise.all([
       loadPlayerWeekly(y),
       loadWeeklyRosters(y),
@@ -491,7 +576,8 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       loadSnapCounts(y),
       loadPFRAdvTeam(y),
       loadESPNQBR(y),
-      loadTeamGameAdvanced(y)
+      loadTeamGameAdvanced(y),
+      loadMarketsDS(y)
     ]);
 
   // build summaries (bounded by cap)
@@ -500,6 +586,7 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
   const snapSummary  = summarizeSnaps(snaps, cap);
   const formSummary  = summarizeForm(teamWeek, cap);
   const qbForm       = summarizeQBForm(playerWeek, rostersWeekly, qbr, cap);
+  const marketSummary = summarizeMarkets(marketRows, schedules, cap);
 
   // compact schedule index per week (REG only)
   const weeks = uniq(
@@ -520,6 +607,7 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       weekly_rosters: "nflverse-data roster_weekly",
       depth_charts: "nflverse-data depth_charts",
       injuries: "Rotowire injury artifacts generated via scripts/fetchRotowireInjuries.js",
+      markets: "Rotowire market artifacts generated via scripts/fetchRotowireMarkets.js",
       snap_counts: "nflverse-data snap_counts",
       pfr_adv_team: "nflverse-data pfr advstats weekly merges",
       espn_qbr: "nflverse-data qbr_week_level",
@@ -535,6 +623,8 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
         form_rolling3: formSummary,
         qb_form: qbForm
       },
+      market_snapshots: marketSummary.by_week,
+      market_index: marketSummary.index,
       venues: schedules.reduce((acc, r) => {
         const gid = r.game_id || `${r.season}-W${r.week}-${r.away_team}-${r.home_team}`;
         acc[gid] = { roof: r.roof ?? null, surface: r.surface ?? null };

@@ -676,6 +676,11 @@ async function loadRotowireMarketArtifacts(season) {
 
   const dedup = new Map();
 
+  console.log(
+    `[loadMarkets] Rotowire artifacts season=${season} weekEntries=${weekEntries.length}` +
+      (weekEntries.length ? ` firstWeek=${weekEntries[0]?.week} lastWeek=${weekEntries[weekEntries.length - 1]?.week}` : '')
+  );
+
   const addRows = (rows, defaults = {}) => {
     for (const raw of rows || []) {
       const normalized = normalizeMarketRow(raw, defaults);
@@ -697,6 +702,7 @@ async function loadRotowireMarketArtifacts(season) {
   for (const entry of weekEntries) {
     try {
       const rows = await readJsonArray(path.join(ROTOWIRE_ARTIFACTS_DIR, entry.name));
+      console.log(`[loadMarkets] reading ${entry.name} rows=${rows?.length ?? 0}`);
       addRows(rows, { season, week: entry.week });
     } catch (err) {
       console.warn(`[loadMarkets] failed to read ${entry.name}: ${err?.message || err}`);
@@ -706,12 +712,19 @@ async function loadRotowireMarketArtifacts(season) {
   if (!dedup.size) {
     try {
       const currentRows = await readJsonArray(path.join(ROTOWIRE_ARTIFACTS_DIR, 'markets_current.json'));
+      console.log(`[loadMarkets] reading markets_current.json rows=${currentRows?.length ?? 0}`);
       addRows(currentRows, { season });
     } catch (err) {
       if (err?.code !== 'ENOENT') {
         console.warn(`[loadMarkets] failed to read markets_current.json: ${err?.message || err}`);
       }
     }
+  }
+
+  if (!dedup.size) {
+    console.warn('[loadMarkets] no Rotowire market artifacts were added after processing all sources');
+  } else {
+    console.log(`[loadMarkets] deduped markets=${dedup.size}`);
   }
 
   return Array.from(dedup.values());

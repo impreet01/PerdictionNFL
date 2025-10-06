@@ -580,6 +580,17 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       loadMarketsDS(y)
     ]);
 
+  if (!injuries?.length) {
+    console.warn(
+      '[context] No Rotowire injury artifacts were loaded – run `npm run fetch:injuries` before building context if you expect current reports.'
+    );
+  }
+  if (!marketRows?.length) {
+    console.warn(
+      '[context] No Rotowire market artifacts were loaded – run `npm run fetch:markets` before building context if betting data should be present.'
+    );
+  }
+
   // build summaries (bounded by cap)
   const injSummary   = summarizeInjuries(injuries, cap);
   const depthChange  = summarizeDepthChange(depthCharts, cap);

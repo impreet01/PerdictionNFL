@@ -7,7 +7,7 @@ const REPO_NAME = "PerdictionNFL";
 const BRANCH = "main";
 
 const RAW_BASE = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/${BRANCH}/artifacts`;
-const GH_API_LIST = `https://api.github.com/repos/${REPO_USER}/${REPO_NAME}/contents/artifacts?ref=${BRANCH}`;
+const GH_API_BASE = `https://api.github.com/repos/${REPO_USER}/${REPO_NAME}/contents`;
 const CACHE_TTL = 900;
 const GH_HEADERS = { "User-Agent": "cf-worker" };
 
@@ -48,8 +48,16 @@ const toNumberOrNull = (value) => {
 
 const escapeRegex = (value) => value.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
 
-async function listArtifacts() {
-  const resp = await fetch(GH_API_LIST, { headers: GH_HEADERS });
+function buildArtifactsApiUrl(subdir = "") {
+  const clean = String(subdir || "")
+    .replace(/^\/+|\/+$/g, "")
+    .trim();
+  const suffix = clean ? `/${clean}` : "";
+  return `${GH_API_BASE}/artifacts${suffix}?ref=${BRANCH}`;
+}
+
+async function listArtifacts(subdir = "") {
+  const resp = await fetch(buildArtifactsApiUrl(subdir), { headers: GH_HEADERS });
   if (!resp.ok) {
     throw new HttpError(resp.status || 502, `GitHub API list failed: ${resp.status}`);
   }
@@ -117,7 +125,7 @@ async function fetchTextFile(file) {
 async function resolveSeasonWeek(prefix, seasonParam, weekParam, listing, options = {}) {
   const seasonInput = toInt(seasonParam, "season");
   const weekInput = toInt(weekParam, "week");
-  const data = listing || (await listArtifacts());
+  const data = listing || (await listArtifacts(options.dir));
   const parsed = parseWeekFiles(data, prefix, options.ext);
   if (!parsed.length) {
     throw new HttpError(404, `no ${prefix} artifacts found`);
@@ -138,12 +146,13 @@ async function resolveSeasonWeek(prefix, seasonParam, weekParam, listing, option
   if (!exact) {
     throw new HttpError(404, `${prefix} artifact missing for season ${season} week ${week}`);
   }
-  return { season, week, file: exact.name, listing: data };
+  const file = options.dir ? `${options.dir.replace(/^\/+|\/+$/g, "")}/${exact.name}` : exact.name;
+  return { season, week, file, listing: data };
 }
 
-async function resolveSeasonFile(prefix, seasonParam, listing) {
+async function resolveSeasonFile(prefix, seasonParam, listing, options = {}) {
   const seasonInput = toInt(seasonParam, "season");
-  const data = listing || (await listArtifacts());
+  const data = listing || (await listArtifacts(options.dir));
   const parsed = parseSeasonFiles(data, prefix);
   if (!parsed.length) {
     throw new HttpError(404, `no ${prefix} artifacts found`);
@@ -156,7 +165,8 @@ async function resolveSeasonFile(prefix, seasonParam, listing) {
   if (!exact) {
     throw new HttpError(404, `no ${prefix} artifact for season ${season}`);
   }
-  return { season, file: exact.name, listing: data };
+  const file = options.dir ? `${options.dir.replace(/^\/+|\/+$/g, "")}/${exact.name}` : exact.name;
+  return { season, file, listing: data };
 }
 
 async function respondWithArtifact(prefix, url, options = {}) {
@@ -172,7 +182,12 @@ async function respondWithArtifact(prefix, url, options = {}) {
 }
 
 async function respondWithSeasonArtifact(prefix, url, options = {}) {
-  const resolved = await resolveSeasonFile(prefix, url.searchParams.get("season"), options.listing);
+  const resolved = await resolveSeasonFile(
+    prefix,
+    url.searchParams.get("season"),
+    options.listing,
+    options
+  );
   const data = await fetchJsonFile(resolved.file);
   return json({ season: resolved.season, data });
 }
@@ -304,7 +319,7 @@ async function predictionsV2Response(url) {
     url.searchParams.get("season"),
     url.searchParams.get("week"),
     undefined,
-    { ext: ".csv" }
+    { ext: ".csv", dir: "hybrid_v2" }
   );
   const content = await fetchTextFile(resolved.file);
   const rows = parseCsv(content);

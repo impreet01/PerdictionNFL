@@ -34,96 +34,6 @@ function rollingAvg(arr, k) {
   return out;
 }
 
-const OFFENSE_WEEKLY_KEYS = [
-  "total_yards",
-  "off_total_yards",
-  "off_total_yds",
-  "yards_gained",
-  "total_yards_gained",
-  "total_yds",
-  "yards_gained_total",
-  "off_total_yards_gained"
-];
-
-const OFFENSE_CUM_KEYS = [
-  "off_total_yds_s2d",
-  "total_yards_s2d",
-  "total_yards_gained_s2d",
-  "off_total_yards_s2d",
-  "off_total_yards_gained_s2d"
-];
-
-const OFFENSE_PASS_WEEKLY_KEYS = [
-  "passing_yards",
-  "pass_yards",
-  "pass_yds",
-  "off_pass_yards",
-  "off_pass_yds"
-];
-
-const OFFENSE_PASS_CUM_KEYS = ["off_pass_yds_s2d", "passing_yards_s2d"];
-
-const OFFENSE_RUSH_WEEKLY_KEYS = [
-  "rushing_yards",
-  "rush_yards",
-  "rush_yds",
-  "off_rush_yards",
-  "off_rush_yds"
-];
-
-const OFFENSE_RUSH_CUM_KEYS = ["off_rush_yds_s2d", "rushing_yards_s2d"];
-
-const DEFENSE_WEEKLY_KEYS = [
-  "yards_allowed",
-  "total_yards_allowed",
-  "def_total_yards",
-  "def_total_yds",
-  "yards_allowed_total",
-  "yards_allowed_gained",
-  "def_total_yards_allowed",
-  "def_total_yards_gained"
-];
-
-const DEFENSE_CUM_KEYS = [
-  "def_total_yds_s2d",
-  "yards_allowed_s2d",
-  "yards_allowed_total_s2d",
-  "def_total_yards_s2d",
-  "def_total_yards_allowed_s2d"
-];
-
-const DEFENSE_PASS_WEEKLY_KEYS = [
-  "passing_yards_allowed",
-  "pass_yards_allowed",
-  "pass_yards_against",
-  "opp_pass_yards",
-  "opp_pass_yds",
-  "def_pass_yards",
-  "def_pass_yds"
-];
-
-const DEFENSE_PASS_CUM_KEYS = [
-  "def_pass_yds_s2d",
-  "pass_yards_allowed_s2d",
-  "opp_pass_yards_s2d"
-];
-
-const DEFENSE_RUSH_WEEKLY_KEYS = [
-  "rushing_yards_allowed",
-  "rush_yards_allowed",
-  "rush_yards_against",
-  "opp_rush_yards",
-  "opp_rush_yds",
-  "def_rush_yards",
-  "def_rush_yds"
-];
-
-const DEFENSE_RUSH_CUM_KEYS = [
-  "def_rush_yds_s2d",
-  "rushing_yards_allowed_s2d",
-  "opp_rush_yards_s2d"
-];
-
 function gameKey(season, week, home, away) {
   return `${season}-W${String(week).padStart(2, "0")}-${home}-${away}`;
 }
@@ -271,57 +181,24 @@ function latestQBR(entries = [], week) {
   return val ?? entries.at(-1)?.qbr ?? null;
 }
 
-export async function buildContextForWeek(season, week, overrides = {}) {
+export async function buildContextForWeek(season, week) {
   const y = Number(season);
   const w = Number(week);
   if (!Number.isFinite(y) || !Number.isFinite(w)) return [];
 
-  let schedules = overrides.schedules;
-  if (!Array.isArray(schedules)) {
-    schedules = await loadSchedules(y);
-  }
-
+  const schedules = await loadSchedules(y);
   let teamWeekly = [];
-  if (Object.prototype.hasOwnProperty.call(overrides, "teamWeekly")) {
-    teamWeekly = overrides.teamWeekly ?? [];
-  } else {
-    try { teamWeekly = await loadTeamWeekly(y); } catch (err) { console.warn("teamWeekly load failed", err?.message ?? err); }
-  }
-
   let playerWeekly = [];
-  if (Object.prototype.hasOwnProperty.call(overrides, "playerWeekly")) {
-    playerWeekly = overrides.playerWeekly ?? [];
-  } else {
-    try { playerWeekly = await loadPlayerWeekly(y); } catch (err) { console.warn("playerWeekly load failed", err?.message ?? err); }
-  }
-
   let injuries = [];
-  if (Object.prototype.hasOwnProperty.call(overrides, "injuries")) {
-    injuries = overrides.injuries ?? [];
-  } else {
-    try { injuries = await loadInjuries(y); } catch (err) { console.warn("injuries load failed", err?.message ?? err); }
-  }
-
   let qbrRows = [];
-  if (Object.prototype.hasOwnProperty.call(overrides, "qbrRows")) {
-    qbrRows = overrides.qbrRows ?? [];
-  } else {
-    try { qbrRows = await loadESPNQBR(y); } catch (err) { /* optional */ }
-  }
-
   let eloRows = [];
-  if (Object.prototype.hasOwnProperty.call(overrides, "eloRows")) {
-    eloRows = overrides.eloRows ?? [];
-  } else {
-    try { eloRows = await loadElo(y); } catch (err) { console.warn("elo load failed", err?.message ?? err); }
-  }
-
   let marketRows = [];
-  if (Object.prototype.hasOwnProperty.call(overrides, "marketRows")) {
-    marketRows = overrides.marketRows ?? [];
-  } else {
-    try { marketRows = await loadMarkets(y); } catch (err) { console.warn("market load failed", err?.message ?? err); }
-  }
+  try { teamWeekly = await loadTeamWeekly(y); } catch (err) { console.warn("teamWeekly load failed", err?.message ?? err); }
+  try { playerWeekly = await loadPlayerWeekly(y); } catch (err) { console.warn("playerWeekly load failed", err?.message ?? err); }
+  try { injuries = await loadInjuries(y); } catch (err) { console.warn("injuries load failed", err?.message ?? err); }
+  try { qbrRows = await loadESPNQBR(y); } catch (err) { /* optional */ }
+  try { eloRows = await loadElo(y); } catch (err) { console.warn("elo load failed", err?.message ?? err); }
+  try { marketRows = await loadMarkets(y); } catch (err) { console.warn("market load failed", err?.message ?? err); }
 
   const games = schedules.filter((g) => Number(g.season) === y && Number(g.week) === w);
   if (!games.length) return [];
@@ -344,36 +221,11 @@ export async function buildContextForWeek(season, week, overrides = {}) {
 
   for (const [team, rows] of byTeam.entries()) {
     rows.sort((a, b) => a._week - b._week);
-    let yardsFor = extractWeeklySeries(rows, OFFENSE_WEEKLY_KEYS, OFFENSE_CUM_KEYS);
-    let yardsAgainst = extractWeeklySeries(rows, DEFENSE_WEEKLY_KEYS, DEFENSE_CUM_KEYS);
-    const passYards = extractWeeklySeries(rows, OFFENSE_PASS_WEEKLY_KEYS, OFFENSE_PASS_CUM_KEYS);
-    const rushYards = extractWeeklySeries(rows, OFFENSE_RUSH_WEEKLY_KEYS, OFFENSE_RUSH_CUM_KEYS);
-    const defPassYards = extractWeeklySeries(rows, DEFENSE_PASS_WEEKLY_KEYS, DEFENSE_PASS_CUM_KEYS);
-    const defRushYards = extractWeeklySeries(rows, DEFENSE_RUSH_WEEKLY_KEYS, DEFENSE_RUSH_CUM_KEYS);
-    const passAtt = extractWeeklySeries(
-      rows,
-      ["pass_attempts", "passing_attempts", "attempts", "pass_att"],
-      ["off_pass_att_s2d"]
-    );
+    const yardsFor = extractWeeklySeries(rows, ["total_yards", "off_total_yards", "off_total_yds", "yards_gained"], ["off_total_yds_s2d", "total_yards_s2d"]);
+    const yardsAgainst = extractWeeklySeries(rows, ["yards_allowed", "total_yards_allowed", "def_total_yards", "def_total_yds"], ["def_total_yds_s2d", "yards_allowed_s2d"]);
+    const passYards = extractWeeklySeries(rows, ["passing_yards", "pass_yards", "pass_yds"], ["off_pass_yds_s2d"]);
+    const passAtt = extractWeeklySeries(rows, ["pass_attempts", "passing_attempts", "attempts", "pass_att"], ["off_pass_att_s2d"]);
     const sacks = extractWeeklySeries(rows, ["sacks", "sacks_taken", "qb_sacked"], ["off_sacks_taken_s2d"]);
-
-    yardsFor = yardsFor.map((value, idx) => {
-      const numVal = toNum(value, null);
-      if (Number.isFinite(numVal)) return numVal;
-      const pass = toNum(passYards[idx], null);
-      const rush = toNum(rushYards[idx], null);
-      if (!Number.isFinite(pass) && !Number.isFinite(rush)) return null;
-      return (Number.isFinite(pass) ? pass : 0) + (Number.isFinite(rush) ? rush : 0);
-    });
-
-    yardsAgainst = yardsAgainst.map((value, idx) => {
-      const numVal = toNum(value, null);
-      if (Number.isFinite(numVal)) return numVal;
-      const pass = toNum(defPassYards[idx], null);
-      const rush = toNum(defRushYards[idx], null);
-      if (!Number.isFinite(pass) && !Number.isFinite(rush)) return null;
-      return (Number.isFinite(pass) ? pass : 0) + (Number.isFinite(rush) ? rush : 0);
-    });
 
     const ypaSeries = passYards.map((yds, idx) => {
       const yards = toNum(yds, null);

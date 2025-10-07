@@ -257,53 +257,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /predictions/v2:
-    get:
-      operationId: getHybridV2Predictions
-      summary: Get Adaptive Hybrid v2 predictions for a season/week (defaults to latest)
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: week
-          schema:
-            type: integer
-            example: 6
-      responses:
-        "200":
-          description: Hybrid v2 prediction payload
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  week:
-                    type: integer
-                  model:
-                    type: string
-                    example: AdaptiveHybrid_v2
-                  games:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/HybridV2Game"
-        "400":
-          description: Invalid query parameter
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Hybrid v2 predictions not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /context:
     get:
       operationId: getContext
@@ -888,65 +841,6 @@ components:
           nullable: true
       additionalProperties:
         type: number
-
-    HybridV2Drivers:
-      type: object
-      properties:
-        context_adjustment:
-          type: number
-          format: float
-          nullable: true
-          description: Global drift adjustment applied to the weighted base score
-        qb_ypa_delta:
-          type: number
-          format: float
-          nullable: true
-        rush_epa_drift:
-          type: number
-          format: float
-          nullable: true
-        turnover_drift:
-          type: number
-          format: float
-          nullable: true
-        market_shift:
-          type: number
-          format: float
-          nullable: true
-
-    HybridV2Calibration:
-      type: object
-      properties:
-        beta:
-          type: number
-          format: float
-        intercept:
-          type: number
-          format: float
-
-    HybridV2Game:
-      type: object
-      properties:
-        game_id:
-          type: string
-        home_team:
-          type: string
-        away_team:
-          type: string
-        forecast:
-          type: number
-          format: float
-          description: Calibrated probability that the home team wins
-        base_score:
-          type: number
-          format: float
-          nullable: true
-        drivers:
-          $ref: "#/components/schemas/HybridV2Drivers"
-        weights:
-          $ref: "#/components/schemas/BlendWeights"
-        calibration:
-          $ref: "#/components/schemas/HybridV2Calibration"
 
     CalibrationAdjustment:
       type: object

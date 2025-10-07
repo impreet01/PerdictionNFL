@@ -1084,13 +1084,13 @@
     "away_team": "KC",
     "season": 2025,
     "week": 5,
-    "forecast": 0.725,
+    "forecast": 0.481,
     "probs": {
-      "logistic": 0.966,
-      "tree": 0.878,
+      "logistic": 0.993,
+      "tree": 0.462,
       "bt": 0.036,
       "ann": 0.503,
-      "blended": 0.725
+      "blended": 0.481
     },
     "blend_weights": {
       "logistic": 0.2,
@@ -1099,8 +1099,8 @@
       "ann": 0
     },
     "calibration": {
-      "pre": 0.727,
-      "post": 0.725
+      "pre": 0.483,
+      "post": 0.481
     },
     "ci": {
       "bt90": [
@@ -1108,7 +1108,7 @@
         0
       ]
     },
-    "natural_language": "JAX vs KC: logistic 96.564%, tree 87.755%, BT 3.576%, ANN 50.256%, blended 72.529%. Key differentials: Turnovers edge +647.27 (favorable); Penalty yards edge +13.13 (needs attention); Total yards edge +4.58 (favorable).",
+    "natural_language": "JAX vs KC: logistic 99.299%, tree 46.154%, BT 3.576%, ANN 50.257%, blended 48.076%. Key differentials: Turnovers edge +647.27 (favorable); Penalty yards edge +13.13 (needs attention); Total yards edge +4.58 (favorable).",
     "top_drivers": [
       {
         "feature": "def_turnovers_s2d_minus_opp",
@@ -1117,21 +1117,21 @@
         "source": "logit"
       },
       {
-        "feature": "defensive takeaways",
-        "direction": "positive",
-        "magnitude": 1.3090645163152046,
-        "source": "logit"
-      },
-      {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 1.0537071457136475,
+        "magnitude": 1.6859314331418362,
         "source": "logit"
       },
       {
-        "feature": "CART leaf RRLRL",
+        "feature": "defensive takeaways",
         "direction": "positive",
-        "magnitude": 0.37755102040816324,
+        "magnitude": 1.4887400381623899,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RRR",
+        "direction": "negative",
+        "magnitude": 0.038461538461538436,
         "source": "tree"
       },
       {
@@ -1149,16 +1149,16 @@
       {
         "feature": "TE target share (3wk)",
         "direction": "negative",
-        "magnitude": 0.000010404922943119986,
+        "magnitude": 0.000010412998561697073,
         "source": "ann"
       },
       {
         "feature": "off_dropbacks_s2d",
         "direction": "negative",
-        "magnitude": 0.000009787781825957696,
+        "magnitude": 0.000009816038498682456,
         "source": "ann"
       }
     ],
-    "actual": null
+    "actual": 1
   }
 ]

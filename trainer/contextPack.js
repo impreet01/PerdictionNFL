@@ -160,29 +160,6 @@ function extractWeeklySeries(rows, weeklyKeys = [], cumulativeKeys = []) {
   return out.map((v) => (Number.isFinite(v) ? v : null));
 }
 
-function normalizeTeam(value) {
-  if (value === undefined || value === null) return null;
-  const out = String(value).trim().toUpperCase();
-  return out || null;
-}
-
-function opponentTeam(row) {
-  if (!row || typeof row !== "object") return null;
-  const candidates = [
-    row.opponent_team,
-    row.opponent,
-    row.opp,
-    row.opponent_abbr,
-    row.opponent_team_abbr,
-    row.opp_team
-  ];
-  for (const candidate of candidates) {
-    const team = normalizeTeam(candidate);
-    if (team) return team;
-  }
-  return null;
-}
-
 function buildInjuryMap(rows, season, week) {
   const out = new Map();
   for (const r of rows || []) {
@@ -360,15 +337,6 @@ export async function buildContextForWeek(season, week, overrides = {}) {
     byTeam.get(team).push({ ...row, _week: wk });
   }
 
-  const teamWeekIndex = new Map();
-  for (const [team, rows] of byTeam.entries()) {
-    for (const row of rows) {
-      const wk = Number(row._week);
-      if (!Number.isFinite(wk)) continue;
-      teamWeekIndex.set(`${y}-${team}-${wk}`, row);
-    }
-  }
-
   const qbHistory = buildQBRHistory(qbrRows, y);
   const injuryMap = buildInjuryMap(injuries, y, w);
   const eloMap = buildEloMap(eloRows, y, w);
@@ -376,8 +344,8 @@ export async function buildContextForWeek(season, week, overrides = {}) {
 
   for (const [team, rows] of byTeam.entries()) {
     rows.sort((a, b) => a._week - b._week);
-    const yardsForRaw = extractWeeklySeries(rows, OFFENSE_WEEKLY_KEYS, OFFENSE_CUM_KEYS);
-    const yardsAgainstRaw = extractWeeklySeries(rows, DEFENSE_WEEKLY_KEYS, DEFENSE_CUM_KEYS);
+    let yardsFor = extractWeeklySeries(rows, OFFENSE_WEEKLY_KEYS, OFFENSE_CUM_KEYS);
+    let yardsAgainst = extractWeeklySeries(rows, DEFENSE_WEEKLY_KEYS, DEFENSE_CUM_KEYS);
     const passYards = extractWeeklySeries(rows, OFFENSE_PASS_WEEKLY_KEYS, OFFENSE_PASS_CUM_KEYS);
     const rushYards = extractWeeklySeries(rows, OFFENSE_RUSH_WEEKLY_KEYS, OFFENSE_RUSH_CUM_KEYS);
     const defPassYards = extractWeeklySeries(rows, DEFENSE_PASS_WEEKLY_KEYS, DEFENSE_PASS_CUM_KEYS);
@@ -389,7 +357,7 @@ export async function buildContextForWeek(season, week, overrides = {}) {
     );
     const sacks = extractWeeklySeries(rows, ["sacks", "sacks_taken", "qb_sacked"], ["off_sacks_taken_s2d"]);
 
-    const yardsFor = yardsForRaw.map((value, idx) => {
+    yardsFor = yardsFor.map((value, idx) => {
       const numVal = toNum(value, null);
       if (Number.isFinite(numVal)) return numVal;
       const pass = toNum(passYards[idx], null);
@@ -398,25 +366,13 @@ export async function buildContextForWeek(season, week, overrides = {}) {
       return (Number.isFinite(pass) ? pass : 0) + (Number.isFinite(rush) ? rush : 0);
     });
 
-    const yardsAgainst = yardsAgainstRaw.map((value, idx) => {
+    yardsAgainst = yardsAgainst.map((value, idx) => {
       const numVal = toNum(value, null);
       if (Number.isFinite(numVal)) return numVal;
       const pass = toNum(defPassYards[idx], null);
       const rush = toNum(defRushYards[idx], null);
-      if (Number.isFinite(pass) || Number.isFinite(rush)) {
-        return (Number.isFinite(pass) ? pass : 0) + (Number.isFinite(rush) ? rush : 0);
-      }
-      const row = rows[idx];
-      const opp = opponentTeam(row);
-      if (!opp) return null;
-      const wk = Number(row._week);
-      if (!Number.isFinite(wk)) return null;
-      const oppRow = teamWeekIndex.get(`${y}-${opp}-${wk}`);
-      if (!oppRow) return null;
-      const oppPass = toNum(pickValue(oppRow, OFFENSE_PASS_WEEKLY_KEYS), null);
-      const oppRush = toNum(pickValue(oppRow, OFFENSE_RUSH_WEEKLY_KEYS), null);
-      if (!Number.isFinite(oppPass) && !Number.isFinite(oppRush)) return null;
-      return (Number.isFinite(oppPass) ? oppPass : 0) + (Number.isFinite(oppRush) ? oppRush : 0);
+      if (!Number.isFinite(pass) && !Number.isFinite(rush)) return null;
+      return (Number.isFinite(pass) ? pass : 0) + (Number.isFinite(rush) ? rush : 0);
     });
 
     const ypaSeries = passYards.map((yds, idx) => {

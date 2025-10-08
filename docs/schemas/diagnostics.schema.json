@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Diagnostics Artifact",
+  "type": "object",
+  "required": ["season", "week", "metrics", "calibration_bins"],
+  "properties": {
+    "season": { "type": "integer" },
+    "week": { "type": "integer" },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "calibration_bins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["bin", "n"],
+        "properties": {
+          "bin": { "type": ["string", "number"] },
+          "n": { "type": "integer" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

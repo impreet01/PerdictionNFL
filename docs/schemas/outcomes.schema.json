@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Outcomes Artifact",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["game_id", "season", "week", "home_team", "away_team", "actual", "predicted"],
+    "properties": {
+      "game_id": { "type": "string" },
+      "season": { "type": "integer" },
+      "week": { "type": "integer" },
+      "home_team": { "type": "string" },
+      "away_team": { "type": "string" },
+      "actual": { "type": "object", "additionalProperties": true },
+      "predicted": { "type": "object", "additionalProperties": { "type": "number" } }
+    },
+    "additionalProperties": true
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Season Index Artifact",
+  "type": "object",
+  "required": ["season", "weeks"],
+  "properties": {
+    "season": { "type": "integer" },
+    "weeks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["week"],
+        "properties": {
+          "week": { "type": "integer" },
+          "stamp": { "type": "string" },
+          "status": { "type": "string" },
+          "predictions": { "type": ["string", "null", "object"] }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

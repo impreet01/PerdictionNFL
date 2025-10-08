@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Bradley-Terry Features Artifact",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["game_id", "season", "week", "features"],
+    "properties": {
+      "game_id": { "type": "string" },
+      "season": { "type": "integer" },
+      "week": { "type": "integer" },
+      "features": { "type": "object", "additionalProperties": { "type": "number" } }
+    },
+    "additionalProperties": true
+  }
+}

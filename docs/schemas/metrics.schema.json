@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Metrics Artifact",
+  "type": "object",
+  "required": ["season", "week", "per_model"],
+  "properties": {
+    "season": { "type": "integer" },
+    "week": { "type": "integer" },
+    "per_model": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "logloss": { "type": "number" },
+          "brier": { "type": "number" },
+          "auc": { "type": "number" },
+          "accuracy": { "type": "number" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

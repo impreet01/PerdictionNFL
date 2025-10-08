@@ -50,7 +50,12 @@ Injury and betting market context both ship from Rotowire scraper artifacts emit
    npm run fetch:markets -- --season=2025 --week=6
    ```
    This pulls the Rotowire betting tables, normalises prices/lines, and writes `artifacts/markets_<season>_W<week>.json` plus `artifacts/markets_current.json`.
-4. Re-run `npm run build:context` or `npm run train:multi` so the refreshed artifacts flow into summaries, per-game context, and ensemble training.
+4. Capture the weather forecasts from Rotowire's daily report:
+   ```bash
+   npm run fetch:weather -- --season=2025 --week=6
+   ```
+   The scraper parses `https://www.rotowire.com/football/weather.php`, extracts per-game conditions, and writes `artifacts/weather_<season>_W<week>.json` alongside `artifacts/weather_current.json` for the latest snapshot.
+5. Re-run `npm run build:context` or `npm run train:multi` so the refreshed artifacts flow into summaries, per-game context, and ensemble training.
 
 ## Produced artifacts
 Each successful `train:multi` run refreshes or adds:

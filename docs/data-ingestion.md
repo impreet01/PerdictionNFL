@@ -22,6 +22,7 @@ Use this table to understand what we load, how often nflverse updates it, and wh
 | Depth charts | `releases/download/depth_charts/depth_charts_<season>.csv` | Daily | Context packs (starter mapping) |
 | Injuries | Rotowire scraper artifacts (`artifacts/injuries_<season>_W<week>.json` via `scripts/fetchRotowireInjuries.js`) | Daily (Thu-Sun heavy) | Context packs (injury report summaries) |
 | Betting markets | Rotowire betting artifacts (`artifacts/markets_<season>_W<week>.json` via `scripts/fetchRotowireMarkets.js`, sourced from `https://www.rotowire.com/betting/nfl/tables/nfl-games-by-market.php?week=<week>`) | Daily in-season | Context packs (market snapshot, marketing/betting enrichments) |
+| Weather forecasts | Rotowire weather artifacts (`artifacts/weather_<season>_W<week>.json` via `scripts/fetchRotowireWeather.js`, scraped from `https://www.rotowire.com/football/weather.php`) | Daily in-season | Context packs (game day conditions) & feature builders (weather features) |
 | Snap counts | `releases/download/snap_counts/snap_counts_<season>.csv` | Weekly | Available for usage-based context |
 | ESPN Total QBR | `releases/download/espn_data/espn_qbr_<season>.csv` | Weekly | QB form overlay |
 | PFR advanced team | `releases/download/pfr_advstats/pfr_advstats_team_<season>.csv` | Weekly | Team efficiency context |

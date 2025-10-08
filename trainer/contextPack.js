@@ -7,7 +7,8 @@ import {
   loadPlayerWeekly,
   loadInjuries,
   loadESPNQBR,
-  loadMarkets
+  loadMarkets,
+  loadWeather
 } from "./dataSources.js";
 import { loadElo } from "./eloLoader.js";
 
@@ -155,6 +156,63 @@ function buildMarketMap(rows, season, week) {
   return map;
 }
 
+function cleanWeatherLinks(links = []) {
+  if (!Array.isArray(links)) return [];
+  const out = [];
+  for (const link of links) {
+    if (!link || typeof link !== "object") continue;
+    const url = link.url ?? link.href ?? null;
+    if (!url) continue;
+    out.push({
+      label: link.label ?? link.name ?? null,
+      url
+    });
+  }
+  return out;
+}
+
+export function shapeWeatherContext(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const temp = Number(entry.temperature_f);
+  const precip = Number(entry.precipitation_chance);
+  const wind = Number(entry.wind_mph);
+  const impact = Number(entry.impact_score);
+  const shaped = {
+    summary: entry.summary ?? null,
+    details: entry.details ?? null,
+    notes: entry.notes ?? null,
+    temperature_f: Number.isFinite(temp) ? temp : null,
+    precipitation_chance: Number.isFinite(precip) ? precip : null,
+    wind_mph: Number.isFinite(wind) ? wind : null,
+    impact_score: Number.isFinite(impact) ? impact : null,
+    kickoff_display: entry.kickoff_display ?? null,
+    location: entry.location ?? null,
+    forecast_provider: entry.forecast_provider ?? null,
+    forecast_links: cleanWeatherLinks(entry.forecast_links),
+    icon: entry.icon ?? null,
+    fetched_at: entry.fetched_at ?? null,
+    is_dome: entry.is_dome ?? null
+  };
+  return shaped;
+}
+
+function buildWeatherMap(rows, season, week) {
+  const map = new Map();
+  for (const r of rows || []) {
+    if (Number(r.season) !== season) continue;
+    const wk = Number(r.week);
+    if (Number.isFinite(week) && Number.isFinite(wk) && wk !== week) continue;
+    const home = String(r.home_team || r.home || "").toUpperCase();
+    const away = String(r.away_team || r.away || "").toUpperCase();
+    if (!home || !away) continue;
+    const key = gameKey(season, Number.isFinite(wk) ? wk : week, home, away);
+    const shaped = shapeWeatherContext(r);
+    if (!shaped) continue;
+    map.set(key, shaped);
+  }
+  return map;
+}
+
 function buildQBRHistory(rows, season) {
   const map = new Map();
   for (const r of rows || []) {
@@ -193,12 +251,14 @@ export async function buildContextForWeek(season, week) {
   let qbrRows = [];
   let eloRows = [];
   let marketRows = [];
+  let weatherRows = [];
   try { teamWeekly = await loadTeamWeekly(y); } catch (err) { console.warn("teamWeekly load failed", err?.message ?? err); }
   try { playerWeekly = await loadPlayerWeekly(y); } catch (err) { console.warn("playerWeekly load failed", err?.message ?? err); }
   try { injuries = await loadInjuries(y); } catch (err) { console.warn("injuries load failed", err?.message ?? err); }
   try { qbrRows = await loadESPNQBR(y); } catch (err) { /* optional */ }
   try { eloRows = await loadElo(y); } catch (err) { console.warn("elo load failed", err?.message ?? err); }
   try { marketRows = await loadMarkets(y); } catch (err) { console.warn("market load failed", err?.message ?? err); }
+  try { weatherRows = await loadWeather(y); } catch (err) { console.warn("weather load failed", err?.message ?? err); }
 
   const games = schedules.filter((g) => Number(g.season) === y && Number(g.week) === w);
   if (!games.length) return [];
@@ -218,6 +278,7 @@ export async function buildContextForWeek(season, week) {
   const injuryMap = buildInjuryMap(injuries, y, w);
   const eloMap = buildEloMap(eloRows, y, w);
   const marketMap = buildMarketMap(marketRows, y, w);
+  const weatherMap = buildWeatherMap(weatherRows, y, w);
 
   for (const [team, rows] of byTeam.entries()) {
     rows.sort((a, b) => a._week - b._week);
@@ -292,6 +353,7 @@ export async function buildContextForWeek(season, week) {
 
     const eloInfo = eloMap.get(gid) || null;
     const marketInfo = marketMap.get(gid) || null;
+    const weatherInfo = weatherMap.get(gid) || null;
 
     out.push({
       game_id: gid,
@@ -355,7 +417,8 @@ export async function buildContextForWeek(season, week) {
                 source: 'elo',
                 fetched_at: null
               }
-            : null)
+            : null),
+        weather: weatherInfo
       }
     });
   }

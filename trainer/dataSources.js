@@ -330,6 +330,7 @@ export const caches = {
   pfrAdv:      new Map(), // merged weekly map (season)
   injuries:    new Map(),
   markets:     new Map(),
+  weather:     new Map(),
 };
 
 async function cached(store,key,loader){
@@ -590,6 +591,63 @@ function normalizeMarketRow(row, defaults = {}) {
   };
 }
 
+function normalizeWeatherRow(row, defaults = {}) {
+  if (!row || typeof row !== 'object') return null;
+  const season = toInt(row.season ?? defaults.season);
+  const week = toInt(row.week ?? defaults.week);
+  const homeRaw = row.home_team ?? row.home ?? defaults.home;
+  const awayRaw = row.away_team ?? row.away ?? defaults.away;
+  const home = homeRaw ? String(homeRaw).trim().toUpperCase() : null;
+  const away = awayRaw ? String(awayRaw).trim().toUpperCase() : null;
+  if (!home || !away) return null;
+  const gameKey = row.game_key ?? `${season ?? ''}-W${week != null ? String(week).padStart(2, '0') : '??'}-${home}-${away}`;
+  const fetchedAt = row.fetched_at ?? defaults.fetchedAt ?? null;
+  const temperature = toNumberLoose(row.temperature_f ?? row.temperature ?? row.temp_f ?? null);
+  const precip = toNumberLoose(
+    row.precipitation_chance ?? row.precipitation ?? row.precip_prob ?? row.precip ?? row.rain_chance ?? null
+  );
+  const wind = toNumberLoose(row.wind_mph ?? row.wind ?? row.wind_speed ?? null);
+  const impact = toNumberLoose(row.impact_score ?? row.impact ?? null);
+  const links = Array.isArray(row.forecast_links)
+    ? row.forecast_links
+        .map((link) => {
+          if (!link || typeof link !== 'object') return null;
+          const url = link.url ?? link.href ?? null;
+          if (!url) return null;
+          return {
+            label: link.label ?? link.name ?? null,
+            url
+          };
+        })
+        .filter(Boolean)
+    : [];
+  const textBundle = `${row.summary ?? ''} ${row.details ?? ''} ${row.notes ?? ''}`;
+  const domeHint = /domed stadium|indoors?|roof (?:closed|open)/i.test(textBundle) || /inside a dome/i.test(textBundle);
+  const isDome = row.is_dome != null ? Boolean(row.is_dome) : domeHint;
+  return {
+    season,
+    week,
+    game_key: gameKey,
+    home_team: home,
+    away_team: away,
+    summary: row.summary ?? null,
+    details: row.details ?? null,
+    notes: row.notes ?? null,
+    location: row.location ?? null,
+    forecast_provider: row.forecast_provider ?? row.provider ?? null,
+    icon: row.icon ?? row.icon_url ?? null,
+    kickoff_display: row.kickoff_display ?? row.kickoff ?? null,
+    temperature_f: Number.isFinite(temperature) ? temperature : null,
+    precipitation_chance: Number.isFinite(precip) ? precip : null,
+    wind_mph: Number.isFinite(wind) ? wind : null,
+    impact_score: Number.isFinite(impact) ? impact : null,
+    forecast_links: links,
+    fetched_at: fetchedAt,
+    source: row.source ?? 'rotowire',
+    is_dome: isDome
+  };
+}
+
 async function readJsonArray(filePath) {
   const text = await fs.readFile(filePath, 'utf8');
   const parsed = JSON.parse(text);
@@ -725,6 +783,80 @@ async function loadRotowireMarketArtifacts(season) {
     console.warn('[loadMarkets] no Rotowire market artifacts were added after processing all sources');
   } else {
     console.log(`[loadMarkets] deduped markets=${dedup.size}`);
+  }
+
+  return Array.from(dedup.values());
+}
+
+async function loadRotowireWeatherArtifacts(season) {
+  let files;
+  try {
+    files = await fs.readdir(ROTOWIRE_ARTIFACTS_DIR);
+  } catch (err) {
+    if (err?.code === 'ENOENT') return [];
+    throw err;
+  }
+
+  const weekEntries = files
+    .map((name) => {
+      const m = name.match(new RegExp(`^weather_${season}_W(\\d{2})\\.json$`, 'i'));
+      if (!m) return null;
+      return { name, week: toInt(m[1]) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.week ?? 0) - (b.week ?? 0));
+
+  const dedup = new Map();
+
+  console.log(
+    `[loadWeather] Rotowire artifacts season=${season} weekEntries=${weekEntries.length}` +
+      (weekEntries.length ? ` firstWeek=${weekEntries[0]?.week} lastWeek=${weekEntries[weekEntries.length - 1]?.week}` : '')
+  );
+
+  const addRows = (rows, defaults = {}) => {
+    for (const raw of rows || []) {
+      const normalized = normalizeWeatherRow(raw, defaults);
+      if (!normalized) continue;
+      const key = normalized.game_key ?? `${normalized.home_team ?? ''}|${normalized.away_team ?? ''}|${normalized.week ?? ''}`;
+      const prev = dedup.get(key);
+      if (!prev) {
+        dedup.set(key, normalized);
+        continue;
+      }
+      const prevTs = Date.parse(prev.fetched_at ?? '');
+      const nextTs = Date.parse(normalized.fetched_at ?? '');
+      if (!Number.isFinite(prevTs) || (Number.isFinite(nextTs) && nextTs >= prevTs)) {
+        dedup.set(key, normalized);
+      }
+    }
+  };
+
+  for (const entry of weekEntries) {
+    try {
+      const rows = await readJsonArray(path.join(ROTOWIRE_ARTIFACTS_DIR, entry.name));
+      console.log(`[loadWeather] reading ${entry.name} rows=${rows?.length ?? 0}`);
+      addRows(rows, { season, week: entry.week });
+    } catch (err) {
+      console.warn(`[loadWeather] failed to read ${entry.name}: ${err?.message || err}`);
+    }
+  }
+
+  if (!dedup.size) {
+    try {
+      const currentRows = await readJsonArray(path.join(ROTOWIRE_ARTIFACTS_DIR, 'weather_current.json'));
+      console.log(`[loadWeather] reading weather_current.json rows=${currentRows?.length ?? 0}`);
+      addRows(currentRows, { season });
+    } catch (err) {
+      if (err?.code !== 'ENOENT') {
+        console.warn(`[loadWeather] failed to read weather_current.json: ${err?.message || err}`);
+      }
+    }
+  }
+
+  if (!dedup.size) {
+    console.warn('[loadWeather] no Rotowire weather artifacts were added after processing all sources');
+  } else {
+    console.log(`[loadWeather] deduped weather=${dedup.size}`);
   }
 
   return Array.from(dedup.values());
@@ -931,6 +1063,25 @@ export async function loadMarkets(season){
       return rows;
     } catch (err) {
       console.warn(`[loadMarkets] Rotowire market artifacts load failed: ${err?.message || err}`);
+      return [];
+    }
+  });
+}
+
+export async function loadWeather(season){
+  const y = toInt(season);
+  if (y == null) throw new Error('loadWeather season');
+  return cached(caches.weather, y, async()=>{
+    try {
+      const rows = await loadRotowireWeatherArtifacts(y);
+      if (rows.length) {
+        console.log(`[loadWeather] using Rotowire weather artifacts rows=${rows.length}`);
+      } else {
+        console.warn('[loadWeather] Rotowire weather artifacts empty');
+      }
+      return rows;
+    } catch (err) {
+      console.warn(`[loadWeather] Rotowire weather artifacts load failed: ${err?.message || err}`);
       return [];
     }
   });

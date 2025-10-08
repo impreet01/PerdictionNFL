@@ -10,10 +10,12 @@
     "resolve:week": "node scripts/resolveWeek.js",
     "fetch:injuries": "node scripts/fetchRotowireInjuries.js",
     "fetch:markets": "node scripts/fetchRotowireMarkets.js",
-    "test": "node trainer/tests/model_ann.test.js && node trainer/tests/smoke.js"
+    "fetch:weather": "node scripts/fetchRotowireWeather.js",
+    "test": "node trainer/tests/model_ann.test.js && node trainer/tests/weatherContext.test.js && node trainer/tests/smoke.js"
   },
   "dependencies": {
     "axios": "^1.7.7",
+    "cheerio": "^1.0.0",
     "ml-cart": "^2.0.1",
     "ml-logistic-regression": "^2.0.0",
     "ml-matrix": "^6.11.0",

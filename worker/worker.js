@@ -188,6 +188,75 @@ function filterCacheHeaders({ etag, lastModified }) {
   return headers;
 }
 
+function parseCsvParam(raw) {
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function normalizeTeamCodes(values) {
+  return new Set(values.map((value) => value.toUpperCase()));
+}
+
+function normalizeStatuses(values) {
+  return new Set(values.map((value) => value.toUpperCase()));
+}
+
+async function respondWithInjuries(url) {
+  const resolved = await resolveSeasonWeek(
+    "injuries",
+    url.searchParams.get("season"),
+    url.searchParams.get("week")
+  );
+  const { data, etag, lastModified } = await fetchJsonFile(resolved.file);
+  const source = Array.isArray(data) ? data : [];
+
+  const filters = {};
+  let filtered = source;
+
+  const teamParam = url.searchParams.get("team");
+  if (teamParam) {
+    const teams = normalizeTeamCodes(parseCsvParam(teamParam));
+    if (!teams.size) {
+      throw new HttpError(400, "team query parameter must include at least one value");
+    }
+    filtered = filtered.filter((entry) => teams.has(String(entry.team || "").toUpperCase()));
+    filters.teams = [...teams];
+  }
+
+  const statusParam = url.searchParams.get("status");
+  if (statusParam) {
+    const statuses = normalizeStatuses(parseCsvParam(statusParam));
+    if (!statuses.size) {
+      throw new HttpError(400, "status query parameter must include at least one value");
+    }
+    filtered = filtered.filter((entry) => statuses.has(String(entry.status || "").toUpperCase()));
+    filters.statuses = [...statuses];
+  }
+
+  const limitParam = url.searchParams.get("limit");
+  if (limitParam != null) {
+    const limit = toInt(limitParam, "limit");
+    if (limit == null || limit <= 0) {
+      throw new HttpError(400, "limit must be a positive integer");
+    }
+    filtered = filtered.slice(0, limit);
+    filters.limit = limit;
+  }
+
+  const body = {
+    season: resolved.season,
+    week: resolved.week,
+    data: filtered
+  };
+  if (Object.keys(filters).length) {
+    body.filters = filters;
+  }
+
+  return json(body, 200, { headers: filterCacheHeaders({ etag, lastModified }) });
+}
+
 async function healthResponse(url) {
   const listing = await listArtifacts();
   const predictions = parseWeekFiles(listing, "predictions");
@@ -419,10 +488,10 @@ export default {
         return await contextCurrentResponse();
       }
       if (path === "/injuries") {
-        return await respondWithArtifact("injuries", url);
+        return await respondWithInjuries(url);
       }
       if (path === "/injuries/current") {
-        return await respondWithArtifact("injuries", url);
+        return await respondWithInjuries(url);
       }
       if (path === "/weather") {
         return await respondWithArtifact("weather", url);

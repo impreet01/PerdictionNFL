@@ -87,6 +87,17 @@ See `docs/data-ingestion.md` for a quick reference to every nflverse dataset we 
 ## Deployment
 Deploy `api/worker.js` to Cloudflare Workers, editing the `REPO_USER`, `REPO_NAME`, and `BRANCH` constants to point at your fork. The Worker lists the `artifacts/` directory via the GitHub API and serves the newest available predictions when `season` or `week` is omitted, enabling the bundled `openapi.yaml` to power a Custom GPT Action or any HTTP client.
 
+## Handling large injury API responses
+
+Rotowire injury snapshots can exceed the default payload limits for GPT Actions when you request the full league in one call. The Worker now supports lightweight segmentation so automations can stay under the `ResponseTooLargeError` threshold:
+
+- Use the `/injuries` endpoint with query filters such as `?season=2025&week=6&team=BUF,KC` to restrict the response to one or more teams.
+- Combine `team` with `status` (for example `status=OUT,QUESTIONABLE`) to trim the payload to only the designations you care about.
+- Add `limit=<n>` after the filters if you only need a fixed number of rows.
+- The same filters work on `/injuries/current` for the freshest snapshot.
+
+The response echoes any applied filters so you can confirm what the Worker returned without diffing the payload manually.
+
 ## Validation & monitoring
 - `npm run train:multi` writes calibration bins and blend weights per week so you can chart drift over time.
 - `trainer/tests/backtest.js` replays recent weeks to ensure the ensemble beats its components and remains calibrated; run with `node trainer/tests/backtest.js` (optionally pass `SEASON`/`BACKTEST_WEEKS`).

@@ -20,6 +20,13 @@ if (process.env.GITHUB_TOKEN) {
 
 const manifestCache = new Map();
 const DATA_CONFIG = getDataConfig();
+const WEEKLY_SANITY_DATASETS = new Set([
+  'teamWeekly',
+  'playerWeekly',
+  'rosterWeekly',
+  'depthCharts',
+  'ftnCharts'
+]);
 
 const DEFAULT_RETRY = {
   attempts: 3,
@@ -351,14 +358,28 @@ const REL = {
 export function toInt(v){ const n = parseInt(v,10); return Number.isFinite(n) ? n : null; }
 const isGz = (u)=>u.endsWith('.gz');
 
+function getEffectiveThreshold(dataset, baseThreshold) {
+  const threshold = Number(baseThreshold);
+  if (!Number.isFinite(threshold)) return undefined;
+  if (!WEEKLY_SANITY_DATASETS.has(dataset)) return threshold;
+  const configuredWeek = Number(DATA_CONFIG?.week);
+  if (!Number.isFinite(configuredWeek) || configuredWeek <= 0) return threshold;
+  const seasonWeeks = Number.isFinite(Number(DATA_CONFIG?.weeksInSeason))
+    ? Number(DATA_CONFIG.weeksInSeason)
+    : 18;
+  const normalizedWeek = Math.max(1, Math.min(configuredWeek, seasonWeeks));
+  const scaled = Math.ceil((threshold * normalizedWeek) / seasonWeeks);
+  return Math.max(1, Math.min(threshold, scaled));
+}
+
 function sanityCheckRows(dataset, rows) {
   if (!Array.isArray(rows)) {
     throw new Error(`[dataSources] ${dataset} did not return an array`);
   }
   const sanity = DATA_CONFIG.sanityChecks || {};
   const key = `min${dataset.charAt(0).toUpperCase()}${dataset.slice(1)}Rows`;
-  const threshold = sanity[key];
-  if (Number.isFinite(Number(threshold)) && rows.length < Number(threshold)) {
+  const threshold = getEffectiveThreshold(dataset, sanity[key]);
+  if (Number.isFinite(threshold) && rows.length < threshold) {
     throw new Error(`[dataSources] ${dataset} row count ${rows.length} < ${threshold}`);
   }
   return rows;

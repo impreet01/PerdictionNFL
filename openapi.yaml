@@ -395,6 +395,27 @@ paths:
           schema:
             type: integer
             example: 5
+        - in: query
+          name: team
+          description: >
+            Optional comma-separated list of team abbreviations (e.g. `BUF,KC`) to
+            filter the response. When omitted all teams are returned.
+          schema:
+            type: string
+        - in: query
+          name: status
+          description: >
+            Optional comma-separated list of injury statuses (e.g. `OUT,QUESTIONABLE`)
+            to filter the response.
+          schema:
+            type: string
+        - in: query
+          name: limit
+          description: >
+            Optional maximum number of records to return after filtering. Must be a
+            positive integer.
+          schema:
+            type: integer
       responses:
         "200":
           description: Injury report payload
@@ -407,6 +428,20 @@ paths:
                     type: integer
                   week:
                     type: integer
+                  filters:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      teams:
+                        type: array
+                        items:
+                          type: string
+                      statuses:
+                        type: array
+                        items:
+                          type: string
+                      limit:
+                        type: integer
                   data:
                     type: array
                     items:
@@ -428,6 +463,22 @@ paths:
     get:
       operationId: getCurrentInjuries
       summary: Get the latest available injury report
+      parameters:
+        - in: query
+          name: team
+          description: Optional comma-separated team filter.
+          schema:
+            type: string
+        - in: query
+          name: status
+          description: Optional comma-separated status filter.
+          schema:
+            type: string
+        - in: query
+          name: limit
+          description: Optional maximum number of records to return.
+          schema:
+            type: integer
       responses:
         "200":
           description: Latest injury report payload
@@ -439,6 +490,20 @@ paths:
                   season:
                     type: integer
                     nullable: true
+                  filters:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      teams:
+                        type: array
+                        items:
+                          type: string
+                      statuses:
+                        type: array
+                        items:
+                          type: string
+                      limit:
+                        type: integer
                   week:
                     type: integer
                     nullable: true

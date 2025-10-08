@@ -14,7 +14,8 @@ import {
   loadSnapCounts,
   loadPFRAdvTeam,       // kept for compatibility; now returns weekly array
   loadESPNQBR,
-  loadOfficials
+  loadOfficials,
+  loadWeather
 } from "./dataSources.js";
 import { buildContextForWeek } from "./contextPack.js";
 import { writeExplainArtifact } from "./explainRubric.js";
@@ -371,7 +372,12 @@ const FEATURE_LABELS = {
   qb_sack_rate_w5: "QB sack rate (5wk)",
   qb_sack_rate_exp: "QB sack rate (exp)",
   roof_dome: "Dome roof flag",
-  roof_outdoor: "Outdoor roof flag"
+  roof_outdoor: "Outdoor roof flag",
+  weather_temp_f: "Forecast temperature (°F)",
+  weather_wind_mph: "Forecast wind (mph)",
+  weather_precip_pct: "Precipitation chance (%)",
+  weather_impact_score: "Weather impact score",
+  weather_extreme_flag: "Weather extreme flag"
 };
 
 function humanizeFeature(key) {
@@ -608,6 +614,17 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     }
   }
 
+  let weatherRows;
+  if (data.weather !== undefined) {
+    weatherRows = data.weather;
+  } else {
+    try {
+      weatherRows = await loadWeather(resolvedSeason);
+    } catch (e) {
+      weatherRows = [];
+    }
+  }
+
   const featureRows = buildFeatures({
     teamWeekly,
     teamGame,
@@ -615,7 +632,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     season: resolvedSeason,
     prevTeamWeekly,
     pbp: pbpData,
-    playerWeekly
+    playerWeekly,
+    weather: weatherRows
   });
   const btRows = buildBTFeatures({
     teamWeekly,

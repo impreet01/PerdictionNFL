@@ -986,7 +986,7 @@ components:
 
     ContextPayload:
       type: array
-      description: Aggregated injuries, depth charts, usage, and venue context
+      description: Aggregated injuries, depth charts, usage, venue, market, and weather context
       items:
         $ref: "#/components/schemas/ContextGame"
 
@@ -1018,6 +1018,8 @@ components:
           $ref: "#/components/schemas/ContextRollingStrength"
         venue:
           $ref: "#/components/schemas/ContextVenue"
+        weather:
+          $ref: "#/components/schemas/ContextWeather"
         elo:
           type: number
           nullable: true
@@ -1103,6 +1105,69 @@ components:
         surface:
           type: string
       additionalProperties: true
+
+    ContextWeather:
+      type: object
+      properties:
+        summary:
+          type: string
+          nullable: true
+        details:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        temperature_f:
+          type: number
+          nullable: true
+        precipitation_chance:
+          type: number
+          nullable: true
+          description: Percentage chance of precipitation (0-100)
+        wind_mph:
+          type: number
+          nullable: true
+        impact_score:
+          type: number
+          nullable: true
+          description: Heuristic 0-1 severity score derived from weather notes
+        kickoff_display:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+        forecast_provider:
+          type: string
+          nullable: true
+        forecast_links:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContextWeatherLink"
+        icon:
+          type: string
+          nullable: true
+          description: URL pointing to the forecast icon
+        fetched_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_dome:
+          type: boolean
+          nullable: true
+      additionalProperties: true
+
+    ContextWeatherLink:
+      type: object
+      properties:
+        label:
+          type: string
+          nullable: true
+        url:
+          type: string
+          format: uri
+      required: [url]
 
     ExplainPayload:
       type: object

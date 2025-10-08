@@ -360,6 +360,12 @@ export default {
       if (path === "/context/current") {
         return await contextCurrentResponse();
       }
+      if (path === "/weather") {
+        return await respondWithArtifact("weather", url);
+      }
+      if (path === "/weather/current") {
+        return await respondWithArtifact("weather", url);
+      }
       if (path === "/explain") {
         return await respondWithArtifact("explain", url);
       }

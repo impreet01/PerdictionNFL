@@ -95,7 +95,12 @@ export const FEATS = [
   "qb_sack_rate_w5",
   "qb_sack_rate_exp",
   "roof_dome",
-  "roof_outdoor"
+  "roof_outdoor",
+  "weather_temp_f",
+  "weather_wind_mph",
+  "weather_precip_pct",
+  "weather_impact_score",
+  "weather_extreme_flag"
 ];
 
 const DECAY_LAMBDA = 0.85;
@@ -316,6 +321,46 @@ function indexTeamGame(rows = [], season) {
   return idx;
 }
 
+function indexWeather(rows = [], season) {
+  const idx = new Map();
+  for (const row of rows) {
+    if (Number(row.season) !== Number(season)) continue;
+    const wk = Number(row.week);
+    const home = normTeam(row.home_team ?? row.home);
+    const away = normTeam(row.away_team ?? row.away);
+    const key = row.game_key ?? (Number.isFinite(wk) && home && away
+      ? `${season}-W${String(wk).padStart(2, '0')}-${home}-${away}`
+      : null);
+    if (!key) continue;
+    idx.set(key, row);
+  }
+  return idx;
+}
+
+function computeWeatherFeatures(entry, { roofDome }) {
+  const isDome = entry?.is_dome === true || Boolean(roofDome);
+  const temperature = Number(entry?.temperature_f);
+  const precip = Number(entry?.precipitation_chance);
+  const wind = Number(entry?.wind_mph);
+  const impact = Number(entry?.impact_score);
+  const baseTemp = isDome ? 70 : 65;
+  const out = {
+    weather_temp_f: Number.isFinite(temperature) ? temperature : baseTemp,
+    weather_precip_pct: Number.isFinite(precip) ? precip : 0,
+    weather_wind_mph: Number.isFinite(wind) ? wind : isDome ? 0 : 5,
+    weather_impact_score: Number.isFinite(impact) ? impact : isDome ? 0 : 0
+  };
+  const extreme =
+    (Number.isFinite(out.weather_impact_score) && out.weather_impact_score >= 0.5) ||
+    (Number.isFinite(out.weather_wind_mph) && out.weather_wind_mph >= 18) ||
+    (Number.isFinite(out.weather_precip_pct) && out.weather_precip_pct >= 60) ||
+    (Number.isFinite(out.weather_temp_f) && (out.weather_temp_f <= 25 || out.weather_temp_f >= 95))
+      ? 1
+      : 0;
+  out.weather_extreme_flag = extreme;
+  return out;
+}
+
 function perGameSignals(row = {}, oppRow = {}) {
   const passYds = num(row.passing_yards ?? row.pass_yards ?? row.pass_yds);
   const rushYds = num(row.rushing_yards ?? row.rush_yards ?? row.rush_yds);
@@ -488,7 +533,8 @@ export function buildFeatures({
   season,
   prevTeamWeekly,
   pbp = [],
-  playerWeekly = []
+  playerWeekly = [],
+  weather = []
 }) {
   const seasonNum = Number(season);
   if (!Number.isFinite(seasonNum)) return [];
@@ -512,6 +558,7 @@ export function buildFeatures({
   const tgIdx = indexTeamGame(teamGame || [], seasonNum);
   const pbpIdx = aggregatePBP({ rows: pbp || [], season: seasonNum });
   const usageIdx = aggregatePlayerUsage({ rows: playerWeekly || [], season: seasonNum });
+  const weatherIdx = indexWeather(weather || [], seasonNum);
 
   const lastDate = new Map();
   const elo = new Map();
@@ -666,6 +713,10 @@ export function buildFeatures({
         roofFlag(game.is_outdoor) ??
         (derivedRoof ? (derivedRoof.includes("outdoor") || derivedRoof.includes("open") ? 1 : 0) : 0);
 
+      const weatherKey = `${seasonNum}-W${String(week).padStart(2, "0")}-${home}-${away}`;
+      const weatherEntry = weatherIdx.get(weatherKey);
+      const weatherFeats = computeWeatherFeatures(weatherEntry, { roofDome: Boolean(roofDome) });
+
       const homeFormState = ensureFormState(formRoll, home);
       const awayFormState = ensureFormState(formRoll, away);
       const homeRolling = snapshotRolling(homeFormState);
@@ -673,7 +724,7 @@ export function buildFeatures({
       const homeQbr = latestTeamQBR(qbQbrHistory, home, week - 1);
       const awayQbr = latestTeamQBR(qbQbrHistory, away, week - 1);
 
-      const mkRow = (team, opp, isHome, me, op, advMe, advOp, pbpMe, usageMe, rolling, qbrVal) => {
+      const mkRow = (team, opp, isHome, me, op, advMe, advOp, pbpMe, usageMe, rolling, qbrVal, weatherFeats = {}) => {
         const adv = advMe || zeroAdvanced();
         const advOpp = advOp || zeroAdvanced();
         return {
@@ -735,6 +786,7 @@ export function buildFeatures({
           win: winLabel(game, isHome),
           ...pbpMe,
           ...usageMe,
+          ...weatherFeats,
           roof_dome: roofDome,
           roof_outdoor: roofOutdoor
         };
@@ -751,7 +803,8 @@ export function buildFeatures({
         hPbpFeats,
         hUsageFeats,
         homeRolling,
-        homeQbr
+        homeQbr,
+        weatherFeats
       );
       const awayRow = mkRow(
         away,
@@ -764,7 +817,8 @@ export function buildFeatures({
         aPbpFeats,
         aUsageFeats,
         awayRolling,
-        awayQbr
+        awayQbr,
+        weatherFeats
       );
       out.push(homeRow, awayRow);
 

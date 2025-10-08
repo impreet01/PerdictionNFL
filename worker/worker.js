@@ -206,12 +206,16 @@ async function healthResponse(url) {
   const modelMap = new Map(
     parseWeekFiles(listing, "model").map((m) => [`${m.season}-${m.week}`, m.name])
   );
+  const injuriesMap = new Map(
+    parseWeekFiles(listing, "injuries").map((entry) => [`${entry.season}-${entry.week}`, entry.name])
+  );
   const weeks = [...forSeason]
     .sort((a, b) => a.week - b.week)
     .map((p) => ({
       week: p.week,
       predictions_file: p.name,
-      model_file: modelMap.get(`${season}-${p.week}`) || null
+      model_file: modelMap.get(`${season}-${p.week}`) || null,
+      injuries_file: injuriesMap.get(`${season}-${p.week}`) || null
     }));
   const latestWeek = weeks.length ? weeks[weeks.length - 1].week : null;
   return json({ season, latest_week: latestWeek, weeks });
@@ -413,6 +417,12 @@ export default {
       }
       if (path === "/context/current") {
         return await contextCurrentResponse();
+      }
+      if (path === "/injuries") {
+        return await respondWithArtifact("injuries", url);
+      }
+      if (path === "/injuries/current") {
+        return await respondWithArtifact("injuries", url);
       }
       if (path === "/weather") {
         return await respondWithArtifact("weather", url);

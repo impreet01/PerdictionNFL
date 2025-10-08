@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Weekly Predictions Artifact",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "game_id",
+      "home_team",
+      "away_team",
+      "season",
+      "week",
+      "forecast",
+      "probs",
+      "blend_weights"
+    ],
+    "properties": {
+      "game_id": { "type": "string", "minLength": 1 },
+      "home_team": { "type": "string", "minLength": 2 },
+      "away_team": { "type": "string", "minLength": 2 },
+      "season": { "type": "integer", "minimum": 1999 },
+      "week": { "type": "integer", "minimum": 1 },
+      "forecast": { "type": "number", "minimum": 0, "maximum": 1 },
+      "probs": {
+        "type": "object",
+        "propertyNames": { "pattern": "^[a-z_]+$" },
+        "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 },
+        "required": [ "blended" ]
+      },
+      "blend_weights": {
+        "type": "object",
+        "propertyNames": { "pattern": "^[a-z_]+$" },
+        "additionalProperties": { "type": "number" }
+      },
+      "calibration": {
+        "type": "object",
+        "properties": {
+          "pre": { "type": "number" },
+          "post": { "type": "number" }
+        },
+        "required": [ "post" ],
+        "additionalProperties": true
+      },
+      "ci": { "type": "object", "additionalProperties": true },
+      "natural_language": { "type": "string" },
+      "top_drivers": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [ "feature", "direction" ],
+          "properties": {
+            "feature": { "type": "string" },
+            "direction": { "type": "string" },
+            "magnitude": { "type": ["number", "string", "null"] },
+            "source": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "actual": { "type": [ "number", "null" ] }
+    },
+    "additionalProperties": true
+  }
+}

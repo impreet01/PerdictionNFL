@@ -1,8 +1,12 @@
 // trainer/dataSources.js
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as wait } from 'node:timers/promises';
 import { parse } from 'csv-parse/sync';
 import zlib from 'node:zlib';
+import crypto from 'node:crypto';
+
+import { getDataConfig } from './config.js';
 
 // ---------- discovery helpers ----------
 const GH_ROOT = 'https://api.github.com/repos/nflverse/nflverse-data';
@@ -15,15 +19,61 @@ if (process.env.GITHUB_TOKEN) {
 }
 
 const manifestCache = new Map();
+const DATA_CONFIG = getDataConfig();
+
+const DEFAULT_RETRY = {
+  attempts: 3,
+  backoffMs: 500
+};
+
+function getRetrySettings() {
+  const retry = DATA_CONFIG.retry || {};
+  const attempts = Number.isFinite(Number(retry.attempts)) ? Number(retry.attempts) : DEFAULT_RETRY.attempts;
+  const backoffMs = Number.isFinite(Number(retry.backoffMs)) ? Number(retry.backoffMs) : DEFAULT_RETRY.backoffMs;
+  return { attempts: Math.max(1, attempts), backoffMs: Math.max(0, backoffMs) };
+}
+
+async function fetchWithRetry(url, options = {}, label = 'fetch') {
+  const { attempts, backoffMs } = getRetrySettings();
+  let attempt = 0;
+  let lastErr;
+  while (attempt < attempts) {
+    attempt += 1;
+    try {
+      const controller = new AbortController();
+      const timeout = Number(options.timeout || 45_000);
+      const id = setTimeout(() => controller.abort(), timeout);
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`${label} ${res.status}: ${text}`);
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;
+      if (attempt >= attempts) break;
+      const jitter = Math.random() * 0.25 + 0.75;
+      await wait(backoffMs * attempt * jitter);
+    }
+  }
+  throw lastErr;
+}
+
+async function fetchJSONWithRetry(url, options, label = 'json') {
+  const res = await fetchWithRetry(url, options, label);
+  return res.json();
+}
 
 async function fetchGithubJson(url) {
-  const res = await fetch(url, { headers: GH_HEADERS });
-  if (res.status === 404) throw Object.assign(new Error('Not found'), { status: 404 });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => res.statusText);
-    throw new Error(`GitHub API ${res.status}: ${txt}`);
+  try {
+    return await fetchJSONWithRetry(url, { headers: GH_HEADERS }, 'github');
+  } catch (err) {
+    if (err?.message?.includes('404') || err?.status === 404) {
+      throw Object.assign(new Error('Not found'), { status: 404 });
+    }
+    throw err;
   }
-  return res.json();
 }
 
 async function fetchReleaseByTag(tag) {
@@ -301,17 +351,31 @@ const REL = {
 export function toInt(v){ const n = parseInt(v,10); return Number.isFinite(n) ? n : null; }
 const isGz = (u)=>u.endsWith('.gz');
 
+function sanityCheckRows(dataset, rows) {
+  if (!Array.isArray(rows)) {
+    throw new Error(`[dataSources] ${dataset} did not return an array`);
+  }
+  const sanity = DATA_CONFIG.sanityChecks || {};
+  const key = `min${dataset.charAt(0).toUpperCase()}${dataset.slice(1)}Rows`;
+  const threshold = sanity[key];
+  if (Number.isFinite(Number(threshold)) && rows.length < Number(threshold)) {
+    throw new Error(`[dataSources] ${dataset} row count ${rows.length} < ${threshold}`);
+  }
+  return rows;
+}
+
 async function fetchBuffer(url){
-  const res = await fetch(url, { redirect:'follow', headers:{'User-Agent':'nflverse-loader'}});
-  if(!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
+  const res = await fetchWithRetry(url, { redirect:'follow', headers:{'User-Agent':'nflverse-loader'}}, 'buffer');
   return Buffer.from(new Uint8Array(await res.arrayBuffer()));
 }
 function gunzipMaybe(buf,url){ return isGz(url) ? zlib.gunzipSync(buf) : buf; }
 export async function fetchCsvFlexible(url){
   const buf = await fetchBuffer(url);
-  const txt = gunzipMaybe(buf,url).toString('utf8');
+  const decoded = gunzipMaybe(buf,url);
+  const checksum = crypto.createHash('sha256').update(decoded).digest('hex');
+  const txt = decoded.toString('utf8');
   const rows = parse(txt, { columns:true, skip_empty_lines:true, relax_column_count:true, trim:true });
-  return { rows, source:url };
+  return { rows, source:url, checksum };
 }
 
 const ALL_SCHEDULES_KEY = Symbol('schedules-all');
@@ -871,7 +935,8 @@ export async function loadSchedules(season){
   const cacheKey = targetSeason ?? ALL_SCHEDULES_KEY;
   return cached(caches.schedules, cacheKey, async()=>{
     const targetUrl = resolved?.url ?? REL.schedules(targetSeason ?? y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
+    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
+    sanityCheckRows('schedule', rows);
     let effectiveSeason = targetSeason;
     if (effectiveSeason == null) {
       for (const row of rows) {
@@ -886,7 +951,7 @@ export async function loadSchedules(season){
       caches.schedules.set(effectiveSeason, filteredRows);
     }
     console.log(
-      `[loadSchedules] OK ${source} rows=${filteredRows.length}` +
+      `[loadSchedules] OK ${source} rows=${filteredRows.length} checksum=${checksum.slice(0, 12)}` +
       (effectiveSeason != null ? ` season=${effectiveSeason}` : '')
     );
     return filteredRows;
@@ -894,15 +959,17 @@ export async function loadSchedules(season){
 }
 export async function loadESPNQBR(){
   return cached(caches.qbr, 0, async()=>{
-    const {rows,source} = await fetchCsvFlexible(REL.qbr());
-    console.log(`[loadESPNQBR] OK ${source} rows=${rows.length}`);
+    const {rows,source,checksum} = await fetchCsvFlexible(REL.qbr());
+    sanityCheckRows('qbr', rows);
+    console.log(`[loadESPNQBR] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
   });
 }
 export async function loadOfficials(){
   return cached(caches.officials, 0, async()=>{
-    const {rows,source} = await fetchCsvFlexible(REL.officials());
-    console.log(`[loadOfficials] OK ${source} rows=${rows.length}`);
+    const {rows,source,checksum} = await fetchCsvFlexible(REL.officials());
+    sanityCheckRows('officials', rows);
+    console.log(`[loadOfficials] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
   });
 }
@@ -911,8 +978,9 @@ export async function loadSnapCounts(season){
   return cached(caches.snapCounts, y, async()=>{
     const resolved = await resolveDatasetUrl('snapCounts', y, REL.snapCounts);
     const targetUrl = resolved?.url ?? REL.snapCounts(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadSnapCounts] OK ${source} rows=${rows.length}`);
+    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
+    sanityCheckRows('snapCounts', rows);
+    console.log(`[loadSnapCounts] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
   });
 }
@@ -921,8 +989,9 @@ export async function loadTeamWeekly(season){
   return cached(caches.teamWeekly, y, async()=>{
     const resolved = await resolveDatasetUrl('teamWeekly', y, REL.teamWeekly);
     const targetUrl = resolved?.url ?? REL.teamWeekly(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadTeamWeekly] OK ${source} rows=${rows.length}`);
+    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
+    sanityCheckRows('teamWeekly', rows);
+    console.log(`[loadTeamWeekly] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
   });
 }
@@ -935,8 +1004,9 @@ export async function loadPlayerWeekly(season){
   return cached(caches.playerWeekly, y, async()=>{
     const resolved = await resolveDatasetUrl('playerWeekly', y, REL.playerWeekly);
     const targetUrl = resolved?.url ?? REL.playerWeekly(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadPlayerWeekly] OK ${source} rows=${rows.length}`);
+    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
+    sanityCheckRows('playerWeekly', rows);
+    console.log(`[loadPlayerWeekly] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
   });
 }
@@ -945,8 +1015,9 @@ export async function loadRostersWeekly(season){
   return cached(caches.rosterWeekly, y, async()=>{
     const resolved = await resolveDatasetUrl('rosterWeekly', y, REL.rosterWeekly);
     const targetUrl = resolved?.url ?? REL.rosterWeekly(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadRostersWeekly] OK ${source} rows=${rows.length}`);
+    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
+    sanityCheckRows('rosterWeekly', rows);
+    console.log(`[loadRostersWeekly] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
   });
 }
@@ -955,8 +1026,9 @@ export async function loadDepthCharts(season){
   return cached(caches.depthCharts, y, async()=>{
     const resolved = await resolveDatasetUrl('depthCharts', y, REL.depthCharts);
     const targetUrl = resolved?.url ?? REL.depthCharts(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadDepthCharts] OK ${source} rows=${rows.length}`);
+    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
+    sanityCheckRows('depthCharts', rows);
+    console.log(`[loadDepthCharts] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
   });
 }
@@ -965,8 +1037,9 @@ export async function loadFTNCharts(season){
   return cached(caches.ftnCharts, y, async()=>{
     const resolved = await resolveDatasetUrl('ftnCharts', y, REL.ftnCharts);
     const targetUrl = resolved?.url ?? REL.ftnCharts(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadFTNCharts] OK ${source} rows=${rows.length}`);
+    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
+    sanityCheckRows('ftnCharts', rows);
+    console.log(`[loadFTNCharts] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
   });
 }
@@ -975,8 +1048,9 @@ export async function loadPBP(season){
   return cached(caches.pbp, y, async()=>{
     const resolved = await resolveDatasetUrl('pbp', y, REL.pbp);
     const targetUrl = resolved?.url ?? REL.pbp(y);
-    const {rows,source} = await fetchCsvFlexible(targetUrl);
-    console.log(`[loadPBP] OK ${source} rows=${rows.length}`);
+    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
+    sanityCheckRows('pbp', rows);
+    console.log(`[loadPBP] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
   });
 }

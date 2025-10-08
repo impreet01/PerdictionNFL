@@ -1,0 +1,68 @@
+{
+  "features": {
+    "rolling": true,
+    "expWeighted": true,
+    "targetEncoding": true,
+    "injuryContext": true,
+    "marketContext": true,
+    "weatherContext": true
+  },
+  "models": {
+    "logistic": {
+      "enabled": true,
+      "l2": 0.0002,
+      "learningRate": 0.005,
+      "steps": 3000,
+      "classWeighting": "auto"
+    },
+    "cart": {
+      "enabled": true,
+      "maxDepth": 6,
+      "minNumSamples": 8,
+      "minGainToSplit": 0.001,
+      "committeeSize": 3,
+      "committeeLearningRate": 0.15
+    },
+    "bt": {
+      "enabled": true
+    },
+    "ann": {
+      "enabled": true,
+      "hiddenUnits": [24, 12],
+      "dropout": 0.1,
+      "epochs": 200,
+      "earlyStopPatience": 20,
+      "l2": 0.0001
+    },
+    "linear": {
+      "enabled": true,
+      "l2": 0.001
+    },
+    "gbt": {
+      "enabled": true,
+      "trees": 50,
+      "learningRate": 0.1,
+      "maxDepth": 3
+    }
+  },
+  "ensemble": {
+    "weights": {
+      "logistic": 0.25,
+      "cart": 0.25,
+      "bt": 0.1,
+      "ann": 0.2,
+      "linear": 0.1,
+      "gbt": 0.1
+    },
+    "calibration": {
+      "enabled": true,
+      "method": "platt"
+    }
+  },
+  "validation": {
+    "type": "rolling",
+    "folds": 4,
+    "minWeek": 3,
+    "holdoutWeeks": 2
+  }
+}

@@ -29,13 +29,11 @@ function buildContextSnapshot(cx) {
   if (!ctx || typeof ctx !== "object") return null;
   const snapshot = {};
   const market = cloneAndPrune(ctx.market);
-  const weather = cloneAndPrune(ctx.weather);
   const venue = cloneAndPrune(ctx.venue);
   const elo = cloneAndPrune(ctx.elo);
   const injuries = cloneAndPrune(ctx.injuries);
   if (elo) snapshot.elo = elo;
   if (market) snapshot.market = market;
-  if (weather) snapshot.weather = weather;
   if (venue) snapshot.venue = venue;
   if (injuries) snapshot.injuries = injuries;
   return Object.keys(snapshot).length ? snapshot : null;

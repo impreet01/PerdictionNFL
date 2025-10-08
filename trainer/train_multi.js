@@ -663,6 +663,17 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     }
   }
 
+  let injuryRows;
+  if (data.injuries !== undefined) {
+    injuryRows = data.injuries;
+  } else {
+    try {
+      injuryRows = await loadInjuries(resolvedSeason);
+    } catch (e) {
+      injuryRows = [];
+    }
+  }
+
   const featureRows = buildFeatures({
     teamWeekly,
     teamGame,
@@ -671,14 +682,16 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     prevTeamWeekly,
     pbp: pbpData,
     playerWeekly,
-    weather: weatherRows
+    weather: weatherRows,
+    injuries: injuryRows
   });
   const btRows = buildBTFeatures({
     teamWeekly,
     teamGame,
     schedules,
     season: resolvedSeason,
-    prevTeamWeekly
+    prevTeamWeekly,
+    injuries: injuryRows
   });
 
   // --- Enrich feature rows with PFR advanced weekly differentials ---

@@ -7,6 +7,7 @@
 
 import { aggregatePBP } from "./featureBuild_pbp.js";
 import { aggregatePlayerUsage } from "./featureBuild_players.js";
+import { buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
 
 export const FEATS = [
   "off_1st_down_s2d",
@@ -100,7 +101,17 @@ export const FEATS = [
   "weather_wind_mph",
   "weather_precip_pct",
   "weather_impact_score",
-  "weather_extreme_flag"
+  "weather_extreme_flag",
+  "inj_out_count",
+  "inj_questionable_count",
+  "inj_skill_out_count",
+  "inj_ol_out_count",
+  "inj_practice_dnp_count",
+  "inj_out_diff",
+  "inj_skill_out_diff",
+  "inj_practice_dnp_diff",
+  "inj_out_change",
+  "inj_skill_out_change"
 ];
 
 const DECAY_LAMBDA = 0.85;
@@ -534,7 +545,8 @@ export function buildFeatures({
   prevTeamWeekly,
   pbp = [],
   playerWeekly = [],
-  weather = []
+  weather = [],
+  injuries = []
 }) {
   const seasonNum = Number(season);
   if (!Number.isFinite(seasonNum)) return [];
@@ -559,6 +571,7 @@ export function buildFeatures({
   const pbpIdx = aggregatePBP({ rows: pbp || [], season: seasonNum });
   const usageIdx = aggregatePlayerUsage({ rows: playerWeekly || [], season: seasonNum });
   const weatherIdx = indexWeather(weather || [], seasonNum);
+  const injuryIdx = buildTeamInjuryIndex(injuries || [], seasonNum);
 
   const lastDate = new Map();
   const elo = new Map();
@@ -724,9 +737,25 @@ export function buildFeatures({
       const homeQbr = latestTeamQBR(qbQbrHistory, home, week - 1);
       const awayQbr = latestTeamQBR(qbQbrHistory, away, week - 1);
 
-      const mkRow = (team, opp, isHome, me, op, advMe, advOp, pbpMe, usageMe, rolling, qbrVal, weatherFeats = {}) => {
+      const mkRow = (
+        team,
+        opp,
+        isHome,
+        me,
+        op,
+        advMe,
+        advOp,
+        pbpMe,
+        usageMe,
+        rolling,
+        qbrVal,
+        weatherFeats = {}
+      ) => {
         const adv = advMe || zeroAdvanced();
         const advOpp = advOp || zeroAdvanced();
+        const injuryCurrent = getTeamInjurySnapshot(injuryIdx, seasonNum, week, team);
+        const injuryOpponent = getTeamInjurySnapshot(injuryIdx, seasonNum, week, opp);
+        const injuryPrev = getTeamInjurySnapshot(injuryIdx, seasonNum, week - 1, team);
         return {
           season: seasonNum,
           week,
@@ -788,7 +817,17 @@ export function buildFeatures({
           ...usageMe,
           ...weatherFeats,
           roof_dome: roofDome,
-          roof_outdoor: roofOutdoor
+          roof_outdoor: roofOutdoor,
+          inj_out_count: injuryCurrent.out,
+          inj_questionable_count: injuryCurrent.questionable,
+          inj_skill_out_count: injuryCurrent.skill_out,
+          inj_ol_out_count: injuryCurrent.ol_out,
+          inj_practice_dnp_count: injuryCurrent.practice_dnp,
+          inj_out_diff: injuryCurrent.out - injuryOpponent.out,
+          inj_skill_out_diff: injuryCurrent.skill_out - injuryOpponent.skill_out,
+          inj_practice_dnp_diff: injuryCurrent.practice_dnp - injuryOpponent.practice_dnp,
+          inj_out_change: injuryCurrent.out - injuryPrev.out,
+          inj_skill_out_change: injuryCurrent.skill_out - injuryPrev.skill_out
         };
       };
 

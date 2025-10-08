@@ -11,6 +11,7 @@ import {
   loadWeather
 } from "./dataSources.js";
 import { loadElo } from "./eloLoader.js";
+import { buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
 
 function toNum(v, def = null) {
   if (v === undefined || v === null || v === "") return def;
@@ -276,6 +277,7 @@ export async function buildContextForWeek(season, week) {
 
   const qbHistory = buildQBRHistory(qbrRows, y);
   const injuryMap = buildInjuryMap(injuries, y, w);
+  const injuryIndex = buildTeamInjuryIndex(injuries, y);
   const eloMap = buildEloMap(eloRows, y, w);
   const marketMap = buildMarketMap(marketRows, y, w);
   const weatherMap = buildWeatherMap(weatherRows, y, w);
@@ -355,6 +357,11 @@ export async function buildContextForWeek(season, week) {
     const marketInfo = marketMap.get(gid) || null;
     const weatherInfo = weatherMap.get(gid) || null;
 
+    const injuryHome = getTeamInjurySnapshot(injuryIndex, y, w, home);
+    const injuryAway = getTeamInjurySnapshot(injuryIndex, y, w, away);
+    const injuryHomePrev = getTeamInjurySnapshot(injuryIndex, y, w - 1, home);
+    const injuryAwayPrev = getTeamInjurySnapshot(injuryIndex, y, w - 1, away);
+
     out.push({
       game_id: gid,
       season: y,
@@ -400,7 +407,25 @@ export async function buildContextForWeek(season, week) {
           home_out: injuryMap.get(home)?.out ?? [],
           away_out: injuryMap.get(away)?.out ?? [],
           home_probable: injuryMap.get(home)?.questionable ?? [],
-          away_probable: injuryMap.get(away)?.questionable ?? []
+          away_probable: injuryMap.get(away)?.questionable ?? [],
+          home_counts: {
+            out: injuryHome.out,
+            questionable: injuryHome.questionable,
+            skill_out: injuryHome.skill_out,
+            ol_out: injuryHome.ol_out,
+            practice_dnp: injuryHome.practice_dnp,
+            out_change: injuryHome.out - injuryHomePrev.out,
+            skill_out_change: injuryHome.skill_out - injuryHomePrev.skill_out
+          },
+          away_counts: {
+            out: injuryAway.out,
+            questionable: injuryAway.questionable,
+            skill_out: injuryAway.skill_out,
+            ol_out: injuryAway.ol_out,
+            practice_dnp: injuryAway.practice_dnp,
+            out_change: injuryAway.out - injuryAwayPrev.out,
+            skill_out_change: injuryAway.skill_out - injuryAwayPrev.skill_out
+          }
         },
         venue: {
           is_dome: isDome,

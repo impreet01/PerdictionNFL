@@ -3,13 +3,19 @@
 // Build Bradley-Terry feature set using nflverse team-week stats.
 // Output one row per game (home-team perspective) with differential features.
 
+import { buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
+
 const BT_FEATURES = [
   "diff_total_yards",
   "diff_turnovers",
   "diff_penalty_yards",
   "diff_possession_seconds",
   "diff_r_ratio",
-  "diff_elo_pre"
+  "diff_elo_pre",
+  "diff_inj_out",
+  "diff_inj_skill_out",
+  "diff_inj_practice_dnp",
+  "diff_inj_out_trend"
 ];
 
 const num = (v, d = 0) => {
@@ -186,7 +192,14 @@ function indexTeamGame(rows = [], season) {
   return idx;
 }
 
-export function buildBTFeatures({ schedules, teamWeekly, teamGame = [], season, prevTeamWeekly }) {
+export function buildBTFeatures({
+  schedules,
+  teamWeekly,
+  teamGame = [],
+  season,
+  prevTeamWeekly,
+  injuries = []
+}) {
   const regSched = (schedules || []).filter(
     (g) => Number(g.season) === Number(season) && isReg(g.season_type)
   );
@@ -209,6 +222,7 @@ export function buildBTFeatures({ schedules, teamWeekly, teamGame = [], season, 
   const prevMap = seedPrevAverages(prevTeamWeekly);
   const rolling = new Map();
   const out = [];
+  const injuryIdx = buildTeamInjuryIndex(injuries || [], season);
 
   for (const team of new Set(regSched.flatMap((g) => [normTeam(g.home_team), normTeam(g.away_team)]).filter(Boolean))) {
     rolling.set(team, {
@@ -276,13 +290,27 @@ export function buildBTFeatures({ schedules, teamWeekly, teamGame = [], season, 
         1500
       );
 
+      const hInjury = getTeamInjurySnapshot(injuryIdx, season, W, home);
+      const aInjury = getTeamInjurySnapshot(injuryIdx, season, W, away);
+      const hInjuryPrev = getTeamInjurySnapshot(injuryIdx, season, W - 1, home);
+      const aInjuryPrev = getTeamInjurySnapshot(injuryIdx, season, W - 1, away);
+
+      const diffInjOut = hInjury.out - aInjury.out;
+      const diffInjSkill = hInjury.skill_out - aInjury.skill_out;
+      const diffInjPractice = hInjury.practice_dnp - aInjury.practice_dnp;
+      const diffInjTrend = (hInjury.out - hInjuryPrev.out) - (aInjury.out - aInjuryPrev.out);
+
       const features = {
         diff_total_yards: num(hBlend.total_yards) - num(aBlend.total_yards),
         diff_turnovers: num(hBlend.turnovers) - num(aBlend.turnovers),
         diff_penalty_yards: num(hBlend.penalty_yards) - num(aBlend.penalty_yards),
         diff_possession_seconds: num(hBlend.possession_seconds) - num(aBlend.possession_seconds),
         diff_r_ratio: num(hBlend.r_ratio) - num(aBlend.r_ratio),
-        diff_elo_pre: hEloPre - aEloPre
+        diff_elo_pre: hEloPre - aEloPre,
+        diff_inj_out: diffInjOut,
+        diff_inj_skill_out: diffInjSkill,
+        diff_inj_practice_dnp: diffInjPractice,
+        diff_inj_out_trend: diffInjTrend
       };
 
       const label = winLabel(g);
@@ -296,8 +324,20 @@ export function buildBTFeatures({ schedules, teamWeekly, teamGame = [], season, 
         away_team: away,
         features,
         label_win: label,
-        home_context: { ...hBlend, elo_pre: hEloPre },
-        away_context: { ...aBlend, elo_pre: aEloPre },
+        home_context: {
+          ...hBlend,
+          elo_pre: hEloPre,
+          inj_out: hInjury.out,
+          inj_skill_out: hInjury.skill_out,
+          inj_practice_dnp: hInjury.practice_dnp
+        },
+        away_context: {
+          ...aBlend,
+          elo_pre: aEloPre,
+          inj_out: aInjury.out,
+          inj_skill_out: aInjury.skill_out,
+          inj_practice_dnp: aInjury.practice_dnp
+        },
         home_actual: { ...hActual, r_ratio: hActual.total_yards ? hActual.pass_yards / hActual.total_yards : 0 },
         away_actual: { ...aActual, r_ratio: aActual.total_yards ? aActual.pass_yards / aActual.total_yards : 0 }
       });
@@ -333,3 +373,4 @@ export function buildBTFeatures({ schedules, teamWeekly, teamGame = [], season, 
 }
 
 export { BT_FEATURES };
+

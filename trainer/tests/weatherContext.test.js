@@ -96,7 +96,8 @@ async function main() {
     prevTeamWeekly: [],
     pbp: [],
     playerWeekly: [],
-    weather: weatherRows
+    weather: weatherRows,
+    injuries: []
   });
 
   const homeRow = features.find((row) => row.team === "A" && row.week === week && row.season === season && row.home === 1);
@@ -115,12 +116,15 @@ async function main() {
   assert(Math.abs(homeRow.weather_precip_pct - expectedPrecip) < 1e-6, "Home weather precip mismatch");
   assert(Math.abs(homeRow.weather_impact_score - expectedImpact) < 1e-6, "Home weather impact mismatch");
   assert(homeRow.weather_extreme_flag === 1, "Home weather extreme flag not set");
+  assert(homeRow.inj_out_count === 0, "Home injury out count should default to 0");
+  assert(homeRow.inj_out_diff === 0, "Home injury diff should default to 0");
 
   assert(Math.abs(awayRow.weather_temp_f - expectedTemp) < 1e-6, "Away weather temperature mismatch");
   assert(Math.abs(awayRow.weather_wind_mph - expectedWind) < 1e-6, "Away weather wind mismatch");
   assert(Math.abs(awayRow.weather_precip_pct - expectedPrecip) < 1e-6, "Away weather precip mismatch");
   assert(Math.abs(awayRow.weather_impact_score - expectedImpact) < 1e-6, "Away weather impact mismatch");
   assert(awayRow.weather_extreme_flag === 1, "Away weather extreme flag not set");
+  assert(awayRow.inj_out_count === 0, "Away injury out count should default to 0");
 
   const shaped = shapeWeatherContext({
     summary: "Rain",

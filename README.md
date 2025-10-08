@@ -87,16 +87,17 @@ See `docs/data-ingestion.md` for a quick reference to every nflverse dataset we 
 ## Deployment
 Deploy `api/worker.js` to Cloudflare Workers, editing the `REPO_USER`, `REPO_NAME`, and `BRANCH` constants to point at your fork. The Worker lists the `artifacts/` directory via the GitHub API and serves the newest available predictions when `season` or `week` is omitted, enabling the bundled `openapi.yaml` to power a Custom GPT Action or any HTTP client.
 
-## Handling large injury API responses
+## Handling large context & injury API responses
 
-Rotowire injury snapshots can exceed the default payload limits for GPT Actions when you request the full league in one call. The Worker now supports lightweight segmentation so automations can stay under the `ResponseTooLargeError` threshold:
+Rotowire injury snapshots and the weekly context packs can exceed the default payload limits for GPT Actions when you request the full league in one call. The Worker supports lightweight segmentation so automations can stay under the `ResponseTooLargeError` threshold:
 
+- Use the `/context` endpoint with `team`, `game_id`, or the new `chunk` / `chunk_size` controls (for example `?season=2025&week=6&chunk_size=1&chunk=3`) to fetch one game at a time.
 - Use the `/injuries` endpoint with query filters such as `?season=2025&week=6&team=BUF,KC` to restrict the response to one or more teams.
 - Combine `team` with `status` (for example `status=OUT,QUESTIONABLE`) to trim the payload to only the designations you care about.
-- Add `limit=<n>` after the filters if you only need a fixed number of rows.
+- Add `limit=<n>` or tune `chunk_size` after the filters if you only need a fixed number of rows per request.
 - The same filters work on `/injuries/current` for the freshest snapshot.
 
-The response echoes any applied filters so you can confirm what the Worker returned without diffing the payload manually.
+Every response echoes applied filters and exposes pagination metadata so you can confirm which slice of the artifact was returned without diffing the payload manually.
 
 ## Validation & monitoring
 - `npm run train:multi` writes calibration bins and blend weights per week so you can chart drift over time.

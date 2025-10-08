@@ -326,6 +326,35 @@ paths:
           schema:
             type: integer
             example: 5
+        - in: query
+          name: team
+          description: >
+            Optional team abbreviation to filter the response to games where the
+            team appears (home or away). When omitted all teams are eligible.
+          schema:
+            type: string
+            example: KC
+        - in: query
+          name: game_id
+          description: >
+            Optional specific game identifier (e.g. `2025-W06-KC-BUF`). When
+            provided the response only contains that game's context payload.
+          schema:
+            type: string
+        - in: query
+          name: chunk
+          description: >
+            1-indexed chunk number to return when the data is paginated.
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: chunk_size
+          description: >
+            Maximum number of game records to include in the response chunk.
+            Values above the server limit are clamped.
+          schema:
+            type: integer
       responses:
         "200":
           description: Context payload
@@ -338,8 +367,38 @@ paths:
                     type: integer
                   week:
                     type: integer
+                  filters:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      team:
+                        type: string
+                      game_id:
+                        type: string
                   data:
                     $ref: "#/components/schemas/ContextPayload"
+                  pagination:
+                    $ref: "#/components/schemas/ChunkPagination"
+                  available_games:
+                    type: array
+                    description: Listing of games available for the selected week.
+                    items:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        game_id:
+                          type: string
+                          nullable: true
+                        home_team:
+                          type: string
+                          nullable: true
+                        away_team:
+                          type: string
+                          nullable: true
+                  available_teams:
+                    type: array
+                    items:
+                      type: string
         "400":
           description: Invalid query parameter
           content:
@@ -416,6 +475,21 @@ paths:
             positive integer.
           schema:
             type: integer
+        - in: query
+          name: chunk
+          description: >
+            1-indexed chunk number to return when paginating the filtered
+            injuries list.
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: chunk_size
+          description: >
+            Maximum number of injury records to include in the returned chunk.
+            Values above the server limit are clamped.
+          schema:
+            type: integer
       responses:
         "200":
           description: Injury report payload
@@ -446,6 +520,8 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/InjuryEntry"
+                  pagination:
+                    $ref: "#/components/schemas/ChunkPagination"
         "400":
           description: Invalid query parameter
           content:
@@ -1377,6 +1453,36 @@ components:
           type: number
           nullable: true
       additionalProperties: true
+
+    ChunkPagination:
+      type: object
+      description: Metadata describing the current chunk of a paginated response.
+      properties:
+        chunk:
+          type: integer
+        chunk_size:
+          type: integer
+        total_items:
+          type: integer
+        total_chunks:
+          type: integer
+        has_next:
+          type: boolean
+        has_previous:
+          type: boolean
+        next_chunk:
+          type: integer
+          nullable: true
+        previous_chunk:
+          type: integer
+          nullable: true
+      required:
+        - chunk
+        - chunk_size
+        - total_items
+        - total_chunks
+        - has_next
+        - has_previous
 
     ContextRollingStrength:
       type: object

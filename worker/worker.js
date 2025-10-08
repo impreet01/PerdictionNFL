@@ -203,6 +203,59 @@ function normalizeStatuses(values) {
   return new Set(values.map((value) => value.toUpperCase()));
 }
 
+function paginateArray(source, url, options = {}) {
+  const {
+    defaultChunkSize = 1,
+    maxChunkSize = 50,
+    chunkParam = "chunk",
+    sizeParam = "chunk_size"
+  } = options;
+
+  const rawChunk = url.searchParams.get(chunkParam);
+  const rawSize = url.searchParams.get(sizeParam);
+
+  let chunkSize = rawSize != null ? toInt(rawSize, sizeParam) : defaultChunkSize;
+  if (chunkSize == null || chunkSize <= 0) {
+    throw new HttpError(400, `${sizeParam} must be a positive integer`);
+  }
+  if (chunkSize > maxChunkSize) {
+    chunkSize = maxChunkSize;
+  }
+
+  let chunk = rawChunk != null ? toInt(rawChunk, chunkParam) : 1;
+  if (chunk == null || chunk <= 0) {
+    throw new HttpError(400, `${chunkParam} must be a positive integer`);
+  }
+
+  const totalItems = Array.isArray(source) ? source.length : 0;
+  const totalChunks = totalItems === 0 ? 0 : Math.ceil(totalItems / chunkSize);
+
+  if (totalChunks > 0 && chunk > totalChunks) {
+    throw new HttpError(400, `${chunkParam} must be between 1 and ${totalChunks}`);
+  }
+
+  const startIndex = totalChunks === 0 ? 0 : (chunk - 1) * chunkSize;
+  const endIndex = totalChunks === 0 ? 0 : Math.min(startIndex + chunkSize, totalItems);
+  const data = source.slice(startIndex, endIndex);
+
+  const pagination = {
+    chunk: totalChunks === 0 ? 0 : chunk,
+    chunk_size: chunkSize,
+    total_items: totalItems,
+    total_chunks: totalChunks,
+    has_next: totalChunks > 0 && chunk < totalChunks,
+    has_previous: totalChunks > 0 && chunk > 1
+  };
+  if (pagination.has_next) {
+    pagination.next_chunk = chunk + 1;
+  }
+  if (pagination.has_previous) {
+    pagination.previous_chunk = chunk - 1;
+  }
+
+  return { data, pagination };
+}
+
 async function respondWithInjuries(url) {
   const resolved = await resolveSeasonWeek(
     "injuries",
@@ -245,13 +298,104 @@ async function respondWithInjuries(url) {
     filters.limit = limit;
   }
 
+  const { data: chunked, pagination } = paginateArray(filtered, url, {
+    defaultChunkSize: 150,
+    maxChunkSize: 500
+  });
+
   const body = {
     season: resolved.season,
     week: resolved.week,
-    data: filtered
+    data: chunked,
+    pagination
   };
   if (Object.keys(filters).length) {
     body.filters = filters;
+  }
+
+  return json(body, 200, { headers: filterCacheHeaders({ etag, lastModified }) });
+}
+
+async function respondWithContext(url) {
+  const resolved = await resolveSeasonWeek(
+    "context",
+    url.searchParams.get("season"),
+    url.searchParams.get("week")
+  );
+  const { data, etag, lastModified } = await fetchJsonFile(resolved.file);
+  const source = Array.isArray(data) ? data : [];
+
+  const filters = {};
+  let filtered = source;
+
+  const gameIdParam = url.searchParams.get("game_id");
+  if (gameIdParam) {
+    const normalizedGame = gameIdParam.trim();
+    if (!normalizedGame) {
+      throw new HttpError(400, "game_id query parameter must not be empty");
+    }
+    filtered = source.filter(
+      (entry) => String(entry?.game_id || "").toUpperCase() === normalizedGame.toUpperCase()
+    );
+    if (!filtered.length) {
+      throw new HttpError(404, `no context found for game_id ${normalizedGame}`);
+    }
+    filters.game_id = normalizedGame;
+  } else {
+    const teamParam = url.searchParams.get("team");
+    if (teamParam) {
+      const normalizedTeam = teamParam.trim().toUpperCase();
+      if (!normalizedTeam) {
+        throw new HttpError(400, "team query parameter must not be empty");
+      }
+      filtered = source.filter((entry) => {
+        const home = String(entry?.home_team || "").toUpperCase();
+        const away = String(entry?.away_team || "").toUpperCase();
+        return home === normalizedTeam || away === normalizedTeam;
+      });
+      if (!filtered.length) {
+        throw new HttpError(404, `no context found for team ${normalizedTeam}`);
+      }
+      filters.team = normalizedTeam;
+    }
+  }
+
+  const filteredLength = filtered.length || 0;
+  const defaultChunkSize = filters.game_id
+    ? Math.max(1, filteredLength)
+    : filters.team
+      ? Math.min(Math.max(1, filteredLength), 3)
+      : Math.min(Math.max(1, filteredLength), 2);
+  const maxChunkSize = filters.game_id ? Math.max(1, filteredLength) : 4;
+
+  const { data: chunked, pagination } = paginateArray(filtered, url, {
+    defaultChunkSize,
+    maxChunkSize
+  });
+
+  const body = {
+    season: resolved.season,
+    week: resolved.week,
+    data: chunked,
+    pagination
+  };
+  if (Object.keys(filters).length) {
+    body.filters = filters;
+  }
+  if (!filters.game_id) {
+    body.available_games = source.map((entry) => ({
+      game_id: entry?.game_id ?? null,
+      home_team: entry?.home_team ?? null,
+      away_team: entry?.away_team ?? null
+    }));
+  }
+  if (!filters.team && !filters.game_id) {
+    const teams = new Set();
+    for (const entry of source) {
+      if (entry?.home_team) teams.add(String(entry.home_team).toUpperCase());
+      if (entry?.away_team) teams.add(String(entry.away_team).toUpperCase());
+    }
+    body.available_teams = [...teams].sort();
   }
 
   return json(body, 200, { headers: filterCacheHeaders({ etag, lastModified }) });
@@ -482,7 +626,7 @@ export default {
         return await respondWithArtifact("predictions", url);
       }
       if (path === "/context") {
-        return await respondWithArtifact("context", url);
+        return await respondWithContext(url);
       }
       if (path === "/context/current") {
         return await contextCurrentResponse();

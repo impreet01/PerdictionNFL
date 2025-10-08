@@ -33,6 +33,44 @@ const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
 
+const HISTORICAL_ARTIFACT_PREFIXES = [
+  "predictions",
+  "context",
+  "explain",
+  "model",
+  "diagnostics",
+  "bt_features"
+];
+
+function weekStamp(season, week) {
+  return `${season}_W${String(week).padStart(2, "0")}`;
+}
+
+function artifactPath(prefix, season, week) {
+  return `${ART_DIR}/${prefix}_${weekStamp(season, week)}.json`;
+}
+
+function weekArtifactsExist(season, week) {
+  return HISTORICAL_ARTIFACT_PREFIXES.every((prefix) => existsSync(artifactPath(prefix, season, week)));
+}
+
+function envFlag(name) {
+  const value = process.env[name];
+  if (value == null) return false;
+  return /^(1|true|yes|on)$/i.test(String(value).trim());
+}
+
+function shouldRewriteHistorical() {
+  const keys = [
+    "REWRITE_HISTORICAL",
+    "OVERWRITE_HISTORICAL",
+    "REBUILD_HISTORICAL",
+    "REGENERATE_HISTORICAL",
+    "REGEN_HISTORICAL"
+  ];
+  return keys.some((key) => envFlag(key));
+}
+
 const toFiniteNumber = (value, fallback = 0.5) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
@@ -1488,19 +1526,36 @@ async function main() {
 
   const maxAvailableWeek = seasonWeeks.length ? seasonWeeks[seasonWeeks.length - 1] : weekEnv;
   const finalWeek = Math.min(Math.max(1, Math.floor(weekEnv)), maxAvailableWeek);
+  const allowHistoricalRewrite = shouldRewriteHistorical();
   let latestResult = null;
 
   for (const wk of seasonWeeks) {
     if (wk > finalWeek) break;
     const result = await runTraining({ season, week: wk, data: sharedData });
-    await writeArtifacts(result);
+    const hasArtifacts = weekArtifactsExist(season, wk);
+    const isTargetWeek = wk === finalWeek;
+    if (!allowHistoricalRewrite && hasArtifacts && !isTargetWeek) {
+      console.log(
+        `[train] skipping artifact write for season ${season} week ${wk} (historical artifacts locked)`
+      );
+    } else {
+      await writeArtifacts(result);
+    }
     latestResult = result;
     console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
   }
 
   if (!latestResult) {
     const result = await runTraining({ season, week: finalWeek, data: sharedData });
-    await writeArtifacts(result);
+    const hasArtifacts = weekArtifactsExist(result.season, result.week);
+    const isTargetWeek = result.week === finalWeek;
+    if (!allowHistoricalRewrite && hasArtifacts && !isTargetWeek) {
+      console.log(
+        `[train] skipping artifact write for season ${result.season} week ${result.week} (historical artifacts locked)`
+      );
+    } else {
+      await writeArtifacts(result);
+    }
     latestResult = result;
     console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
   }

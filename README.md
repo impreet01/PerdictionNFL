@@ -91,5 +91,6 @@ Deploy `api/worker.js` to Cloudflare Workers, editing the `REPO_USER`, `REPO_NAM
 - `npm run train:multi` writes calibration bins and blend weights per week so you can chart drift over time.
 - `trainer/tests/backtest.js` replays recent weeks to ensure the ensemble beats its components and remains calibrated; run with `node trainer/tests/backtest.js` (optionally pass `SEASON`/`BACKTEST_WEEKS`).
 - `trainer/tests/smoke.js` is a minimal sanity check that loads data and ensures feature pipelines don’t throw.
+- `npm run validate:artifacts` validates the latest JSON artifacts against the schemas in `docs/schemas/` before publishing.
 
 Use these artifacts alongside your observability stack (S3, BigQuery, etc.) or feed them into dashboards to detect regressions early.

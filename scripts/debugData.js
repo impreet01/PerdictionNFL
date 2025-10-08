@@ -1,5 +1,5 @@
 // scripts/debugData.js
-import { loadSchedules, loadTeamWeekly, loadTeamGameAdvanced } from "../trainer/dataSources.js";
+import { loadSchedules, loadTeamWeekly, loadTeamGameAdvanced, loadInjuries } from "../trainer/dataSources.js";
 import { buildFeatures } from "../trainer/featureBuild.js";
 
 const SEASON = Number(process.env.SEASON || new Date().getFullYear());
@@ -48,7 +48,22 @@ function counts(arr, key) {
     console.log(`loadTeamWeekly(${SEASON - 1}) failed: ${e?.message || e}`);
   }
 
-  const featRows = buildFeatures({ teamWeekly, teamGame, schedules, season: SEASON, prevTeamWeekly });
+  let injuries = [];
+  try {
+    injuries = await loadInjuries(SEASON);
+    console.log(`injury rows (season ${SEASON}): ${injuries.length}`);
+  } catch (e) {
+    console.log(`loadInjuries(${SEASON}) failed: ${e?.message || e}`);
+  }
+
+  const featRows = buildFeatures({
+    teamWeekly,
+    teamGame,
+    schedules,
+    season: SEASON,
+    prevTeamWeekly,
+    injuries
+  });
   console.log(`feature rows (REG relaxed): ${featRows.length}`);
   const train = featRows.filter(r => r.season === SEASON && r.week < WEEK);
   const test  = featRows.filter(r => r.season === SEASON && r.week === WEEK);

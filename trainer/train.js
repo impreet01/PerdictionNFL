@@ -4,7 +4,8 @@ import {
   loadTeamWeekly,
   loadTeamGameAdvanced,
   listDatasetSeasons,
-  loadWeather
+  loadWeather,
+  loadInjuries
 } from "./dataSources.js";
 import { buildFeatures, FEATS } from "./featureBuild.js";
 import { writeFileSync, mkdirSync } from "fs";
@@ -117,13 +118,16 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
     try { prevTeamWeekly = await loadTeamWeekly(season - 1); } catch (_) {}
     let weatherRows = [];
     try { weatherRows = await loadWeather(season); } catch (_) {}
+    let injuryRows = [];
+    try { injuryRows = await loadInjuries(season); } catch (_) {}
     const featRows = buildFeatures({
       teamWeekly,
       teamGame,
       schedules,
       season,
       prevTeamWeekly,
-      weather: weatherRows
+      weather: weatherRows,
+      injuries: injuryRows
     });
     allRows.push(...featRows);
     seasonSummaries.push({ season, rows: featRows.length });

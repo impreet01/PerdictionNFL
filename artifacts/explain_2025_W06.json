@@ -10,7 +10,12 @@
     "dNet": 75,
     "venue_dYPA": 0.5,
     "venue_dSR": 0.03,
-    "grass_bad_net": -100
+    "grass_bad_net": -100,
+    "weather_impact": 0.5,
+    "weather_wind": 18,
+    "weather_precip": 60,
+    "weather_temp_low": 25,
+    "weather_temp_high": 95
   },
   "weights": {
     "elo": 2,
@@ -20,7 +25,8 @@
     "rolling_net": 1,
     "injuries": 1,
     "venue": 0.5,
-    "surface": 0.25
+    "surface": 0.25,
+    "weather": 0.5
   },
   "games": [
     {
@@ -60,8 +66,427 @@
           "vote": 0,
           "weight": 0.5,
           "reason": "Outdoor neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 0,
+          "weight": 0.5,
+          "reason": "Outdoor forecast appears neutral"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": 7.25,
+          "close_spread": 7.25,
+          "open_spread": 7.25,
+          "spread_home": 7.25,
+          "spread_away": -7.083333333333333,
+          "spread_price_home": -75.83333333333333,
+          "spread_price_away": -114.5,
+          "moneyline_home": 301.6666666666667,
+          "moneyline_away": -390,
+          "total": 40.583333333333336,
+          "total_points": 40.583333333333336,
+          "total_over_price": -112,
+          "total_under_price": -108.5,
+          "team_total_home": 16.5,
+          "team_total_home_over_price": -107.6,
+          "team_total_home_under_price": -26.6,
+          "team_total_away": 24.9,
+          "team_total_away_over_price": 59,
+          "team_total_away_under_price": -69.2,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": 295,
+                "away": -420
+              },
+              "spread": {
+                "home": {
+                  "line": 7.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": -7.5,
+                  "price": -108
+                }
+              },
+              "total": {
+                "points": 40.5,
+                "over_price": -115,
+                "under_price": -108
+              },
+              "team_total": {
+                "home": {
+                  "points": 16.5,
+                  "over_price": -105,
+                  "under_price": -115
+                },
+                "away": {
+                  "points": 24.5,
+                  "over_price": 102,
+                  "under_price": -124
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": 295,
+                "away": -375
+              },
+              "spread": {
+                "home": {
+                  "line": 7,
+                  "price": -102
+                },
+                "away": {
+                  "line": -7,
+                  "price": -118
+                }
+              },
+              "total": {
+                "points": 40.5,
+                "over_price": -112,
+                "under_price": -108
+              },
+              "team_total": {
+                "home": {
+                  "points": 16.5,
+                  "over_price": -105,
+                  "under_price": 110
+                },
+                "away": {
+                  "points": 24.5,
+                  "over_price": 102,
+                  "under_price": -102
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": 290,
+                "away": -380
+              },
+              "spread": {
+                "home": {
+                  "line": 6.5,
+                  "price": 105
+                },
+                "away": {
+                  "line": -6.5,
+                  "price": -125
+                }
+              },
+              "total": {
+                "points": 40.5,
+                "over_price": -110,
+                "under_price": -110
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": 310,
+                "away": -390
+              },
+              "spread": {
+                "home": {
+                  "line": 7.5,
+                  "price": -114
+                },
+                "away": {
+                  "line": -7.5,
+                  "price": -106
+                }
+              },
+              "total": {
+                "points": 40.5,
+                "over_price": -115,
+                "under_price": -105
+              },
+              "team_total": {
+                "home": {
+                  "points": 16.5,
+                  "over_price": -108,
+                  "under_price": -118
+                },
+                "away": {
+                  "points": 24.5,
+                  "over_price": -111,
+                  "under_price": -115
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": 310,
+                "away": -400
+              },
+              "spread": {
+                "home": {
+                  "line": 7.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": -7.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 41,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 16.5,
+                  "over_price": -115,
+                  "under_price": 105
+                },
+                "away": {
+                  "points": 26.5,
+                  "over_price": 100,
+                  "under_price": 110
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": 310,
+                "away": -375
+              },
+              "spread": {
+                "home": {
+                  "line": 7.5,
+                  "price": -114
+                },
+                "away": {
+                  "line": -6.5,
+                  "price": -125
+                }
+              },
+              "total": {
+                "points": 40.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 16.5,
+                  "over_price": -105,
+                  "under_price": -115
+                },
+                "away": {
+                  "points": 24.5,
+                  "over_price": 102,
+                  "under_price": -115
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "fanduel",
+                "price": 310
+              },
+              "away": {
+                "book": "draftkings",
+                "price": -375
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "fanduel",
+                "line": 7.5,
+                "price": -114
+              },
+              "away": {
+                "book": "espnbet",
+                "line": -6.5,
+                "price": -125
+              }
+            },
+            "total": {
+              "over": {
+                "book": "espnbet",
+                "points": 40.5,
+                "price": -110
+              },
+              "under": {
+                "book": "mgm",
+                "points": 41,
+                "price": -110
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "draftkings",
+                  "points": 16.5,
+                  "price": -105
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 16.5,
+                  "price": -115
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "draftkings",
+                  "points": 24.5,
+                  "price": 102
+                },
+                "under": {
+                  "book": "fanduel",
+                  "points": 24.5,
+                  "price": -115
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879347",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/giants-vs-eagles-odds-2025-10-09-2879347",
+          "home_team": "NYG",
+          "away_team": "PHI",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "fieldturf"
+        },
+        "injuries": {
+          "home_out": [
+            "Bryce Ford-Wheaton",
+            "Chris Board",
+            "Da'Quan Felton",
+            "Graham Gano",
+            "Joshua Ezeudu",
+            "Malik Nabers",
+            "Micah McFadden",
+            "Rico Payton",
+            "T.J. Moore",
+            "Bryce Ford-Wheaton",
+            "Chris Board",
+            "Da'Quan Felton",
+            "Demetrius Flannigan-Fowles",
+            "Graham Gano",
+            "Joshua Ezeudu",
+            "Malik Nabers",
+            "Micah McFadden",
+            "Rico Payton",
+            "T.J. Moore",
+            "Bryce Ford-Wheaton",
+            "Chris Board",
+            "Da'Quan Felton",
+            "Graham Gano",
+            "Joshua Ezeudu",
+            "Malik Nabers",
+            "Micah McFadden",
+            "Rico Payton",
+            "T.J. Moore"
+          ],
+          "away_out": [
+            "Ben VanSumeren",
+            "Cameron Williams",
+            "Charley Hughlett",
+            "Darius Cooper",
+            "Jakorian Bennett",
+            "Johnny Wilson",
+            "Myles Hinton",
+            "Nolan Smith",
+            "Ogbo Okoronkwo",
+            "Willie Lampkin",
+            "Ben VanSumeren",
+            "Cameron Williams",
+            "Charley Hughlett",
+            "Darius Cooper",
+            "Jakorian Bennett",
+            "Johnny Wilson",
+            "Myles Hinton",
+            "Nolan Smith",
+            "Ogbo Okoronkwo",
+            "Willie Lampkin",
+            "Ben VanSumeren",
+            "Cameron Williams",
+            "Charley Hughlett",
+            "Darius Cooper",
+            "Jakorian Bennett",
+            "Johnny Wilson",
+            "Myles Hinton",
+            "Nolan Smith",
+            "Ogbo Okoronkwo",
+            "Willie Lampkin"
+          ],
+          "home_probable": [
+            "Dane Belton",
+            "Darius Slayton",
+            "Demetrius Flannigan-Fowles",
+            "Dru Phillips",
+            "Jaxson Dart",
+            "Jermaine Eluemunor",
+            "Jevon Holland",
+            "Swayze Bozeman",
+            "Tyler Nubin",
+            "Tyrone Tracy",
+            "Dexter Lawrence",
+            "Tyler Nubin",
+            "Tyrone Tracy",
+            "Dane Belton",
+            "Darius Slayton",
+            "Demetrius Flannigan-Fowles",
+            "Dru Phillips",
+            "Jermaine Eluemunor",
+            "Jevon Holland",
+            "Swayze Bozeman",
+            "Tyler Nubin",
+            "Tyrone Tracy"
+          ],
+          "away_probable": [
+            "Grant Calcaterra",
+            "Landon Dickerson",
+            "Byron Young",
+            "Grant Calcaterra",
+            "Jihaad Campbell",
+            "Landon Dickerson",
+            "Saquon Barkley"
+          ]
+        },
+        "weather": {
+          "summary": "Clear",
+          "details": "According to Forecast.io, it's expected to be 55° F with a 0% chance of precipitation in East Rutherford at 8:15 PM EST.",
+          "notes": "Clear skies and mild temperatures are expected for Thursday night's NFC East matchup at MetLife Stadium. A light breeze will blow diagonally across the field. Overall, weather will have a minimal impact.",
+          "temperature_f": 55,
+          "precipitation_chance": 0,
+          "wind_mph": 7,
+          "impact_score": 0.2,
+          "kickoff_display": "Thursday, at 8:15 PM EST",
+          "location": "East Rutherford",
+          "forecast_provider": "Forecast.io",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/East+Rutherford+NJ+07073"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/New_York:Giants.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/40.8152,-74.0748/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/clear-night.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": false
+        }
+      }
     },
     {
       "game_id": "2025-W06-NYJ-DEN",
@@ -100,8 +525,401 @@
           "vote": 0,
           "weight": 0.5,
           "reason": "Outdoor neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 0,
+          "weight": 0.5,
+          "reason": "Outdoor forecast appears neutral"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": 7.333333333333333,
+          "close_spread": 7.333333333333333,
+          "open_spread": 7.333333333333333,
+          "spread_home": 7.333333333333333,
+          "spread_away": -7.25,
+          "spread_price_home": -110,
+          "spread_price_away": -112.33333333333333,
+          "moneyline_home": 316.6666666666667,
+          "moneyline_away": -400,
+          "total": 43.5,
+          "total_points": 43.5,
+          "total_over_price": -110.83333333333333,
+          "total_under_price": -108,
+          "team_total_home": 17.7,
+          "team_total_home_over_price": -22,
+          "team_total_home_under_price": -28.2,
+          "team_total_away": 26.3,
+          "team_total_away_over_price": -68.6,
+          "team_total_away_under_price": -67.4,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": 310,
+                "away": -420
+              },
+              "spread": {
+                "home": {
+                  "line": 7,
+                  "price": -106
+                },
+                "away": {
+                  "line": -7,
+                  "price": -118
+                }
+              },
+              "total": {
+                "points": 43.5,
+                "over_price": -113,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 17.5,
+                  "over_price": -103,
+                  "under_price": -120
+                },
+                "away": {
+                  "points": 25.5,
+                  "over_price": -115,
+                  "under_price": -106
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": 340,
+                "away": -440
+              },
+              "spread": {
+                "home": {
+                  "line": 7.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": -7.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 43.5,
+                "over_price": -115,
+                "under_price": -105
+              },
+              "team_total": {
+                "home": {
+                  "points": 17.5,
+                  "over_price": 100,
+                  "under_price": 114
+                },
+                "away": {
+                  "points": 26.5,
+                  "over_price": -112,
+                  "under_price": -108
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": 300,
+                "away": -400
+              },
+              "spread": {
+                "home": {
+                  "line": 7.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": -7.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 43.5,
+                "over_price": -105,
+                "under_price": -115
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": 310,
+                "away": -390
+              },
+              "spread": {
+                "home": {
+                  "line": 7,
+                  "price": -104
+                },
+                "away": {
+                  "line": -7,
+                  "price": -118
+                }
+              },
+              "total": {
+                "points": 43.5,
+                "over_price": -112,
+                "under_price": -108
+              },
+              "team_total": {
+                "home": {
+                  "points": 17.5,
+                  "over_price": -102,
+                  "under_price": -125
+                },
+                "away": {
+                  "points": 26.5,
+                  "over_price": -111,
+                  "under_price": -115
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": 300,
+                "away": -375
+              },
+              "spread": {
+                "home": {
+                  "line": 7.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": -7.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 43.5,
+                "over_price": -115,
+                "under_price": -105
+              },
+              "team_total": {
+                "home": {
+                  "points": 18.5,
+                  "over_price": -105,
+                  "under_price": 110
+                },
+                "away": {
+                  "points": 27.5,
+                  "over_price": 110,
+                  "under_price": 100
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": 340,
+                "away": -375
+              },
+              "spread": {
+                "home": {
+                  "line": 7.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": -7,
+                  "price": -118
+                }
+              },
+              "total": {
+                "points": 43.5,
+                "over_price": -105,
+                "under_price": -105
+              },
+              "team_total": {
+                "home": {
+                  "points": 17.5,
+                  "over_price": 100,
+                  "under_price": -120
+                },
+                "away": {
+                  "points": 25.5,
+                  "over_price": -115,
+                  "under_price": -108
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "draftkings",
+                "price": 340
+              },
+              "away": {
+                "book": "mgm",
+                "price": -375
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "draftkings",
+                "line": 7.5,
+                "price": -110
+              },
+              "away": {
+                "book": "fanduel",
+                "line": -7,
+                "price": -118
+              }
+            },
+            "total": {
+              "over": {
+                "book": "espnbet",
+                "points": 43.5,
+                "price": -105
+              },
+              "under": {
+                "book": "draftkings",
+                "points": 43.5,
+                "price": -105
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "draftkings",
+                  "points": 17.5,
+                  "price": 100
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 17.5,
+                  "price": -120
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 25.5,
+                  "price": -115
+                },
+                "under": {
+                  "book": "draftkings",
+                  "points": 26.5,
+                  "price": -108
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879238",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/jets-vs-broncos-odds-2025-10-12-2879238",
+          "home_team": "NYJ",
+          "away_team": "DEN",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "fieldturf"
+        },
+        "injuries": {
+          "home_out": [
+            "Alijah Vera-Tucker",
+            "Braelon Allen",
+            "Byron Cowart",
+            "Gus Hartwig",
+            "Ja'Markis Weston",
+            "Kris Boyd",
+            "Marcelino McCrary-Ball",
+            "Quincy Williams",
+            "Alijah Vera-Tucker",
+            "Braelon Allen",
+            "Byron Cowart",
+            "Gus Hartwig",
+            "Ja'Markis Weston",
+            "Kene Nwangwu",
+            "Kris Boyd",
+            "Marcelino McCrary-Ball",
+            "Michael Carter",
+            "Quincy Williams",
+            "Alijah Vera-Tucker",
+            "Braelon Allen",
+            "Byron Cowart",
+            "Gus Hartwig",
+            "Ja'Markis Weston",
+            "Kris Boyd",
+            "Marcelino McCrary-Ball",
+            "Quincy Williams"
+          ],
+          "away_out": [
+            "Dre Greenlaw",
+            "Drew Sanders",
+            "Johnny Walker",
+            "Lucas Krull",
+            "Malcolm Roach",
+            "Matt Henningsen",
+            "Michael Burton",
+            "Nick Gargiulo",
+            "Dre Greenlaw",
+            "Drew Sanders",
+            "Johnny Walker",
+            "Lucas Krull",
+            "Malcolm Roach",
+            "Matt Henningsen",
+            "Michael Burton",
+            "Nick Gargiulo",
+            "Dre Greenlaw",
+            "Drew Sanders",
+            "Johnny Walker",
+            "Lucas Krull",
+            "Malcolm Roach",
+            "Matt Henningsen",
+            "Michael Burton",
+            "Nick Gargiulo"
+          ],
+          "home_probable": [
+            "Francisco Mauigoa",
+            "Jermaine Johnson",
+            "Kene Nwangwu",
+            "Michael Carter",
+            "Jermaine Johnson",
+            "Allen Lazard",
+            "Francisco Mauigoa",
+            "Jermaine Johnson",
+            "Kene Nwangwu",
+            "Michael Carter"
+          ],
+          "away_probable": [
+            "Ben Powers"
+          ]
+        },
+        "weather": {
+          "summary": "Partly Cloudy",
+          "details": "According to Forecast.io, it's expected to be 65° F with a 0% chance of precipitation in East Rutherford at 9:30 AM EST.",
+          "notes": "Partly cloudy skies and comfortable temperatures are expected for Sunday afternoon's game hosted at Tottenham Hotspur Stadium in London, England. A light breeze will blow from end zone to end zone. Overall, weather will have a minimal impact.",
+          "temperature_f": 65,
+          "precipitation_chance": 0,
+          "wind_mph": 7,
+          "impact_score": 0.2,
+          "kickoff_display": "Sunday, at 9:30 AM EST",
+          "location": "East Rutherford",
+          "forecast_provider": "Forecast.io",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/East+Rutherford+NJ+07073"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/New_York:Jets.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/40.8152,-74.0748/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/partly-cloudy-day.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": false
+        }
+      }
     },
     {
       "game_id": "2025-W06-BAL-LA",
@@ -109,7 +927,7 @@
       "away_team": "LA",
       "pick": "LA",
       "blended": 0.259,
-      "support_score": 0,
+      "support_score": -0.5,
       "factors": [
         {
           "name": "qb_ypa",
@@ -140,8 +958,97 @@
           "vote": 0,
           "weight": 0.25,
           "reason": "Grass neutral"
+        },
+        {
+          "name": "weather",
+          "vote": -1,
+          "weight": 0.5,
+          "reason": "Impact score 0.65 signals adverse weather"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_out": [
+            "Adisa Isaac",
+            "Bilhal Kone",
+            "Broderick Washington",
+            "Dayton Wade",
+            "Nnamdi Madubuike",
+            "Robert Longerbeam",
+            "Adisa Isaac",
+            "Bilhal Kone",
+            "Broderick Washington",
+            "Chidobe Awuzie",
+            "Dayton Wade",
+            "Lamar Jackson",
+            "Marlon Humphrey",
+            "Nnamdi Madubuike",
+            "Patrick Ricard",
+            "Robert Longerbeam",
+            "Roquan Smith",
+            "Adisa Isaac",
+            "Bilhal Kone",
+            "Broderick Washington",
+            "Dayton Wade",
+            "Nnamdi Madubuike",
+            "Robert Longerbeam"
+          ],
+          "home_probable": [
+            "Chidobe Awuzie",
+            "Kyle Hamilton",
+            "Lamar Jackson",
+            "Marlon Humphrey",
+            "Patrick Ricard",
+            "Ronnie Stanley",
+            "Roquan Smith",
+            "Devontez Walker",
+            "Kyle Hamilton",
+            "Odafe Oweh",
+            "Ronnie Stanley",
+            "Chidobe Awuzie",
+            "Kyle Hamilton",
+            "Lamar Jackson",
+            "Marlon Humphrey",
+            "Patrick Ricard",
+            "Ronnie Stanley",
+            "Roquan Smith"
+          ]
+        },
+        "weather": {
+          "summary": "Partly Cloudy",
+          "details": "According to Forecast.io, it's expected to be 64° F with a 16% chance of precipitation in at 1:00 PM EST.",
+          "notes": "Sunday afternoon's game at M&T Bank Stadium will feature partly cloudy skies and comfortable temperatures. Light-to-moderate winds will blow from sideline to sideline. Weather will not have a significant impact.",
+          "temperature_f": 64,
+          "precipitation_chance": 16,
+          "wind_mph": 15,
+          "impact_score": 0.65,
+          "kickoff_display": "Sunday, at 1:00 PM EST",
+          "location": "at 1:00 PM EST",
+          "forecast_provider": "Forecast.io",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/Baltimore+MD+21230"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/Baltimore:Ravens.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/39.2784,-76.6242/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/partly-cloudy-day.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": false
+        }
+      }
     },
     {
       "game_id": "2025-W06-CAR-DAL",
@@ -186,8 +1093,428 @@
           "vote": 0,
           "weight": 0.25,
           "reason": "Grass neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 0,
+          "weight": 0.5,
+          "reason": "Outdoor forecast appears neutral"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": 3.5,
+          "close_spread": 3.5,
+          "open_spread": 3.5,
+          "spread_home": 3.5,
+          "spread_away": -3.5,
+          "spread_price_home": -118.33333333333333,
+          "spread_price_away": -33.5,
+          "moneyline_home": 149.16666666666666,
+          "moneyline_away": -178,
+          "total": 49.5,
+          "total_points": 49.5,
+          "total_over_price": -110,
+          "total_under_price": -109.66666666666667,
+          "team_total_home": 23.5,
+          "team_total_home_over_price": -24.6,
+          "team_total_home_under_price": -29.6,
+          "team_total_away": 26.9,
+          "team_total_away_over_price": -27.6,
+          "team_total_away_under_price": 19.2,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": 138,
+                "away": -177
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -117
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -107
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -112,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": -106,
+                  "under_price": -115
+                },
+                "away": {
+                  "points": 26.5,
+                  "over_price": -114,
+                  "under_price": -107
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": 154,
+                "away": -185
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -112,
+                "under_price": -108
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": 102,
+                  "under_price": 102
+                },
+                "away": {
+                  "points": 27.5,
+                  "over_price": 110,
+                  "under_price": 100
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": 145,
+                "away": -170
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -130
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": 110
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -110,
+                "under_price": -110
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": 148,
+                "away": -176
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -118
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -104
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -108,
+                "under_price": -112
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": -106,
+                  "under_price": -120
+                },
+                "away": {
+                  "points": 26.5,
+                  "over_price": -125,
+                  "under_price": -102
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": 155,
+                "away": -190
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": -115,
+                  "under_price": 100
+                },
+                "away": {
+                  "points": 27.5,
+                  "over_price": 105,
+                  "under_price": 105
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": 155,
+                "away": -170
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": 110
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -108,
+                "under_price": -108
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": 102,
+                  "under_price": -115
+                },
+                "away": {
+                  "points": 26.5,
+                  "over_price": -114,
+                  "under_price": 100
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "mgm",
+                "price": 155
+              },
+              "away": {
+                "book": "espnbet",
+                "price": -170
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "draftkings",
+                "line": 3.5,
+                "price": -115
+              },
+              "away": {
+                "book": "espnbet",
+                "line": -3.5,
+                "price": 110
+              }
+            },
+            "total": {
+              "over": {
+                "book": "fanduel",
+                "points": 49.5,
+                "price": -108
+              },
+              "under": {
+                "book": "draftkings",
+                "points": 49.5,
+                "price": -108
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "draftkings",
+                  "points": 23.5,
+                  "price": 102
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 23.5,
+                  "price": -115
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 26.5,
+                  "price": -114
+                },
+                "under": {
+                  "book": "draftkings",
+                  "points": 26.5,
+                  "price": 100
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879354",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/panthers-vs-cowboys-odds-2025-10-12-2879354",
+          "home_team": "CAR",
+          "away_team": "DAL",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_out": [
+            "Austin Corbett",
+            "Chandler Zavala",
+            "Dalevon Campbell",
+            "Damarri Mathis",
+            "David Moore",
+            "Jalen Coker",
+            "Popo Aumavae",
+            "Robert Hunt",
+            "Austin Corbett",
+            "Chandler Zavala",
+            "Chau Smith-Wade",
+            "Chuba Hubbard",
+            "Dalevon Campbell",
+            "Damarri Mathis",
+            "David Moore",
+            "Ja'Tavion Sanders",
+            "Jalen Coker",
+            "Popo Aumavae",
+            "Robert Hunt",
+            "Tershawn Wharton",
+            "Austin Corbett",
+            "Chandler Zavala",
+            "Dalevon Campbell",
+            "Damarri Mathis",
+            "David Moore",
+            "Jalen Coker",
+            "Popo Aumavae",
+            "Robert Hunt"
+          ],
+          "away_out": [
+            "Caelen Carson",
+            "Cooper Beebe",
+            "John Stephens",
+            "Jonathan Mingo",
+            "Malik Hooker",
+            "Payton Turner",
+            "Perrion Winfrey",
+            "Phil Mafah",
+            "Rob Jones",
+            "Tyler Booker",
+            "Caelen Carson",
+            "CeeDee Lamb",
+            "Cooper Beebe",
+            "John Stephens",
+            "Jonathan Mingo",
+            "KaVontae Turpin",
+            "Malik Hooker",
+            "Payton Turner",
+            "Perrion Winfrey",
+            "Phil Mafah",
+            "Rob Jones",
+            "Tyler Booker",
+            "Tyler Guyton",
+            "Caelen Carson",
+            "Cooper Beebe",
+            "John Stephens",
+            "Jonathan Mingo",
+            "Malik Hooker",
+            "Payton Turner",
+            "Perrion Winfrey",
+            "Phil Mafah",
+            "Rob Jones"
+          ],
+          "home_probable": [
+            "Chau Smith-Wade",
+            "Chuba Hubbard",
+            "Ja'Tavion Sanders",
+            "Tershawn Wharton",
+            "Cam Jackson",
+            "D.J. Wonnum",
+            "LaBryan Ray",
+            "Chau Smith-Wade",
+            "Chuba Hubbard",
+            "Ja'Tavion Sanders",
+            "Tershawn Wharton"
+          ],
+          "away_probable": [
+            "CeeDee Lamb",
+            "Jack Sanborn",
+            "KaVontae Turpin",
+            "Marshawn Kneeland",
+            "Miles Sanders",
+            "Tyler Guyton",
+            "Kenneth Murray",
+            "Marshawn Kneeland",
+            "Miles Sanders",
+            "Tyler Smith",
+            "CeeDee Lamb",
+            "Jack Sanborn",
+            "KaVontae Turpin",
+            "Marshawn Kneeland",
+            "Miles Sanders",
+            "Tyler Booker",
+            "Tyler Guyton"
+          ]
+        },
+        "weather": {
+          "summary": "Partly Cloudy",
+          "details": "According to Forecast.io, it's expected to be 68° F with a 8% chance of precipitation in at 1:00 PM EST.",
+          "notes": "Partly cloudy skies and comfortable temperatures are expected for Sunday afternoon's game at Bank of America Stadium. A moderate breeze blowing diagonally across the field may result in some inaccurate passes and missed kicks.",
+          "temperature_f": 68,
+          "precipitation_chance": 8,
+          "wind_mph": 15,
+          "impact_score": 0.45,
+          "kickoff_display": "Sunday, at 1:00 PM EST",
+          "location": "at 1:00 PM EST",
+          "forecast_provider": "Forecast.io",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/Charlotte+NC+28202"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/Carolina:Panthers.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/35.2243,-80.8522/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/partly-cloudy-day.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": false
+        }
+      }
     },
     {
       "game_id": "2025-W06-IND-ARI",
@@ -227,7 +1554,401 @@
           "weight": 0.5,
           "reason": "Dome + better YPA"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": -6.5,
+          "close_spread": -6.5,
+          "open_spread": -6.5,
+          "spread_home": -6.5,
+          "spread_away": 6.5,
+          "spread_price_home": -112,
+          "spread_price_away": -40.333333333333336,
+          "moneyline_home": -307.5,
+          "moneyline_away": 247.5,
+          "total": 47.5,
+          "total_points": 47.5,
+          "total_over_price": -108.33333333333333,
+          "total_under_price": -111.33333333333333,
+          "team_total_home": 27.7,
+          "team_total_home_over_price": 23,
+          "team_total_home_under_price": -32,
+          "team_total_away": 20.7,
+          "team_total_away_over_price": 21.4,
+          "team_total_away_under_price": -27.6,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": -315,
+                "away": 230
+              },
+              "spread": {
+                "home": {
+                  "line": -6.5,
+                  "price": -112
+                },
+                "away": {
+                  "line": 6.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -110,
+                "under_price": -113
+              },
+              "team_total": {
+                "home": {
+                  "points": 27.5,
+                  "over_price": 107,
+                  "under_price": -129
+                },
+                "away": {
+                  "points": 20.5,
+                  "over_price": -106,
+                  "under_price": -114
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": -310,
+                "away": 250
+              },
+              "spread": {
+                "home": {
+                  "line": -6.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 6.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 27.5,
+                  "over_price": -102,
+                  "under_price": 114
+                },
+                "away": {
+                  "points": 20.5,
+                  "over_price": 105,
+                  "under_price": 105
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": -320,
+                "away": 260
+              },
+              "spread": {
+                "home": {
+                  "line": -6.5,
+                  "price": -120
+                },
+                "away": {
+                  "line": 6.5,
+                  "price": 100
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -110,
+                "under_price": -110
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": -300,
+                "away": 245
+              },
+              "spread": {
+                "home": {
+                  "line": -6.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 6.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -105,
+                "under_price": -115
+              },
+              "team_total": {
+                "home": {
+                  "points": 27.5,
+                  "over_price": -102,
+                  "under_price": -125
+                },
+                "away": {
+                  "points": 20.5,
+                  "over_price": -102,
+                  "under_price": -125
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": -300,
+                "away": 240
+              },
+              "spread": {
+                "home": {
+                  "line": -6.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 6.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 28.5,
+                  "over_price": 105,
+                  "under_price": 105
+                },
+                "away": {
+                  "points": 21.5,
+                  "over_price": 105,
+                  "under_price": 110
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": -300,
+                "away": 260
+              },
+              "spread": {
+                "home": {
+                  "line": -6.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 6.5,
+                  "price": 100
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -105,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 27.5,
+                  "over_price": 107,
+                  "under_price": -125
+                },
+                "away": {
+                  "points": 20.5,
+                  "over_price": 105,
+                  "under_price": -114
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "fanduel",
+                "price": -300
+              },
+              "away": {
+                "book": "espnbet",
+                "price": 260
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "draftkings",
+                "line": -6.5,
+                "price": -110
+              },
+              "away": {
+                "book": "espnbet",
+                "line": 6.5,
+                "price": 100
+              }
+            },
+            "total": {
+              "over": {
+                "book": "fanduel",
+                "points": 47.5,
+                "price": -105
+              },
+              "under": {
+                "book": "draftkings",
+                "points": 47.5,
+                "price": -110
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 27.5,
+                  "price": 107
+                },
+                "under": {
+                  "book": "fanduel",
+                  "points": 27.5,
+                  "price": -125
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "draftkings",
+                  "points": 20.5,
+                  "price": 105
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 20.5,
+                  "price": -114
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879357",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/colts-vs-cardinals-odds-2025-10-12-2879357",
+          "home_team": "IND",
+          "away_team": "ARI",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "fieldturf"
+        },
+        "injuries": {
+          "home_out": [
+            "Blake Freeland",
+            "D.J. Montgomery",
+            "Daniel Scott",
+            "Hunter Wohler",
+            "Jack Wilson",
+            "Jacob Phillips",
+            "Jaylon Carlies",
+            "Jaylon Jones",
+            "Justin Walley",
+            "Salvon Ahmed",
+            "Spencer Shrader",
+            "Alec Pierce",
+            "Blake Freeland",
+            "D.J. Montgomery",
+            "Daniel Scott",
+            "Hunter Wohler",
+            "Jack Wilson",
+            "Jacob Phillips",
+            "Jaylon Carlies",
+            "Jaylon Jones",
+            "Justin Walley",
+            "Kenny Moore",
+            "Salvon Ahmed",
+            "Tyler Goodson",
+            "Blake Freeland",
+            "D.J. Montgomery",
+            "Daniel Scott",
+            "Hunter Wohler",
+            "Jack Wilson",
+            "Jacob Phillips",
+            "Jaylon Carlies",
+            "Jaylon Jones",
+            "Justin Walley",
+            "Salvon Ahmed",
+            "Spencer Shrader"
+          ],
+          "away_out": [
+            "Christian Jones",
+            "Garrett Williams",
+            "Hayden Conner",
+            "J.J. Russell",
+            "James Conner",
+            "Joey Blount",
+            "Justin Jones",
+            "L.J. Collier",
+            "Starling Thomas",
+            "Trey Benson",
+            "Valentin Senn",
+            "Christian Jones",
+            "Darius Robinson",
+            "Garrett Williams",
+            "Hayden Conner",
+            "J.J. Russell",
+            "James Conner",
+            "Joey Blount",
+            "Justin Jones",
+            "L.J. Collier",
+            "Starling Thomas",
+            "Trey Benson",
+            "Valentin Senn",
+            "Christian Jones",
+            "Garrett Williams",
+            "Hayden Conner",
+            "J.J. Russell",
+            "James Conner",
+            "Joey Blount",
+            "Justin Jones",
+            "L.J. Collier",
+            "Starling Thomas",
+            "Tip Reiman",
+            "Trey Benson",
+            "Valentin Senn"
+          ],
+          "home_probable": [
+            "Alec Pierce",
+            "Grover Stewart",
+            "Kenny Moore",
+            "Mike Hilton",
+            "Tyler Goodson",
+            "Tyquan Lewis",
+            "Alec Pierce",
+            "Grover Stewart",
+            "Kenny Moore",
+            "Tyler Goodson"
+          ],
+          "away_probable": [
+            "Cody Simon",
+            "Darius Robinson",
+            "Evan Brown",
+            "Max Melton",
+            "Tip Reiman",
+            "Bilal Nichols",
+            "Denzel Burke",
+            "Evan Brown",
+            "Greg Dortch",
+            "Max Melton",
+            "Will Hernandez",
+            "Will Johnson",
+            "Cody Simon",
+            "Darius Robinson",
+            "Evan Brown",
+            "Kyler Murray",
+            "Max Melton"
+          ]
+        }
+      }
     },
     {
       "game_id": "2025-W06-JAX-SEA",
@@ -273,7 +1994,352 @@
           "weight": 0.25,
           "reason": "Grass neutral"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": -1.25,
+          "close_spread": -1.25,
+          "open_spread": -1.25,
+          "spread_home": -1.25,
+          "spread_away": 1.3333333333333333,
+          "spread_price_home": -108.5,
+          "spread_price_away": -112.16666666666667,
+          "moneyline_home": -120,
+          "moneyline_away": 34.166666666666664,
+          "total": 46.5,
+          "total_points": 46.5,
+          "total_over_price": -39.5,
+          "total_under_price": -112.83333333333333,
+          "team_total_home": 23.7,
+          "team_total_home_over_price": -67.4,
+          "team_total_home_under_price": -66.2,
+          "team_total_away": 23.3,
+          "team_total_away_over_price": 13.2,
+          "team_total_away_under_price": 12.2,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": -121,
+                "away": -103
+              },
+              "spread": {
+                "home": {
+                  "line": -1,
+                  "price": -113
+                },
+                "away": {
+                  "line": 1,
+                  "price": -109
+                }
+              },
+              "total": {
+                "points": 46.5,
+                "over_price": -112,
+                "under_price": -112
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": -113,
+                  "under_price": -108
+                },
+                "away": {
+                  "points": 23.5,
+                  "over_price": 102,
+                  "under_price": -122
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": -120,
+                "away": 100
+              },
+              "spread": {
+                "home": {
+                  "line": -1.5,
+                  "price": -108
+                },
+                "away": {
+                  "line": 1.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 46.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": -108,
+                  "under_price": -112
+                },
+                "away": {
+                  "points": 23.5,
+                  "over_price": 105,
+                  "under_price": 100
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": -125,
+                "away": 105
+              },
+              "spread": {
+                "home": {
+                  "line": -1.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": 1.5,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 46.5,
+                "over_price": 100,
+                "under_price": -120
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": -118,
+                "away": 100
+              },
+              "spread": {
+                "home": {
+                  "line": -1.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": 1.5,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 46.5,
+                "over_price": -105,
+                "under_price": -115
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": -113,
+                  "under_price": -113
+                },
+                "away": {
+                  "points": 22.5,
+                  "over_price": -128,
+                  "under_price": 100
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": -118,
+                "away": -102
+              },
+              "spread": {
+                "home": {
+                  "line": -1,
+                  "price": -110
+                },
+                "away": {
+                  "line": 1,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 46.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 24.5,
+                  "over_price": 105,
+                  "under_price": 110
+                },
+                "away": {
+                  "points": 24.5,
+                  "over_price": 115,
+                  "under_price": 105
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": -118,
+                "away": 105
+              },
+              "spread": {
+                "home": {
+                  "line": -1,
+                  "price": -110
+                },
+                "away": {
+                  "line": 1.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 46.5,
+                "over_price": 100,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": -108,
+                  "under_price": -108
+                },
+                "away": {
+                  "points": 22.5,
+                  "over_price": -128,
+                  "under_price": -122
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "fanduel",
+                "price": -118
+              },
+              "away": {
+                "book": "espnbet",
+                "price": 105
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "mgm",
+                "line": -1,
+                "price": -110
+              },
+              "away": {
+                "book": "draftkings",
+                "line": 1.5,
+                "price": -112
+              }
+            },
+            "total": {
+              "over": {
+                "book": "espnbet",
+                "points": 46.5,
+                "price": 100
+              },
+              "under": {
+                "book": "draftkings",
+                "points": 46.5,
+                "price": -110
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "draftkings",
+                  "points": 23.5,
+                  "price": -108
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 23.5,
+                  "price": -108
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "fanduel",
+                  "points": 22.5,
+                  "price": -128
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 23.5,
+                  "price": -122
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879361",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/jaguars-vs-seahawks-odds-2025-10-12-2879361",
+          "home_team": "JAX",
+          "away_team": "SEA",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_out": [
+            "Caleb Ransaw",
+            "Jalen McLeod",
+            "Joshua Cephus",
+            "Yasir Abdullah",
+            "Caleb Ransaw",
+            "Jalen McLeod",
+            "Joshua Cephus",
+            "Yasir Abdullah",
+            "Brenton Strange",
+            "Caleb Ransaw",
+            "Jalen McLeod",
+            "Joshua Cephus"
+          ],
+          "away_out": [
+            "AJ Finley",
+            "Christian Haynes",
+            "Kenny McIntosh",
+            "Robbie Ouzts",
+            "AJ Finley",
+            "Christian Haynes",
+            "DeMarcus Lawrence",
+            "Devon Witherspoon",
+            "Josh Jones",
+            "Julian Love",
+            "Kenny McIntosh",
+            "Robbie Ouzts",
+            "AJ Finley",
+            "Christian Haynes",
+            "Kenny McIntosh",
+            "Robbie Ouzts"
+          ],
+          "home_probable": [
+            "Travon Walker",
+            "Wyatt Milum",
+            "Travon Walker",
+            "Wyatt Milum",
+            "Robert Hainsey",
+            "Travon Walker",
+            "Wyatt Milum",
+            "Yasir Abdullah"
+          ],
+          "away_probable": [
+            "DeMarcus Lawrence",
+            "Derick Hall",
+            "Devon Witherspoon",
+            "Josh Jones",
+            "Julian Love",
+            "Riq Woolen",
+            "DeMarcus Lawrence",
+            "Derick Hall",
+            "Devon Witherspoon",
+            "Josh Jones",
+            "Julian Love",
+            "Riq Woolen"
+          ]
+        }
+      }
     },
     {
       "game_id": "2025-W06-MIA-LAC",
@@ -318,8 +2384,439 @@
           "vote": 0,
           "weight": 0.25,
           "reason": "Grass neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 0,
+          "weight": 0.5,
+          "reason": "Outdoor forecast appears neutral"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": 4.5,
+          "close_spread": 4.5,
+          "open_spread": 4.5,
+          "spread_home": 4.5,
+          "spread_away": -4.5,
+          "spread_price_home": -108.66666666666667,
+          "spread_price_away": -110.33333333333333,
+          "moneyline_home": 183,
+          "moneyline_away": -220,
+          "total": 43.333333333333336,
+          "total_points": 43.333333333333336,
+          "total_over_price": -112.83333333333333,
+          "total_under_price": -77.33333333333333,
+          "team_total_home": 19.7,
+          "team_total_home_over_price": -70,
+          "team_total_home_under_price": -65.4,
+          "team_total_away": 24.5,
+          "team_total_away_over_price": -32,
+          "team_total_away_under_price": -26.6,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": 170,
+                "away": -220
+              },
+              "spread": {
+                "home": {
+                  "line": 4.5,
+                  "price": -112
+                },
+                "away": {
+                  "line": -4.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 43.5,
+                "over_price": -113,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 19.5,
+                  "over_price": -115,
+                  "under_price": -106
+                },
+                "away": {
+                  "points": 23.5,
+                  "over_price": -130,
+                  "under_price": 105
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": 190,
+                "away": -230
+              },
+              "spread": {
+                "home": {
+                  "line": 4.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": -4.5,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 44.5,
+                "over_price": -102,
+                "under_price": -118
+              },
+              "team_total": {
+                "home": {
+                  "points": 19.5,
+                  "over_price": -115,
+                  "under_price": -105
+                },
+                "away": {
+                  "points": 25.5,
+                  "over_price": 102,
+                  "under_price": 114
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": 180,
+                "away": -215
+              },
+              "spread": {
+                "home": {
+                  "line": 4.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": -4.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 42.5,
+                "over_price": -120,
+                "under_price": 100
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": 188,
+                "away": -220
+              },
+              "spread": {
+                "home": {
+                  "line": 4.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": -4.5,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 43.5,
+                "over_price": -112,
+                "under_price": -108
+              },
+              "team_total": {
+                "home": {
+                  "points": 19.5,
+                  "over_price": -115,
+                  "under_price": -111
+                },
+                "away": {
+                  "points": 24.5,
+                  "over_price": -102,
+                  "under_price": -125
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": 180,
+                "away": -220
+              },
+              "spread": {
+                "home": {
+                  "line": 4.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": -4.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 43.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 20.5,
+                  "over_price": 110,
+                  "under_price": 100
+                },
+                "away": {
+                  "points": 25.5,
+                  "over_price": 100,
+                  "under_price": -102
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": 190,
+                "away": -215
+              },
+              "spread": {
+                "home": {
+                  "line": 4.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": -4.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 42.5,
+                "over_price": -120,
+                "under_price": -118
+              },
+              "team_total": {
+                "home": {
+                  "points": 19.5,
+                  "over_price": -115,
+                  "under_price": -105
+                },
+                "away": {
+                  "points": 23.5,
+                  "over_price": -130,
+                  "under_price": -125
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "draftkings",
+                "price": 190
+              },
+              "away": {
+                "book": "espnbet",
+                "price": -215
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "draftkings",
+                "line": 4.5,
+                "price": -105
+              },
+              "away": {
+                "book": "espnbet",
+                "line": -4.5,
+                "price": -105
+              }
+            },
+            "total": {
+              "over": {
+                "book": "espnbet",
+                "points": 42.5,
+                "price": -120
+              },
+              "under": {
+                "book": "draftkings",
+                "points": 44.5,
+                "price": -118
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "draftkings",
+                  "points": 19.5,
+                  "price": -115
+                },
+                "under": {
+                  "book": "draftkings",
+                  "points": 19.5,
+                  "price": -105
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 23.5,
+                  "price": -130
+                },
+                "under": {
+                  "book": "fanduel",
+                  "points": 24.5,
+                  "price": -125
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879364",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/dolphins-vs-chargers-odds-2025-10-12-2879364",
+          "home_team": "MIA",
+          "away_team": "LAC",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_out": [
+            "Alexander Mattison",
+            "Andrew Meyer",
+            "Artie Burns",
+            "Austin Jackson",
+            "Germain Ifedi",
+            "Jalin Conyers",
+            "James Daniels",
+            "Jason Maitre",
+            "Jason Marshall",
+            "Jason Sanders",
+            "Kader Kohou",
+            "Obinna Eze",
+            "Tyreek Hill",
+            "Yodny Cajuste",
+            "Alexander Mattison",
+            "Andrew Meyer",
+            "Artie Burns",
+            "Austin Jackson",
+            "Cedrick Wilson",
+            "Germain Ifedi",
+            "Jalin Conyers",
+            "James Daniels",
+            "Jason Maitre",
+            "Jason Marshall",
+            "Jason Sanders",
+            "Kader Kohou",
+            "Obinna Eze",
+            "Storm Duck",
+            "Tyreek Hill",
+            "Yodny Cajuste",
+            "Alexander Mattison",
+            "Andrew Meyer",
+            "Artie Burns",
+            "Austin Jackson",
+            "Germain Ifedi",
+            "Jalin Conyers",
+            "James Daniels",
+            "Jason Maitre",
+            "Jason Marshall",
+            "Jason Sanders",
+            "Kader Kohou",
+            "Obinna Eze",
+            "Tyreek Hill",
+            "Yodny Cajuste"
+          ],
+          "away_out": [
+            "Deane Leonard",
+            "Denzel Perryman",
+            "Eric Rogers",
+            "Jordan Oladokun",
+            "Josh Fuga",
+            "Josh Harris",
+            "Junior Colson",
+            "Khalil Mack",
+            "Najee Harris",
+            "Rashawn Slater",
+            "Deane Leonard",
+            "Denzel Perryman",
+            "Derius Davis",
+            "Eric Rogers",
+            "Joe Alt",
+            "Jordan Oladokun",
+            "Josh Fuga",
+            "Josh Harris",
+            "Junior Colson",
+            "Khalil Mack",
+            "Najee Harris",
+            "Rashawn Slater",
+            "Deane Leonard",
+            "Denzel Perryman",
+            "Eric Rogers",
+            "Jordan Oladokun",
+            "Josh Fuga",
+            "Josh Harris",
+            "Junior Colson",
+            "Khalil Mack",
+            "Najee Harris",
+            "Omarion Hampton",
+            "Rashawn Slater"
+          ],
+          "home_probable": [
+            "Cedrick Wilson",
+            "Cornell Armstrong",
+            "Storm Duck",
+            "Tyrel Dodson",
+            "Cedrick Wilson",
+            "Cornell Armstrong",
+            "Storm Duck",
+            "Tyrel Dodson"
+          ],
+          "away_probable": [
+            "Da'Shawn Hand",
+            "Derius Davis",
+            "Joe Alt",
+            "Mekhi Becton",
+            "Omarion Hampton",
+            "Will Dissly",
+            "Mekhi Becton",
+            "Tucker Fisk",
+            "Will Dissly",
+            "Da'Shawn Hand",
+            "Derius Davis",
+            "Joe Alt",
+            "Mekhi Becton",
+            "Will Dissly"
+          ]
+        },
+        "weather": {
+          "summary": "Partly Cloudy",
+          "details": "According to Forecast.io, it's expected to be 82° F with a 18% chance of precipitation in at 1:00 PM EST.",
+          "notes": "Partly cloudy skies and comfortable temperatures are expected for Sunday afternoon's game at Hard Rock Stadium. A slight chance of thunderstorms may result in a brief delay. Light winds will blow from sideline to sideline.",
+          "temperature_f": 82,
+          "precipitation_chance": 18,
+          "wind_mph": 7,
+          "impact_score": 0.2,
+          "kickoff_display": "Sunday, at 1:00 PM EST",
+          "location": "at 1:00 PM EST",
+          "forecast_provider": "Forecast.io",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/Miami+Gardens+FL+33056"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/Miami:Dolphins.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/25.9480,-80.2483/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/partly-cloudy-day.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": false
+        }
+      }
     },
     {
       "game_id": "2025-W06-NO-NE",
@@ -327,7 +2824,7 @@
       "away_team": "NE",
       "pick": "NO",
       "blended": 0.712,
-      "support_score": -3,
+      "support_score": -2.5,
       "factors": [
         {
           "name": "market",
@@ -358,8 +2855,421 @@
           "vote": 0,
           "weight": 0.5,
           "reason": "Dome neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 1,
+          "weight": 0.5,
+          "reason": "Indoor conditions limit weather risk"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": 3.5,
+          "close_spread": 3.5,
+          "open_spread": 3.5,
+          "spread_home": 3.5,
+          "spread_away": -3.5,
+          "spread_price_home": -110.33333333333333,
+          "spread_price_away": -109.33333333333333,
+          "moneyline_home": 162,
+          "moneyline_away": -193.33333333333334,
+          "total": 45.583333333333336,
+          "total_points": 45.583333333333336,
+          "total_over_price": -114.16666666666667,
+          "total_under_price": -39.666666666666664,
+          "team_total_home": 21.1,
+          "team_total_home_over_price": -28.8,
+          "team_total_home_under_price": -107,
+          "team_total_away": 25.3,
+          "team_total_away_over_price": -23,
+          "team_total_away_under_price": -69.4,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": 170,
+                "away": -215
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -113
+                }
+              },
+              "total": {
+                "points": 45.5,
+                "over_price": -110,
+                "under_price": -113
+              },
+              "team_total": {
+                "home": {
+                  "points": 20.5,
+                  "over_price": -112,
+                  "under_price": -109
+                },
+                "away": {
+                  "points": 24.5,
+                  "over_price": -103,
+                  "under_price": -120
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": 154,
+                "away": -185
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -112
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -108
+                }
+              },
+              "total": {
+                "points": 45.5,
+                "over_price": -120,
+                "under_price": 100
+              },
+              "team_total": {
+                "home": {
+                  "points": 21.5,
+                  "over_price": 102,
+                  "under_price": -108
+                },
+                "away": {
+                  "points": 25.5,
+                  "over_price": 102,
+                  "under_price": -112
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": 155,
+                "away": -185
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -120
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 45.5,
+                "over_price": -120,
+                "under_price": 100
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": 168,
+                "away": -200
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 45.5,
+                "over_price": -115,
+                "under_price": -105
+              },
+              "team_total": {
+                "home": {
+                  "points": 20.5,
+                  "over_price": -122,
+                  "under_price": -104
+                },
+                "away": {
+                  "points": 25.5,
+                  "over_price": -111,
+                  "under_price": -115
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": 155,
+                "away": -190
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 46,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 22.5,
+                  "over_price": 100,
+                  "under_price": -110
+                },
+                "away": {
+                  "points": 26.5,
+                  "over_price": 100,
+                  "under_price": 115
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": 170,
+                "away": -185
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 45.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 20.5,
+                  "over_price": -112,
+                  "under_price": -104
+                },
+                "away": {
+                  "points": 24.5,
+                  "over_price": -103,
+                  "under_price": -115
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "betrivers",
+                "price": 170
+              },
+              "away": {
+                "book": "draftkings",
+                "price": -185
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "fanduel",
+                "line": 3.5,
+                "price": -105
+              },
+              "away": {
+                "book": "espnbet",
+                "line": -3.5,
+                "price": -105
+              }
+            },
+            "total": {
+              "over": {
+                "book": "betrivers",
+                "points": 45.5,
+                "price": -110
+              },
+              "under": {
+                "book": "mgm",
+                "points": 46,
+                "price": -110
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 20.5,
+                  "price": -112
+                },
+                "under": {
+                  "book": "fanduel",
+                  "points": 20.5,
+                  "price": -104
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 24.5,
+                  "price": -103
+                },
+                "under": {
+                  "book": "fanduel",
+                  "points": 25.5,
+                  "price": -115
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879383",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/saints-vs-patriots-odds-2025-10-12-2879383",
+          "home_team": "NO",
+          "away_team": "NE",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "sportturf"
+        },
+        "injuries": {
+          "home_out": [
+            "Barry Wesley",
+            "Bub Means",
+            "Ja'Lynn Polk",
+            "John Ridgeway",
+            "Julian Blackmon",
+            "Landon Young",
+            "Mason Pline",
+            "Nick Saldiveri",
+            "Trey Palmer",
+            "Vernon Broughton",
+            "Will Clapp",
+            "Barry Wesley",
+            "Bub Means",
+            "Cesar Ruiz",
+            "Chase Young",
+            "Isaac Yiadom",
+            "Ja'Lynn Polk",
+            "John Ridgeway",
+            "Julian Blackmon",
+            "Landon Young",
+            "Mason Pline",
+            "Nick Saldiveri",
+            "Trey Palmer",
+            "Vernon Broughton",
+            "Will Clapp",
+            "Barry Wesley",
+            "Bub Means",
+            "Ja'Lynn Polk",
+            "John Ridgeway",
+            "Julian Blackmon",
+            "Landon Young",
+            "Mason Pline",
+            "Nick Saldiveri",
+            "Trey Palmer",
+            "Vernon Broughton",
+            "Will Clapp"
+          ],
+          "away_out": [
+            "Antonio Gibson",
+            "Brock Lampe",
+            "Deneric Prince",
+            "Isaiah Iton",
+            "Jaquelin Roy",
+            "Lan Larison",
+            "Layden Robinson",
+            "Marcellas Dial",
+            "Yasir Durant",
+            "Brock Lampe",
+            "Deneric Prince",
+            "Isaiah Iton",
+            "Jaquelin Roy",
+            "K'Lavon Chaisson",
+            "Lan Larison",
+            "Layden Robinson",
+            "Marcellas Dial",
+            "Yasir Durant",
+            "Antonio Gibson",
+            "Brock Lampe",
+            "Deneric Prince",
+            "Isaiah Iton",
+            "Jaquelin Roy",
+            "Lan Larison",
+            "Layden Robinson",
+            "Marcellas Dial",
+            "Yasir Durant"
+          ],
+          "home_probable": [
+            "Cesar Ruiz",
+            "Chase Young",
+            "Isaac Yiadom",
+            "Justin Reid",
+            "Dillon Radunz",
+            "Foster Moreau",
+            "Juwan Johnson",
+            "Taysom Hill",
+            "Trevor Penning",
+            "Cesar Ruiz",
+            "Chase Young",
+            "Isaac Yiadom",
+            "Justin Reid"
+          ],
+          "away_probable": [
+            "K'Lavon Chaisson",
+            "Keion White",
+            "Carlton Davis",
+            "Jahlani Tavai",
+            "Milton Williams",
+            "K'Lavon Chaisson",
+            "Keion White"
+          ]
+        },
+        "weather": {
+          "summary": "Domed Stadium",
+          "details": "This game takes place inside a domed stadium so weather should not be a factor.",
+          "notes": "Weather will not be a factor for Sunday afternoon's game played inside of the Caesars Superdome.",
+          "temperature_f": 70,
+          "precipitation_chance": 0,
+          "wind_mph": 0,
+          "impact_score": 0,
+          "kickoff_display": "Sunday, at 1:00 PM EST",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/New+Orleans+LA+70112"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/New_Orleans:Saints.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/29.9515,-90.0786/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/dome.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": true
+        }
+      }
     },
     {
       "game_id": "2025-W06-PIT-CLE",
@@ -404,8 +3314,421 @@
           "vote": 0,
           "weight": 0.25,
           "reason": "Grass neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 0,
+          "weight": 0.5,
+          "reason": "Outdoor forecast appears neutral"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": -5.25,
+          "close_spread": -5.25,
+          "open_spread": -5.25,
+          "spread_home": -5.25,
+          "spread_away": 5.333333333333333,
+          "spread_price_home": -110.5,
+          "spread_price_away": -109.16666666666667,
+          "moneyline_home": -253.33333333333334,
+          "moneyline_away": 206.66666666666666,
+          "total": 38.083333333333336,
+          "total_points": 38.083333333333336,
+          "total_over_price": -110.33333333333333,
+          "total_under_price": -111,
+          "team_total_home": 22.7,
+          "team_total_home_over_price": 19.4,
+          "team_total_home_under_price": -28.4,
+          "team_total_away": 16.7,
+          "team_total_away_over_price": -64.8,
+          "team_total_away_under_price": -19.4,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": -275,
+                "away": 190
+              },
+              "spread": {
+                "home": {
+                  "line": -5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 5,
+                  "price": -113
+                }
+              },
+              "total": {
+                "points": 38,
+                "over_price": -109,
+                "under_price": -114
+              },
+              "team_total": {
+                "home": {
+                  "points": 22.5,
+                  "over_price": 100,
+                  "under_price": -122
+                },
+                "away": {
+                  "points": 16.5,
+                  "over_price": -117,
+                  "under_price": -105
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": -250,
+                "away": 205
+              },
+              "spread": {
+                "home": {
+                  "line": -5.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": 5.5,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 37.5,
+                "over_price": -115,
+                "under_price": -105
+              },
+              "team_total": {
+                "home": {
+                  "points": 22.5,
+                  "over_price": -102,
+                  "under_price": 105
+                },
+                "away": {
+                  "points": 16.5,
+                  "over_price": -105,
+                  "under_price": 114
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": -270,
+                "away": 220
+              },
+              "spread": {
+                "home": {
+                  "line": -5.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": 5.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 38.5,
+                "over_price": -105,
+                "under_price": -115
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": -255,
+                "away": 210
+              },
+              "spread": {
+                "home": {
+                  "line": -5.5,
+                  "price": -108
+                },
+                "away": {
+                  "line": 5.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 38.5,
+                "over_price": -108,
+                "under_price": -112
+              },
+              "team_total": {
+                "home": {
+                  "points": 22.5,
+                  "over_price": -111,
+                  "under_price": -115
+                },
+                "away": {
+                  "points": 16.5,
+                  "over_price": -115,
+                  "under_price": -111
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": -235,
+                "away": 195
+              },
+              "spread": {
+                "home": {
+                  "line": -5,
+                  "price": -115
+                },
+                "away": {
+                  "line": 5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 38.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": 110,
+                  "under_price": 105
+                },
+                "away": {
+                  "points": 17.5,
+                  "over_price": 118,
+                  "under_price": 110
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": -235,
+                "away": 220
+              },
+              "spread": {
+                "home": {
+                  "line": -5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 5.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 37.5,
+                "over_price": -115,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 22.5,
+                  "over_price": 100,
+                  "under_price": -115
+                },
+                "away": {
+                  "points": 16.5,
+                  "over_price": -105,
+                  "under_price": -105
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "mgm",
+                "price": -235
+              },
+              "away": {
+                "book": "espnbet",
+                "price": 220
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "betrivers",
+                "line": -5,
+                "price": -110
+              },
+              "away": {
+                "book": "espnbet",
+                "line": 5.5,
+                "price": -105
+              }
+            },
+            "total": {
+              "over": {
+                "book": "draftkings",
+                "points": 37.5,
+                "price": -115
+              },
+              "under": {
+                "book": "mgm",
+                "points": 38.5,
+                "price": -110
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 22.5,
+                  "price": 100
+                },
+                "under": {
+                  "book": "fanduel",
+                  "points": 22.5,
+                  "price": -115
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "draftkings",
+                  "points": 16.5,
+                  "price": -105
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 16.5,
+                  "price": -105
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879367",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/steelers-vs-browns-odds-2025-10-12-2879367",
+          "home_team": "PIT",
+          "away_team": "CLE",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_out": [
+            "Cory Trice",
+            "Dean Lowry",
+            "Domenique Davis",
+            "Donald Parham",
+            "Donte Kent",
+            "Gareth Warren",
+            "Isaiahh Loudermilk",
+            "Jacob Slade",
+            "Malik Harrison",
+            "Max Scharping",
+            "Skylar Thompson",
+            "Will Howard",
+            "Cory Trice",
+            "Dean Lowry",
+            "Domenique Davis",
+            "Donald Parham",
+            "Donte Kent",
+            "Gareth Warren",
+            "Isaiahh Loudermilk",
+            "Jacob Slade",
+            "Malik Harrison",
+            "Max Scharping",
+            "Skylar Thompson",
+            "Will Howard",
+            "Cory Trice",
+            "Dean Lowry",
+            "Domenique Davis",
+            "Donald Parham",
+            "Donte Kent",
+            "Gareth Warren",
+            "Isaiahh Loudermilk",
+            "Jacob Slade",
+            "Malik Harrison",
+            "Max Scharping",
+            "Skylar Thompson",
+            "Will Howard"
+          ],
+          "away_out": [
+            "Anthony Kendall",
+            "Cade McDonald",
+            "Cedric Tillman",
+            "Dawand Jones",
+            "DeAndre Carter",
+            "Justin Osborne",
+            "Martin Emerson",
+            "Nathaniel Watson",
+            "Winston Reid",
+            "Anthony Kendall",
+            "Cade McDonald",
+            "Cedric Tillman",
+            "Dawand Jones",
+            "DeAndre Carter",
+            "Justin Osborne",
+            "Martin Emerson",
+            "Mike Hall",
+            "Nathaniel Watson",
+            "Winston Reid",
+            "Anthony Kendall",
+            "Cade McDonald",
+            "Cedric Tillman",
+            "Dawand Jones",
+            "DeAndre Carter",
+            "Justin Osborne",
+            "Martin Emerson",
+            "Nathaniel Watson",
+            "Winston Reid"
+          ],
+          "home_probable": [
+            "Alex Highsmith",
+            "Calvin Austin",
+            "Jaylen Warren",
+            "Joey Porter",
+            "Alex Highsmith",
+            "Calvin Austin",
+            "Jaylen Warren",
+            "Joey Porter",
+            "Alex Highsmith",
+            "Calvin Austin",
+            "Jalen Ramsey",
+            "Jaylen Warren",
+            "Joey Porter"
+          ],
+          "away_probable": [
+            "Mike Hall",
+            "Greg Newsome",
+            "Jack Conklin",
+            "Mike Hall"
+          ]
+        },
+        "weather": {
+          "summary": "Clear",
+          "details": "According to Forecast.io, it's expected to be 64° F with a 3% chance of precipitation in at 1:00 PM EST.",
+          "notes": "Sunday afternoon's AFC North matchup at Acrisure Stadium will feature sunny skies and comfortable temperatures. A light breeze will blow from sideline to sideline. Overall, weather will have a minimal impact.",
+          "temperature_f": 64,
+          "precipitation_chance": 3,
+          "wind_mph": 7,
+          "impact_score": 0.2,
+          "kickoff_display": "Sunday, at 1:00 PM EST",
+          "location": "at 1:00 PM EST",
+          "forecast_provider": "Forecast.io",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/Pittsburgh+PA+15212"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/Pittsburgh:Steelers.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/40.4468,-80.0140/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/partly-cloudy-day.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": false
+        }
+      }
     },
     {
       "game_id": "2025-W06-LV-TEN",
@@ -413,7 +3736,7 @@
       "away_team": "TEN",
       "pick": "TEN",
       "blended": 0.26,
-      "support_score": -3,
+      "support_score": -2.5,
       "factors": [
         {
           "name": "market",
@@ -450,8 +3773,393 @@
           "vote": 0,
           "weight": 0.25,
           "reason": "Grass neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 1,
+          "weight": 0.5,
+          "reason": "Indoor conditions limit weather risk"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": -4.666666666666667,
+          "close_spread": -4.666666666666667,
+          "open_spread": -4.666666666666667,
+          "spread_home": -4.666666666666667,
+          "spread_away": 4.833333333333333,
+          "spread_price_home": -109.83333333333333,
+          "spread_price_away": -111.16666666666667,
+          "moneyline_home": -237.16666666666666,
+          "moneyline_away": 195.66666666666666,
+          "total": 41.5,
+          "total_points": 41.5,
+          "total_over_price": -40,
+          "total_under_price": -111.83333333333333,
+          "team_total_home": 23.7,
+          "team_total_home_over_price": 19.4,
+          "team_total_home_under_price": -28,
+          "team_total_away": 18.3,
+          "team_total_away_over_price": -67.4,
+          "team_total_away_under_price": -114.8,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": -250,
+                "away": 180
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -112
+                },
+                "away": {
+                  "line": 4.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 41.5,
+                "over_price": -110,
+                "under_price": -113
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": 100,
+                  "under_price": -120
+                },
+                "away": {
+                  "points": 18.5,
+                  "over_price": -105,
+                  "under_price": -118
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": -238,
+                "away": 195
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -108
+                },
+                "away": {
+                  "line": 4.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 41.5,
+                "over_price": -112,
+                "under_price": -108
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": -102,
+                  "under_price": 105
+                },
+                "away": {
+                  "points": 18.5,
+                  "over_price": 100,
+                  "under_price": -112
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": -250,
+                "away": 210
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": 4.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 41.5,
+                "over_price": 100,
+                "under_price": -120
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": -235,
+                "away": 194
+              },
+              "spread": {
+                "home": {
+                  "line": -5.5,
+                  "price": -106
+                },
+                "away": {
+                  "line": 5.5,
+                  "price": -114
+                }
+              },
+              "total": {
+                "points": 41.5,
+                "over_price": -108,
+                "under_price": -112
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": -111,
+                  "under_price": -115
+                },
+                "away": {
+                  "points": 17.5,
+                  "over_price": -115,
+                  "under_price": -111
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": -225,
+                "away": 185
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 4.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 41.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 24.5,
+                  "over_price": 110,
+                  "under_price": 105
+                },
+                "away": {
+                  "points": 19.5,
+                  "over_price": -102,
+                  "under_price": -115
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": -225,
+                "away": 210
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -108
+                },
+                "away": {
+                  "line": 5.5,
+                  "price": -114
+                }
+              },
+              "total": {
+                "points": 41.5,
+                "over_price": 100,
+                "under_price": -108
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": 100,
+                  "under_price": -115
+                },
+                "away": {
+                  "points": 17.5,
+                  "over_price": -115,
+                  "under_price": -118
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "mgm",
+                "price": -225
+              },
+              "away": {
+                "book": "espnbet",
+                "price": 210
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "draftkings",
+                "line": -4.5,
+                "price": -108
+              },
+              "away": {
+                "book": "fanduel",
+                "line": 5.5,
+                "price": -114
+              }
+            },
+            "total": {
+              "over": {
+                "book": "espnbet",
+                "points": 41.5,
+                "price": 100
+              },
+              "under": {
+                "book": "draftkings",
+                "points": 41.5,
+                "price": -108
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 23.5,
+                  "price": 100
+                },
+                "under": {
+                  "book": "fanduel",
+                  "points": 23.5,
+                  "price": -115
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "fanduel",
+                  "points": 17.5,
+                  "price": -115
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 18.5,
+                  "price": -118
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879374",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/raiders-vs-titans-odds-2025-10-12-2879374",
+          "home_team": "LV",
+          "away_team": "TEN",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_out": [
+            "Aidan O'Connell",
+            "Brennan Jackson",
+            "Kolton Miller",
+            "Lonnie Johnson",
+            "Aidan O'Connell",
+            "Brennan Jackson",
+            "Kolton Miller",
+            "Lonnie Johnson",
+            "Aidan O'Connell",
+            "Brennan Jackson",
+            "Kolton Miller",
+            "Lonnie Johnson"
+          ],
+          "away_out": [
+            "Anfernee Orji",
+            "Kalel Mullings",
+            "Mike Brown",
+            "T'Vondre Sweat",
+            "Treylon Burks",
+            "Will Levis",
+            "Anfernee Orji",
+            "Blake Hance",
+            "Bryce Oliver",
+            "JC Latham",
+            "Kalel Mullings",
+            "Mike Brown",
+            "T'Vondre Sweat",
+            "Treylon Burks",
+            "Will Levis",
+            "Anfernee Orji",
+            "Kalel Mullings",
+            "Mike Brown",
+            "T'Vondre Sweat",
+            "Will Levis"
+          ],
+          "home_probable": [
+            "AJ Cole",
+            "Brock Bowers",
+            "Eric Stokes",
+            "Michael Mayer",
+            "Brock Bowers",
+            "Eric Stokes",
+            "Michael Mayer",
+            "AJ Cole",
+            "Brock Bowers",
+            "Eric Stokes",
+            "Michael Mayer"
+          ],
+          "away_probable": [
+            "Arden Key",
+            "Blake Hance",
+            "Bryce Oliver",
+            "JC Latham",
+            "Calvin Ridley",
+            "James Lynch",
+            "Kevin Winston",
+            "Tyjae Spears",
+            "Arden Key",
+            "Blake Hance",
+            "Bryce Oliver",
+            "JC Latham"
+          ]
+        },
+        "weather": {
+          "summary": "Domed Stadium",
+          "details": "This game takes place inside a domed stadium so weather should not be a factor.",
+          "notes": "Weather will not be a factor for Sunday afternoon's game played inside of Allegiant Stadium.",
+          "temperature_f": 70,
+          "precipitation_chance": 0,
+          "wind_mph": 0,
+          "impact_score": 0,
+          "kickoff_display": "Sunday, at 4:05 PM EST",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/Oakland+CA+94621"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/Oakland:Raiders.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/36.1904,-115.2791/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/dome.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": true
+        }
+      }
     },
     {
       "game_id": "2025-W06-GB-CIN",
@@ -496,8 +4204,377 @@
           "vote": 0,
           "weight": 0.25,
           "reason": "Grass neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 0,
+          "weight": 0.5,
+          "reason": "Outdoor forecast appears neutral"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": -14.166666666666666,
+          "close_spread": -14.166666666666666,
+          "open_spread": -14.166666666666666,
+          "spread_home": -14.166666666666666,
+          "spread_away": 14.25,
+          "spread_price_home": -75.83333333333333,
+          "spread_price_away": -112.16666666666667,
+          "moneyline_home": -1255,
+          "moneyline_away": 745.8333333333334,
+          "total": 44.333333333333336,
+          "total_points": 44.333333333333336,
+          "total_over_price": -110.16666666666667,
+          "total_under_price": -110.33333333333333,
+          "team_total_home": 29.75,
+          "team_total_home_over_price": -57.5,
+          "team_total_home_under_price": -5.25,
+          "team_total_away": 14.75,
+          "team_total_away_over_price": -53.5,
+          "team_total_away_under_price": -61.5,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": -1430,
+                "away": 750
+              },
+              "spread": {
+                "home": {
+                  "line": -14,
+                  "price": -115
+                },
+                "away": {
+                  "line": 14,
+                  "price": -108
+                }
+              },
+              "total": {
+                "points": 44,
+                "over_price": -112,
+                "under_price": -112
+              },
+              "team_total": {
+                "home": {
+                  "points": 29.5,
+                  "over_price": -110,
+                  "under_price": -110
+                },
+                "away": {
+                  "points": 14.5,
+                  "over_price": -103,
+                  "under_price": -118
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": -1100,
+                "away": 700
+              },
+              "spread": {
+                "home": {
+                  "line": -14,
+                  "price": -115
+                },
+                "away": {
+                  "line": 14,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 44.5,
+                "over_price": -108,
+                "under_price": -112
+              },
+              "team_total": {
+                "home": {
+                  "points": 30.5,
+                  "over_price": 105,
+                  "under_price": 100
+                },
+                "away": {
+                  "points": 15.5,
+                  "over_price": 100,
+                  "under_price": 110
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": -1600,
+                "away": 800
+              },
+              "spread": {
+                "home": {
+                  "line": -14.5,
+                  "price": 100
+                },
+                "away": {
+                  "line": 14.5,
+                  "price": -120
+                }
+              },
+              "total": {
+                "points": 44.5,
+                "over_price": -115,
+                "under_price": -105
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": -1200,
+                "away": 750
+              },
+              "spread": {
+                "home": {
+                  "line": -14.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": 14.5,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 44.5,
+                "over_price": -104,
+                "under_price": -118
+              },
+              "team_total": {
+                "home": {
+                  "points": 29.5,
+                  "over_price": -115,
+                  "under_price": -111
+                },
+                "away": {
+                  "points": 14.5,
+                  "over_price": -108,
+                  "under_price": -120
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": -1100,
+                "away": 675
+              },
+              "spread": {
+                "home": {
+                  "line": -14,
+                  "price": -110
+                },
+                "away": {
+                  "line": 14,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 44.5,
+                "over_price": -110,
+                "under_price": -110
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": -1100,
+                "away": 800
+              },
+              "spread": {
+                "home": {
+                  "line": -14,
+                  "price": -110
+                },
+                "away": {
+                  "line": 14.5,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 44,
+                "over_price": -112,
+                "under_price": -105
+              },
+              "team_total": {
+                "home": {
+                  "points": 29.5,
+                  "over_price": -110,
+                  "under_price": 100
+                },
+                "away": {
+                  "points": 14.5,
+                  "over_price": -103,
+                  "under_price": -118
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "draftkings",
+                "price": -1100
+              },
+              "away": {
+                "book": "espnbet",
+                "price": 800
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "mgm",
+                "line": -14,
+                "price": -110
+              },
+              "away": {
+                "book": "fanduel",
+                "line": 14.5,
+                "price": -115
+              }
+            },
+            "total": {
+              "over": {
+                "book": "betrivers",
+                "points": 44,
+                "price": -112
+              },
+              "under": {
+                "book": "espnbet",
+                "points": 44.5,
+                "price": -105
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 29.5,
+                  "price": -110
+                },
+                "under": {
+                  "book": "draftkings",
+                  "points": 29.5,
+                  "price": 100
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 14.5,
+                  "price": -103
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 14.5,
+                  "price": -118
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879378",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/packers-vs-bengals-odds-2025-10-12-2879378",
+          "home_team": "GB",
+          "away_team": "CIN",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_out": [
+            "Brenton Cox",
+            "Jacob Monk",
+            "Jayden Reed",
+            "MarShawn Lloyd",
+            "Travis Glover",
+            "Brenton Cox",
+            "Jacob Monk",
+            "Jayden Reed",
+            "MarShawn Lloyd",
+            "Travis Glover",
+            "Brenton Cox",
+            "Jacob Monk",
+            "Jayden Reed",
+            "MarShawn Lloyd",
+            "Travis Glover"
+          ],
+          "away_out": [
+            "Cedric Johnson",
+            "Cordell Volson",
+            "Daijahn Anthony",
+            "Joe Burrow",
+            "Lucas Patrick",
+            "Cedric Johnson",
+            "Cordell Volson",
+            "Daijahn Anthony",
+            "Joe Burrow",
+            "Lucas Patrick",
+            "Shemar Stewart",
+            "Cedric Johnson",
+            "Cordell Volson",
+            "Daijahn Anthony",
+            "Joe Burrow",
+            "Lucas Patrick"
+          ],
+          "home_probable": [
+            "Aaron Banks",
+            "Anthony Belton",
+            "Devonte Wyatt",
+            "Nate Hobbs",
+            "Zach Tom",
+            "Aaron Banks",
+            "Anthony Belton",
+            "Devonte Wyatt",
+            "Nate Hobbs",
+            "Zach Tom",
+            "Aaron Banks",
+            "Anthony Belton",
+            "Devonte Wyatt",
+            "Nate Hobbs",
+            "Zach Tom"
+          ],
+          "away_probable": [
+            "Shemar Stewart",
+            "Charlie Jones",
+            "Shemar Stewart"
+          ]
+        },
+        "weather": {
+          "summary": "Partly Cloudy",
+          "details": "According to Forecast.io, it's expected to be 69° F with a 8% chance of precipitation in Green Bay at 4:25 PM EST.",
+          "notes": "Sunday afternoon's game at Lambeau Field will feature partly cloudy skies and comfortable temperatures. Both teams will look to use the wind direction to their advantage with moderate winds blowing from end zone to end zone.",
+          "temperature_f": 69,
+          "precipitation_chance": 8,
+          "wind_mph": 15,
+          "impact_score": 0.35,
+          "kickoff_display": "Sunday, at 4:25 PM EST",
+          "location": "Green Bay",
+          "forecast_provider": "Forecast.io",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/Green+Bay+WI+54304"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/Green_Bay:Packers.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/44.5029,-88.0606/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/partly-cloudy-day.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": false
+        }
+      }
     },
     {
       "game_id": "2025-W06-TB-SF",
@@ -542,8 +4619,437 @@
           "vote": 0,
           "weight": 0.25,
           "reason": "Grass neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 0,
+          "weight": 0.5,
+          "reason": "Outdoor forecast appears neutral"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": -2.8333333333333335,
+          "close_spread": -2.8333333333333335,
+          "open_spread": -2.8333333333333335,
+          "spread_home": -2.8333333333333335,
+          "spread_away": 2.9166666666666665,
+          "spread_price_home": -118.66666666666667,
+          "spread_price_away": -72.5,
+          "moneyline_home": -157.83333333333334,
+          "moneyline_away": 134.33333333333334,
+          "total": 47.5,
+          "total_points": 47.5,
+          "total_over_price": -109.16666666666667,
+          "total_under_price": -111,
+          "team_total_home": 25.1,
+          "team_total_home_over_price": -108.6,
+          "team_total_home_under_price": -108.6,
+          "team_total_away": 22.9,
+          "team_total_away_over_price": -69.4,
+          "team_total_away_under_price": -63,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": -157,
+                "away": 125
+              },
+              "spread": {
+                "home": {
+                  "line": -3,
+                  "price": -112
+                },
+                "away": {
+                  "line": 3,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -109,
+                "under_price": -114
+              },
+              "team_total": {
+                "home": {
+                  "points": 24.5,
+                  "over_price": -110,
+                  "under_price": -110
+                },
+                "away": {
+                  "points": 22.5,
+                  "over_price": -115,
+                  "under_price": -106
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": -162,
+                "away": 136
+              },
+              "spread": {
+                "home": {
+                  "line": -3,
+                  "price": -115
+                },
+                "away": {
+                  "line": 3,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 25.5,
+                  "over_price": -108,
+                  "under_price": -105
+                },
+                "away": {
+                  "points": 23.5,
+                  "over_price": 110,
+                  "under_price": -105
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": -155,
+                "away": 135
+              },
+              "spread": {
+                "home": {
+                  "line": -2.5,
+                  "price": -135
+                },
+                "away": {
+                  "line": 2.5,
+                  "price": 112
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -110,
+                "under_price": -110
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": -154,
+                "away": 130
+              },
+              "spread": {
+                "home": {
+                  "line": -3,
+                  "price": -105
+                },
+                "away": {
+                  "line": 3,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -108,
+                "under_price": -112
+              },
+              "team_total": {
+                "home": {
+                  "points": 24.5,
+                  "over_price": -113,
+                  "under_price": -113
+                },
+                "away": {
+                  "points": 22.5,
+                  "over_price": -125,
+                  "under_price": -102
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": -165,
+                "away": 140
+              },
+              "spread": {
+                "home": {
+                  "line": -3,
+                  "price": -110
+                },
+                "away": {
+                  "line": 3,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 26.5,
+                  "over_price": -102,
+                  "under_price": -110
+                },
+                "away": {
+                  "points": 23.5,
+                  "over_price": -102,
+                  "under_price": 100
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": -154,
+                "away": 140
+              },
+              "spread": {
+                "home": {
+                  "line": -2.5,
+                  "price": -135
+                },
+                "away": {
+                  "line": 3,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 47.5,
+                "over_price": -108,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 24.5,
+                  "over_price": -110,
+                  "under_price": -105
+                },
+                "away": {
+                  "points": 22.5,
+                  "over_price": -115,
+                  "under_price": -102
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "fanduel",
+                "price": -154
+              },
+              "away": {
+                "book": "mgm",
+                "price": 140
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "espnbet",
+                "line": -2.5,
+                "price": -135
+              },
+              "away": {
+                "book": "draftkings",
+                "line": 3,
+                "price": -105
+              }
+            },
+            "total": {
+              "over": {
+                "book": "fanduel",
+                "points": 47.5,
+                "price": -108
+              },
+              "under": {
+                "book": "draftkings",
+                "points": 47.5,
+                "price": -110
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 24.5,
+                  "price": -110
+                },
+                "under": {
+                  "book": "draftkings",
+                  "points": 24.5,
+                  "price": -105
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 22.5,
+                  "price": -115
+                },
+                "under": {
+                  "book": "fanduel",
+                  "points": 22.5,
+                  "price": -102
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879369",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/buccaneers-vs-49ers-odds-2025-10-12-2879369",
+          "home_team": "TB",
+          "away_team": "SF",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_out": [
+            "Calijah Kancey",
+            "Cody Mauch",
+            "David Walker",
+            "J.J. Roberts",
+            "Jaden Smith",
+            "Jalen McMillan",
+            "Ko Kieft",
+            "Luke Goedeke",
+            "Mike Evans",
+            "Rashad Wisdom",
+            "Benjamin Morrison",
+            "Bucky Irving",
+            "Calijah Kancey",
+            "Christian Izien",
+            "Cody Mauch",
+            "David Walker",
+            "J.J. Roberts",
+            "Jaden Smith",
+            "Jalen McMillan",
+            "Jamel Dean",
+            "Ko Kieft",
+            "Luke Goedeke",
+            "Mike Evans",
+            "Rashad Wisdom",
+            "Calijah Kancey",
+            "Cody Mauch",
+            "David Walker",
+            "J.J. Roberts",
+            "Jaden Smith",
+            "Jalen McMillan",
+            "Ko Kieft",
+            "Luke Goedeke",
+            "Mike Evans",
+            "Rashad Wisdom"
+          ],
+          "away_out": [
+            "Ben Bartch",
+            "George Kittle",
+            "Jacob Cowing",
+            "Jakob Robinson",
+            "Kevin Givens",
+            "Nick Bosa",
+            "Patrick Taylor",
+            "Spencer Burford",
+            "Tarron Jackson",
+            "Tre Tomlinson",
+            "Trent Taylor",
+            "Ben Bartch",
+            "George Kittle",
+            "Jacob Cowing",
+            "Jakob Robinson",
+            "Kevin Givens",
+            "Nick Bosa",
+            "Patrick Taylor",
+            "Spencer Burford",
+            "Tarron Jackson",
+            "Tre Tomlinson",
+            "Trent Taylor",
+            "Ben Bartch",
+            "George Kittle",
+            "Jacob Cowing",
+            "Jakob Robinson",
+            "Kevin Givens",
+            "Nick Bosa",
+            "Patrick Taylor",
+            "Spencer Burford",
+            "Tarron Jackson",
+            "Tre Tomlinson",
+            "Trent Taylor"
+          ],
+          "home_probable": [
+            "Benjamin Morrison",
+            "Bucky Irving",
+            "Christian Izien",
+            "Jamel Dean",
+            "Benjamin Morrison",
+            "Bucky Irving",
+            "Christian Izien",
+            "Jamel Dean"
+          ],
+          "away_probable": [
+            "Alfred Collins",
+            "Brock Purdy",
+            "Jauan Jennings",
+            "Jordan Watkins",
+            "Kalia Davis",
+            "Ricky Pearsall",
+            "Robert Beal",
+            "Upton Stout",
+            "Yetur Gross-Matos",
+            "Alfred Collins",
+            "Kalia Davis",
+            "Upton Stout",
+            "Yetur Gross-Matos",
+            "Alfred Collins",
+            "Brock Purdy",
+            "Jauan Jennings",
+            "Jordan Watkins",
+            "Kalia Davis",
+            "Ricky Pearsall",
+            "Robert Beal",
+            "Upton Stout",
+            "Yetur Gross-Matos"
+          ]
+        },
+        "weather": {
+          "summary": "Clear",
+          "details": "According to Forecast.io, it's expected to be 82° F with a 5% chance of precipitation in Tampa at 4:25 PM EST.",
+          "notes": "Sunny skies and warm temperatures are expected for Sunday afternoon's game at Raymond James Stadium. With light winds blowing from end zone to end zone, conditions will be favorable for deep passes downfield and long field goal attempts.",
+          "temperature_f": 82,
+          "precipitation_chance": 5,
+          "wind_mph": 7,
+          "impact_score": 0.2,
+          "kickoff_display": "Sunday, at 4:25 PM EST",
+          "location": "Tampa",
+          "forecast_provider": "Forecast.io",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/Tampa+FL+33607"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/Tampa_Bay:Buccaneers.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/27.9776,-82.5054/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/clear-day.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": false
+        }
+      }
     },
     {
       "game_id": "2025-W06-KC-DET",
@@ -588,8 +5094,419 @@
           "vote": 0,
           "weight": 0.25,
           "reason": "Grass neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 0,
+          "weight": 0.5,
+          "reason": "Outdoor forecast appears neutral"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": -2.5,
+          "close_spread": -2.5,
+          "open_spread": -2.5,
+          "spread_home": -2.5,
+          "spread_away": 2.5,
+          "spread_price_home": -109.33333333333333,
+          "spread_price_away": -111,
+          "moneyline_home": -136.66666666666666,
+          "moneyline_away": 115.33333333333333,
+          "total": 52.333333333333336,
+          "total_points": 52.333333333333336,
+          "total_over_price": -108.83333333333333,
+          "total_under_price": -111.66666666666667,
+          "team_total_home": 27,
+          "team_total_home_over_price": -63.5,
+          "team_total_home_under_price": -10.25,
+          "team_total_away": 25.9,
+          "team_total_away_over_price": -67.8,
+          "team_total_away_under_price": -67,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": -137,
+                "away": 112
+              },
+              "spread": {
+                "home": {
+                  "line": -2.5,
+                  "price": -112
+                },
+                "away": {
+                  "line": 2.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 52,
+                "over_price": -110,
+                "under_price": -113
+              },
+              "team_total": {
+                "home": {
+                  "points": 26.5,
+                  "over_price": -127,
+                  "under_price": 104
+                },
+                "away": {
+                  "points": 25.5,
+                  "over_price": -108,
+                  "under_price": -113
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": -135,
+                "away": 114
+              },
+              "spread": {
+                "home": {
+                  "line": -2.5,
+                  "price": -108
+                },
+                "away": {
+                  "line": 2.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 52.5,
+                "over_price": -108,
+                "under_price": -112
+              },
+              "team_total": {
+                "home": {
+                  "points": 27.5,
+                  "over_price": 102,
+                  "under_price": 105
+                },
+                "away": {
+                  "points": 26.5,
+                  "over_price": 102,
+                  "under_price": 100
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": -135,
+                "away": 115
+              },
+              "spread": {
+                "home": {
+                  "line": -2.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 2.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 52.5,
+                "over_price": -105,
+                "under_price": -115
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": -138,
+                "away": 118
+              },
+              "spread": {
+                "home": {
+                  "line": -2.5,
+                  "price": -108
+                },
+                "away": {
+                  "line": 2.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 52.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 27.5,
+                  "over_price": -102,
+                  "under_price": -125
+                },
+                "away": {
+                  "points": 25.5,
+                  "over_price": -120,
+                  "under_price": -106
+                }
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": -140,
+                "away": 115
+              },
+              "spread": {
+                "home": {
+                  "line": -2.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 2.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 52.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "away": {
+                  "points": 26.5,
+                  "over_price": -105,
+                  "under_price": -110
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": -135,
+                "away": 118
+              },
+              "spread": {
+                "home": {
+                  "line": -2.5,
+                  "price": -108
+                },
+                "away": {
+                  "line": 2.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 52,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 26.5,
+                  "over_price": -127,
+                  "under_price": -125
+                },
+                "away": {
+                  "points": 25.5,
+                  "over_price": -108,
+                  "under_price": -106
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "draftkings",
+                "price": -135
+              },
+              "away": {
+                "book": "fanduel",
+                "price": 118
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "draftkings",
+                "line": -2.5,
+                "price": -108
+              },
+              "away": {
+                "book": "mgm",
+                "line": 2.5,
+                "price": -110
+              }
+            },
+            "total": {
+              "over": {
+                "book": "betrivers",
+                "points": 52,
+                "price": -110
+              },
+              "under": {
+                "book": "fanduel",
+                "points": 52.5,
+                "price": -110
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 26.5,
+                  "price": -127
+                },
+                "under": {
+                  "book": "fanduel",
+                  "points": 27.5,
+                  "price": -125
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 25.5,
+                  "price": -108
+                },
+                "under": {
+                  "book": "fanduel",
+                  "points": 25.5,
+                  "price": -106
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879386",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/chiefs-vs-lions-odds-2025-10-12-2879386",
+          "home_team": "KC",
+          "away_team": "DET",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_out": [
+            "Brandon George",
+            "Deon Bush",
+            "Eric Scott",
+            "Felix Anudike-Uzomah",
+            "Jake Briningstool",
+            "Janarius Robinson",
+            "Keaontay Ingram",
+            "Nazeeh Johnson",
+            "Brandon George",
+            "Deon Bush",
+            "Eric Scott",
+            "Felix Anudike-Uzomah",
+            "Jake Briningstool",
+            "Janarius Robinson",
+            "Keaontay Ingram",
+            "Nazeeh Johnson",
+            "Brandon George",
+            "Deon Bush",
+            "Eric Scott",
+            "Felix Anudike-Uzomah",
+            "Jake Briningstool",
+            "Janarius Robinson",
+            "Keaontay Ingram",
+            "Nazeeh Johnson"
+          ],
+          "away_out": [
+            "Colby Sorsdal",
+            "D.J. Reed",
+            "Dan Jackson",
+            "Daniel Thomas",
+            "Ennis Rakestraw",
+            "Ezekiel Turner",
+            "Jamarco Jones",
+            "Justin Herron",
+            "Kenny Yeboah",
+            "Kye Robichaux",
+            "Marcus Davenport",
+            "Shane Zylstra",
+            "Terrion Arnold",
+            "Colby Sorsdal",
+            "D.J. Reed",
+            "Dan Jackson",
+            "Daniel Thomas",
+            "Ennis Rakestraw",
+            "Ezekiel Turner",
+            "Jamarco Jones",
+            "Justin Herron",
+            "Kenny Yeboah",
+            "Khalil Dorsey",
+            "Kye Robichaux",
+            "Marcus Davenport",
+            "Shane Zylstra",
+            "Sione Vaki",
+            "Zach Cunningham",
+            "Colby Sorsdal",
+            "D.J. Reed",
+            "Dan Jackson",
+            "Daniel Thomas",
+            "Ennis Rakestraw",
+            "Ezekiel Turner",
+            "Jamarco Jones",
+            "Justin Herron",
+            "Kenny Yeboah",
+            "Kye Robichaux",
+            "Marcus Davenport",
+            "Shane Zylstra",
+            "Terrion Arnold"
+          ],
+          "home_probable": [
+            "Kristian Fulton",
+            "Omarr Norman-Lott",
+            "Xavier Worthy",
+            "Kristian Fulton",
+            "Omarr Norman-Lott",
+            "Kristian Fulton",
+            "Omarr Norman-Lott"
+          ],
+          "away_probable": [
+            "Kalif Raymond",
+            "Khalil Dorsey",
+            "Sione Vaki",
+            "Taylor Decker",
+            "Zach Cunningham",
+            "Kerby Joseph",
+            "Taylor Decker",
+            "Kalif Raymond",
+            "Khalil Dorsey",
+            "Sione Vaki",
+            "Taylor Decker",
+            "Zach Cunningham"
+          ]
+        },
+        "weather": {
+          "summary": "Partly Cloudy",
+          "details": "According to Forecast.io, it's expected to be 79° F with a 8% chance of rain in Kansas City at 8:20 PM EST.",
+          "notes": "Sunday night's game at Arrowhead Stadium will feature partly cloudy skies and comfortable temperatures. Light-to-moderate winds blowing diagonally across the field may impact kicking and passing.",
+          "temperature_f": 79,
+          "precipitation_chance": 8,
+          "wind_mph": 15,
+          "impact_score": 0.35,
+          "kickoff_display": "Sunday, at 8:20 PM EST",
+          "location": "in Kansas City",
+          "forecast_provider": "Forecast.io",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/Kansas+City+MO+64129"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/Kansas_City:Chiefs.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/39.0487,-94.4863/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/partly-cloudy-night.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": false
+        }
+      }
     },
     {
       "game_id": "2025-W06-ATL-BUF",
@@ -597,13 +5514,13 @@
       "away_team": "BUF",
       "pick": "BUF",
       "blended": 0.328,
-      "support_score": 3.5,
+      "support_score": 4,
       "factors": [
         {
           "name": "market",
           "vote": 1,
           "weight": 1.5,
-          "reason": "Market favors BUF by 4.25"
+          "reason": "Market favors BUF by 4.5"
         },
         {
           "name": "qb_ypa",
@@ -628,8 +5545,387 @@
           "vote": 1,
           "weight": 0.5,
           "reason": "Dome + better YPA"
+        },
+        {
+          "name": "weather",
+          "vote": 1,
+          "weight": 0.5,
+          "reason": "Indoor conditions limit weather risk"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": 4.5,
+          "close_spread": 4.5,
+          "open_spread": 4.5,
+          "spread_home": 4.5,
+          "spread_away": -4.25,
+          "spread_price_home": -73,
+          "spread_price_away": -115.5,
+          "moneyline_home": 186.66666666666666,
+          "moneyline_away": -220.83333333333334,
+          "total": 49.666666666666664,
+          "total_points": 49.666666666666664,
+          "total_over_price": -75.83333333333333,
+          "total_under_price": -113,
+          "team_total_home": 22.833333333333332,
+          "team_total_home_over_price": -36.666666666666664,
+          "team_total_home_under_price": -105,
+          "team_total_away": 27.833333333333332,
+          "team_total_away_over_price": -33,
+          "team_total_away_under_price": 111,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": 195,
+                "away": -245
+              },
+              "spread": {
+                "home": {
+                  "line": 5,
+                  "price": -109
+                },
+                "away": {
+                  "line": -5,
+                  "price": -113
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -110,
+                "under_price": -113
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": 190,
+                "away": -230
+              },
+              "spread": {
+                "home": {
+                  "line": 4.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": -4.5,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 22.5,
+                  "over_price": -105,
+                  "under_price": -105
+                },
+                "away": {
+                  "points": 27.5,
+                  "over_price": -102,
+                  "under_price": 114
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": 170,
+                "away": -200
+              },
+              "spread": {
+                "home": {
+                  "line": 3.5,
+                  "price": 100
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -120
+                }
+              },
+              "total": {
+                "points": 50.5,
+                "over_price": 100,
+                "under_price": -120
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": 190,
+                "away": -230
+              },
+              "spread": {
+                "home": {
+                  "line": 4.5,
+                  "price": -105
+                },
+                "away": {
+                  "line": -4.5,
+                  "price": -115
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -115,
+                "under_price": -105
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": 180,
+                "away": -220
+              },
+              "spread": {
+                "home": {
+                  "line": 4.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": -4.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 23.5,
+                  "over_price": 100,
+                  "under_price": -105
+                },
+                "away": {
+                  "points": 28.5,
+                  "over_price": 105,
+                  "under_price": 105
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": 195,
+                "away": -200
+              },
+              "spread": {
+                "home": {
+                  "line": 5,
+                  "price": -109
+                },
+                "away": {
+                  "line": -3.5,
+                  "price": -120
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -110,
+                "under_price": -120
+              },
+              "team_total": {
+                "home": {
+                  "points": 22.5,
+                  "over_price": -105,
+                  "under_price": -105
+                },
+                "away": {
+                  "points": 27.5,
+                  "over_price": -102,
+                  "under_price": 114
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "betrivers",
+                "price": 195
+              },
+              "away": {
+                "book": "espnbet",
+                "price": -200
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "betrivers",
+                "line": 5,
+                "price": -109
+              },
+              "away": {
+                "book": "espnbet",
+                "line": -3.5,
+                "price": -120
+              }
+            },
+            "total": {
+              "over": {
+                "book": "draftkings",
+                "points": 49.5,
+                "price": -110
+              },
+              "under": {
+                "book": "espnbet",
+                "points": 50.5,
+                "price": -120
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "draftkings",
+                  "points": 22.5,
+                  "price": -105
+                },
+                "under": {
+                  "book": "draftkings",
+                  "points": 21.5,
+                  "price": -105
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "draftkings",
+                  "points": 27.5,
+                  "price": -102
+                },
+                "under": {
+                  "book": "draftkings",
+                  "points": 26.5,
+                  "price": 114
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879392",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/falcons-vs-bills-odds-2025-10-13-2879392",
+          "home_team": "ATL",
+          "away_team": "BUF",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "fieldturf"
+        },
+        "injuries": {
+          "home_out": [
+            "Bralen Trice",
+            "Emory Jones",
+            "Jordan Fuller",
+            "Kaleb McGary",
+            "Storm Norton",
+            "Ta'Quon Graham",
+            "Tyrone Wheatley",
+            "Bralen Trice",
+            "Emory Jones",
+            "Jordan Fuller",
+            "Kaleb McGary",
+            "Storm Norton",
+            "Ta'Quon Graham",
+            "Tyrone Wheatley",
+            "Bralen Trice",
+            "Emory Jones",
+            "Jordan Fuller",
+            "Kaleb McGary",
+            "Storm Norton",
+            "Ta'Quon Graham",
+            "Tyrone Wheatley"
+          ],
+          "away_out": [
+            "Cameron Johnston",
+            "DeWayne Carter",
+            "Dorian Strong",
+            "Maxwell Hairston",
+            "Tylan Grable",
+            "Tyler Bass",
+            "Wande Owens",
+            "Cameron Johnston",
+            "DeWayne Carter",
+            "Dorian Strong",
+            "Dorian Williams",
+            "Maxwell Hairston",
+            "Tylan Grable",
+            "Tyler Bass",
+            "Wande Owens",
+            "Cameron Johnston",
+            "DeWayne Carter",
+            "Dorian Strong",
+            "Maxwell Hairston",
+            "Tylan Grable",
+            "Tyler Bass",
+            "Wande Owens"
+          ],
+          "home_probable": [
+            "A.J. Terrell",
+            "Darnell Mooney",
+            "Feleipe Franks",
+            "KhaDarel Hodge",
+            "Nathan Carter",
+            "Natrone Brooks",
+            "A.J. Terrell",
+            "Darnell Mooney",
+            "Feleipe Franks",
+            "KhaDarel Hodge",
+            "Nathan Carter",
+            "Natrone Brooks",
+            "A.J. Terrell",
+            "Darnell Mooney",
+            "Feleipe Franks",
+            "KhaDarel Hodge",
+            "Nathan Carter",
+            "Natrone Brooks"
+          ],
+          "away_probable": [
+            "Dorian Williams",
+            "Ed Oliver",
+            "Matt Milano",
+            "T.J. Sanders",
+            "Ed Oliver",
+            "Matt Milano",
+            "Spencer Brown",
+            "T.J. Sanders",
+            "Dorian Williams",
+            "Ed Oliver",
+            "Matt Milano",
+            "T.J. Sanders"
+          ]
+        },
+        "weather": {
+          "summary": "Domed Stadium",
+          "details": "This game takes place inside a domed stadium so weather should not be a factor.",
+          "notes": "Mostly clear skies and comfortable temperatures are expected for Monday night's game at Mercedes-Benz Stadium. Conditions will favor an open roof and winds will remain calm throughout the game.",
+          "temperature_f": 70,
+          "precipitation_chance": 0,
+          "wind_mph": 0,
+          "impact_score": 0,
+          "kickoff_display": "Monday, at 7:15 PM EST",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/Atlanta+GA+30313"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/Atlanta:Falcons.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/33.7563,-84.4026/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/dome.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": true
+        }
+      }
     },
     {
       "game_id": "2025-W06-WAS-CHI",
@@ -674,8 +5970,391 @@
           "vote": 0,
           "weight": 0.25,
           "reason": "Grass neutral"
+        },
+        {
+          "name": "weather",
+          "vote": 0,
+          "weight": 0.5,
+          "reason": "Outdoor forecast appears neutral"
         }
-      ]
+      ],
+      "context": {
+        "market": {
+          "spread": -4.5,
+          "close_spread": -4.5,
+          "open_spread": -4.5,
+          "spread_home": -4.5,
+          "spread_away": 4.5,
+          "spread_price_home": -110.5,
+          "spread_price_away": -109,
+          "moneyline_home": -227.5,
+          "moneyline_away": 188,
+          "total": 50,
+          "total_points": 50,
+          "total_over_price": -112.16666666666667,
+          "total_under_price": -111.16666666666667,
+          "team_total_home": 27.75,
+          "team_total_home_over_price": 50,
+          "team_total_home_under_price": -4.5,
+          "team_total_away": 23,
+          "team_total_away_over_price": -58,
+          "team_total_away_under_price": -50.75,
+          "consensus_samples": 8,
+          "books": {
+            "betrivers": {
+              "moneyline": {
+                "home": -235,
+                "away": 185
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -112
+                },
+                "away": {
+                  "line": 4.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 50,
+                "over_price": -113,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 27.5,
+                  "over_price": 100,
+                  "under_price": -121
+                },
+                "away": {
+                  "points": 22.5,
+                  "over_price": -120,
+                  "under_price": -103
+                }
+              }
+            },
+            "draftkings": {
+              "moneyline": {
+                "home": -230,
+                "away": 190
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -115
+                },
+                "away": {
+                  "line": 4.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 50.5,
+                "over_price": -105,
+                "under_price": -115
+              },
+              "team_total": {
+                "home": {
+                  "points": 27.5,
+                  "over_price": -105,
+                  "under_price": 114
+                },
+                "away": {
+                  "points": 23.5,
+                  "over_price": 110,
+                  "under_price": 105
+                }
+              }
+            },
+            "espnbet": {
+              "moneyline": {
+                "home": -225,
+                "away": 190
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 4.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 50.5,
+                "over_price": -105,
+                "under_price": -115
+              }
+            },
+            "fanduel": {
+              "moneyline": {
+                "home": -225,
+                "away": 188
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -108
+                },
+                "away": {
+                  "line": 4.5,
+                  "price": -112
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -120,
+                "under_price": -102
+              }
+            },
+            "mgm": {
+              "moneyline": {
+                "home": -225,
+                "away": 185
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -110
+                },
+                "away": {
+                  "line": 4.5,
+                  "price": -110
+                }
+              },
+              "total": {
+                "points": 50,
+                "over_price": -110,
+                "under_price": -110
+              },
+              "team_total": {
+                "home": {
+                  "points": 28.5,
+                  "over_price": 105,
+                  "under_price": 110
+                },
+                "away": {
+                  "points": 23.5,
+                  "over_price": -102,
+                  "under_price": -102
+                }
+              }
+            },
+            "best": {
+              "moneyline": {
+                "home": -225,
+                "away": 190
+              },
+              "spread": {
+                "home": {
+                  "line": -4.5,
+                  "price": -108
+                },
+                "away": {
+                  "line": 4.5,
+                  "price": -105
+                }
+              },
+              "total": {
+                "points": 49.5,
+                "over_price": -120,
+                "under_price": -115
+              },
+              "team_total": {
+                "home": {
+                  "points": 27.5,
+                  "over_price": 100,
+                  "under_price": -121
+                },
+                "away": {
+                  "points": 22.5,
+                  "over_price": -120,
+                  "under_price": -103
+                }
+              }
+            }
+          },
+          "best": {
+            "moneyline": {
+              "home": {
+                "book": "fanduel",
+                "price": -225
+              },
+              "away": {
+                "book": "draftkings",
+                "price": 190
+              }
+            },
+            "spread": {
+              "home": {
+                "book": "fanduel",
+                "line": -4.5,
+                "price": -108
+              },
+              "away": {
+                "book": "draftkings",
+                "line": 4.5,
+                "price": -105
+              }
+            },
+            "total": {
+              "over": {
+                "book": "fanduel",
+                "points": 49.5,
+                "price": -120
+              },
+              "under": {
+                "book": "draftkings",
+                "points": 50.5,
+                "price": -115
+              }
+            },
+            "team_total": {
+              "home": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 27.5,
+                  "price": 100
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 27.5,
+                  "price": -121
+                }
+              },
+              "away": {
+                "over": {
+                  "book": "betrivers",
+                  "points": 22.5,
+                  "price": -120
+                },
+                "under": {
+                  "book": "betrivers",
+                  "points": 22.5,
+                  "price": -103
+                }
+              }
+            }
+          },
+          "fetched_at": "2025-10-08T00:49:39.179Z",
+          "source": "rotowire",
+          "rotowire_game_id": "2879395",
+          "market_url": "https://www.rotowire.com/betting/nfl/game/commanders-vs-bears-odds-2025-10-13-2879395",
+          "home_team": "WAS",
+          "away_team": "CHI",
+          "season": 2025,
+          "week": 6
+        },
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_out": [
+            "Austin Ekeler",
+            "Deatrich Wise",
+            "Javontae Jean-Baptiste",
+            "Jonathan Jones",
+            "Lucas Niang",
+            "Tyree Jackson",
+            "Will Harris",
+            "Austin Ekeler",
+            "Deatrich Wise",
+            "Javontae Jean-Baptiste",
+            "Jonathan Jones",
+            "Lucas Niang",
+            "Noah Brown",
+            "Terry McLaurin",
+            "Tyree Jackson",
+            "Will Harris",
+            "Austin Ekeler",
+            "Deatrich Wise",
+            "Javontae Jean-Baptiste",
+            "Jonathan Jones",
+            "Lucas Niang",
+            "Tyree Jackson",
+            "Will Harris"
+          ],
+          "away_out": [
+            "Amen Ogbongbemiga",
+            "Austin Booker",
+            "Deion Hankins",
+            "Jaylon Johnson",
+            "Kiran Amegadjie",
+            "Terell Smith",
+            "Travis Homer",
+            "Amen Ogbongbemiga",
+            "Austin Booker",
+            "Deion Hankins",
+            "Jaylon Johnson",
+            "Kiran Amegadjie",
+            "Terell Smith",
+            "Travis Homer",
+            "Amen Ogbongbemiga",
+            "Austin Booker",
+            "Deion Hankins",
+            "Jaylon Johnson",
+            "Kiran Amegadjie",
+            "Terell Smith",
+            "Travis Homer"
+          ],
+          "home_probable": [
+            "Noah Brown",
+            "Terry McLaurin",
+            "Noah Brown",
+            "Terry McLaurin"
+          ],
+          "away_probable": [
+            "Colston Loveland",
+            "Darnell Wright",
+            "Grady Jarrett",
+            "Kyler Gordon",
+            "T.J. Edwards",
+            "Colston Loveland",
+            "Darnell Wright",
+            "Grady Jarrett",
+            "Kyler Gordon",
+            "T.J. Edwards",
+            "Colston Loveland",
+            "Darnell Wright",
+            "Grady Jarrett",
+            "Kyler Gordon",
+            "T.J. Edwards"
+          ]
+        },
+        "weather": {
+          "summary": "Partly Cloudy",
+          "details": "According to Forecast.io, it's expected to be 57° F with a 25% chance of rain in at 8:15 PM EST.",
+          "notes": "Partly cloudy skies and cool temperatures are expected for Monday night's game at Northwest Stadium. Some light rain showers are possible. A light breeze will blow from sideline to sideline throughout the game.",
+          "temperature_f": 57,
+          "precipitation_chance": 25,
+          "wind_mph": 7,
+          "impact_score": 0.2,
+          "kickoff_display": "Monday, at 8:15 PM EST",
+          "location": "in",
+          "forecast_provider": "Forecast.io",
+          "forecast_links": [
+            {
+              "label": "Weather.com",
+              "url": "http://www.weather.com/weather/hourbyhour/graph/Landover+MD+20785"
+            },
+            {
+              "label": "Weather Underground",
+              "url": "http://www.wunderground.com/sports/NFL/hometeam/Washington:Redskins.html"
+            },
+            {
+              "label": "Forecast.io",
+              "url": "http://forecast.io/#/f/38.9091,-76.8635/1759884580"
+            }
+          ],
+          "icon": "https://content.rotowire.com/images/weather/partly-cloudy-night.png",
+          "fetched_at": "2025-10-08T00:49:39.986Z",
+          "is_dome": false
+        }
+      }
     }
   ]
 }

@@ -24,6 +24,7 @@ import {
   loadDepthCharts as loadDepthChartsDS,
   loadInjuries as loadInjuriesDS,
   loadMarkets as loadMarketsDS,
+  loadWeather as loadWeatherDS,
   loadFTNCharts as loadFTNChartsDS,
   loadPBP as loadPBPDS,
   loadPFRAdvTeamWeekly as loadPFRAdvTeamWeeklyDS,
@@ -472,6 +473,103 @@ function summarizeMarkets(markets, schedules, weekCap) {
   return { index, by_week: byWeek };
 }
 
+function cloneWeatherSnapshot(row) {
+  if (!row || typeof row !== "object") return null;
+  const temp = Number(row.temperature_f);
+  const precip = Number(row.precipitation_chance);
+  const wind = Number(row.wind_mph);
+  const impact = Number(row.impact_score);
+  const links = Array.isArray(row.forecast_links)
+    ? row.forecast_links
+        .map((link) => {
+          if (!link || typeof link !== "object") return null;
+          const url = link.url ?? link.href ?? null;
+          if (!url) return null;
+          return { label: link.label ?? link.name ?? null, url };
+        })
+        .filter(Boolean)
+    : [];
+  return {
+    summary: row.summary ?? null,
+    details: row.details ?? null,
+    notes: row.notes ?? null,
+    temperature_f: Number.isFinite(temp) ? temp : null,
+    precipitation_chance: Number.isFinite(precip) ? precip : null,
+    wind_mph: Number.isFinite(wind) ? wind : null,
+    impact_score: Number.isFinite(impact) ? impact : null,
+    kickoff_display: row.kickoff_display ?? null,
+    location: row.location ?? null,
+    forecast_provider: row.forecast_provider ?? null,
+    forecast_links: links,
+    icon: row.icon ?? null,
+    fetched_at: row.fetched_at ?? null,
+    is_dome: row.is_dome ?? null,
+    source: row.source ?? "rotowire"
+  };
+}
+
+function summarizeWeather(weatherRows, schedules, weekCap) {
+  if (!Array.isArray(weatherRows) || !weatherRows.length) return { index: {}, by_week: {} };
+
+  const matchupKey = (season, week, home, away) => `${season}|${week}|${home}|${away}`;
+  const scheduleLookup = new Map();
+  for (const r of schedules || []) {
+    const season = toInt(r.season ?? r.year);
+    const week = toInt(r.week ?? r.game_week ?? r.gameday);
+    const home = (r.home_team ?? r.home ?? r.home_team_abbr ?? r.team_home ?? "").toString().trim().toUpperCase();
+    const away = (r.away_team ?? r.away ?? r.away_team_abbr ?? r.team_away ?? "").toString().trim().toUpperCase();
+    if (!season || !week || !home || !away) continue;
+    const key = matchupKey(season, week, home, away);
+    if (!scheduleLookup.has(key)) {
+      scheduleLookup.set(key, {
+        game_id: r.game_id ?? r.gsis ?? r.game_id_pfr ?? `${season}-W${String(week).padStart(2, "0")}-${away}-${home}`,
+        game_date: r.gameday ?? r.game_date ?? null,
+        game_time_utc: r.game_time_utc ?? r.start_time ?? null
+      });
+    }
+  }
+
+  const index = {};
+  const byWeek = {};
+
+  for (const row of weatherRows) {
+    const season = toInt(row.season);
+    const week = toInt(row.week);
+    if (!season || !week) continue;
+    if (weekCap && week > weekCap) continue;
+    const home = (row.home_team ?? row.home ?? "").toString().trim().toUpperCase();
+    const away = (row.away_team ?? row.away ?? "").toString().trim().toUpperCase();
+    if (!home || !away) continue;
+
+    const schedKey = matchupKey(season, week, home, away);
+    const schedInfo = scheduleLookup.get(schedKey) || null;
+    const weather = cloneWeatherSnapshot(row);
+    if (!weather) continue;
+
+    const gameId = schedInfo?.game_id ?? row.game_key ?? `${season}-W${String(week).padStart(2, "0")}-${away}-${home}`;
+    const entry = {
+      season,
+      week,
+      game_id: gameId,
+      matchup_key: schedKey,
+      home_team: home,
+      away_team: away,
+      fetched_at: weather.fetched_at,
+      weather,
+      source: weather.source ?? row.source ?? "rotowire",
+      game_key: row.game_key ?? null
+    };
+    if (schedInfo?.game_date) entry.game_date = schedInfo.game_date;
+    if (schedInfo?.game_time_utc) entry.game_time_utc = schedInfo.game_time_utc;
+
+    index[gameId] = entry;
+    if (!byWeek[week]) byWeek[week] = {};
+    byWeek[week][gameId] = entry;
+  }
+
+  return { index, by_week: byWeek };
+}
+
 function summarizeForm(teamWeek, weekCap) {
   // rolling 3-game averages for points for/against and total yards (if available)
   const byTeam = {};
@@ -567,7 +665,7 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
   const latestDone = latestCompletedWeek(schedules);
   const cap = weekCap ? Math.min(weekCap, latestDone ?? weekCap) : latestDone ?? null;
 
-  const [playerWeek, rostersWeekly, depthCharts, injuries, snaps, pfrAdvTeam, qbr, teamGameAdv, marketRows] =
+  const [playerWeek, rostersWeekly, depthCharts, injuries, snaps, pfrAdvTeam, qbr, teamGameAdv, marketRows, weatherRows] =
     await Promise.all([
       loadPlayerWeekly(y),
       loadWeeklyRosters(y),
@@ -577,7 +675,8 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       loadPFRAdvTeam(y),
       loadESPNQBR(y),
       loadTeamGameAdvanced(y),
-      loadMarketsDS(y)
+      loadMarketsDS(y),
+      loadWeatherDS(y)
     ]);
 
   if (!injuries?.length) {
@@ -590,6 +689,11 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       '[context] No Rotowire market artifacts were loaded – run `npm run fetch:markets` before building context if betting data should be present.'
     );
   }
+  if (!weatherRows?.length) {
+    console.warn(
+      '[context] No Rotowire weather artifacts were loaded – run `npm run fetch:weather` before building context if forecasts should be present.'
+    );
+  }
 
   // build summaries (bounded by cap)
   const injSummary   = summarizeInjuries(injuries, cap);
@@ -598,6 +702,7 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
   const formSummary  = summarizeForm(teamWeek, cap);
   const qbForm       = summarizeQBForm(playerWeek, rostersWeekly, qbr, cap);
   const marketSummary = summarizeMarkets(marketRows, schedules, cap);
+  const weatherSummary = summarizeWeather(weatherRows, schedules, cap);
 
   // compact schedule index per week (REG only)
   const weeks = uniq(
@@ -619,6 +724,7 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       depth_charts: "nflverse-data depth_charts",
       injuries: "Rotowire injury artifacts generated via scripts/fetchRotowireInjuries.js",
       markets: "Rotowire market artifacts generated via scripts/fetchRotowireMarkets.js",
+      weather: "Rotowire weather artifacts generated via scripts/fetchRotowireWeather.js",
       snap_counts: "nflverse-data snap_counts",
       pfr_adv_team: "nflverse-data pfr advstats weekly merges",
       espn_qbr: "nflverse-data qbr_week_level",
@@ -636,6 +742,8 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
       },
       market_snapshots: marketSummary.by_week,
       market_index: marketSummary.index,
+      weather_snapshots: weatherSummary.by_week,
+      weather_index: weatherSummary.index,
       venues: schedules.reduce((acc, r) => {
         const gid = r.game_id || `${r.season}-W${r.week}-${r.away_team}-${r.home_team}`;
         acc[gid] = { roof: r.roof ?? null, surface: r.surface ?? null };

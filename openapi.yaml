@@ -63,6 +63,9 @@ paths:
                         model_file:
                           type: string
                           nullable: true
+                        injuries_file:
+                          type: string
+                          nullable: true
         "400":
           description: Invalid query parameter
           content:
@@ -109,6 +112,9 @@ paths:
                         predictions_file:
                           type: string
                         model_file:
+                          type: string
+                          nullable: true
+                        injuries_file:
                           type: string
                           nullable: true
         "400":
@@ -369,6 +375,79 @@ paths:
                     $ref: "#/components/schemas/ContextPayload"
         "404":
           description: Context not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /injuries:
+    get:
+      operationId: getInjuries
+      summary: Get injury reports for a season/week (defaults to latest)
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          schema:
+            type: integer
+            example: 5
+      responses:
+        "200":
+          description: Injury report payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InjuryEntry"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Injury artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /injuries/current:
+    get:
+      operationId: getCurrentInjuries
+      summary: Get the latest available injury report
+      responses:
+        "200":
+          description: Latest injury report payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                    nullable: true
+                  week:
+                    type: integer
+                    nullable: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InjuryEntry"
+        "404":
+          description: Injury artifact not found
           content:
             application/json:
               schema:
@@ -1052,6 +1131,47 @@ components:
           $ref: "#/components/schemas/GameOutcome"
         predicted:
           $ref: "#/components/schemas/ProbabilityBreakdown"
+
+    InjuryEntry:
+      type: object
+      properties:
+        team:
+          type: string
+          example: BUF
+        season:
+          type: integer
+          example: 2025
+        week:
+          type: integer
+          example: 5
+        player:
+          type: string
+          example: Josh Allen
+        position:
+          type: string
+          example: QB
+        status:
+          type: string
+          example: Questionable
+        injury:
+          type: string
+          example: Shoulder
+        practice:
+          type: string
+          nullable: true
+          example: "LP"
+        notes:
+          type: string
+          nullable: true
+          example: Limited participant in Friday's practice
+        fetched_at:
+          type: string
+          format: date-time
+          nullable: true
+        source:
+          type: string
+          example: rotowire
+      additionalProperties: true
 
     MetricsLine:
       type: object

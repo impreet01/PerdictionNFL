@@ -1,6 +1,46 @@
 // trainer/explainRubric.js
 import fs from "node:fs";
 
+function cloneAndPrune(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    const arr = value
+      .map((item) => cloneAndPrune(item))
+      .filter((item) => {
+        if (item === null || item === undefined) return false;
+        if (typeof item === "object" && !Array.isArray(item) && !Object.keys(item).length) return false;
+        return true;
+      });
+    return arr.length ? arr : null;
+  }
+  const out = {};
+  for (const [key, val] of Object.entries(value)) {
+    const cloned = cloneAndPrune(val);
+    if (cloned === null || cloned === undefined) continue;
+    if (typeof cloned === "object" && !Array.isArray(cloned) && !Object.keys(cloned).length) continue;
+    out[key] = cloned;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function buildContextSnapshot(cx) {
+  const ctx = cx?.context;
+  if (!ctx || typeof ctx !== "object") return null;
+  const snapshot = {};
+  const market = cloneAndPrune(ctx.market);
+  const weather = cloneAndPrune(ctx.weather);
+  const venue = cloneAndPrune(ctx.venue);
+  const elo = cloneAndPrune(ctx.elo);
+  const injuries = cloneAndPrune(ctx.injuries);
+  if (elo) snapshot.elo = elo;
+  if (market) snapshot.market = market;
+  if (weather) snapshot.weather = weather;
+  if (venue) snapshot.venue = venue;
+  if (injuries) snapshot.injuries = injuries;
+  return Object.keys(snapshot).length ? snapshot : null;
+}
+
 export function computeExplainArtifact({ season, week, predictions, context }) {
   const byId = new Map(context.map(c => [c.game_id, c]));
   const thresholds = { elo: 15, spread: 1.5, dYPA: 0.7, dSR: 0.02, dNet: 75, venue_dYPA: 0.5, venue_dSR: 0.03, grass_bad_net: -100 };
@@ -73,7 +113,9 @@ export function computeExplainArtifact({ season, week, predictions, context }) {
       add("surface", v, weights.surface, v ? "Grass + worse recent net yards" : "Grass neutral");
     }
 
-    return {
+    const snapshot = buildContextSnapshot(cx);
+
+    const gameEntry = {
       game_id: g.game_id,
       home_team: g.home_team,
       away_team: g.away_team,
@@ -82,6 +124,8 @@ export function computeExplainArtifact({ season, week, predictions, context }) {
       support_score: Math.round(score * 100) / 100,
       factors
     };
+    if (snapshot) gameEntry.context = snapshot;
+    return gameEntry;
   });
 
   return {

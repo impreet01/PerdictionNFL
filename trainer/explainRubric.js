@@ -24,6 +24,47 @@ function cloneAndPrune(value) {
   return Object.keys(out).length ? out : null;
 }
 
+function sanitizeWeather(info) {
+  if (!info || typeof info !== "object") return null;
+  const allowedKeys = new Set([
+    "summary",
+    "details",
+    "notes",
+    "temperature_f",
+    "precipitation_chance",
+    "wind_mph",
+    "impact_score",
+    "kickoff_display",
+    "location",
+    "forecast_provider",
+    "forecast_links",
+    "icon",
+    "fetched_at",
+    "is_dome"
+  ]);
+  const out = {};
+  for (const [key, value] of Object.entries(info)) {
+    if (!allowedKeys.has(key)) continue;
+    if (key === "forecast_links") {
+      if (!Array.isArray(value)) continue;
+      const links = value
+        .map((link) => {
+          if (!link || typeof link !== "object") return null;
+          const label = link.label ?? link.text ?? null;
+          const url = link.url ?? null;
+          if (!url) return null;
+          return label ? { label, url } : { url };
+        })
+        .filter(Boolean);
+      if (links.length) out.forecast_links = links;
+      continue;
+    }
+    if (value === null || value === undefined) continue;
+    out[key] = value;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 function buildContextSnapshot(cx) {
   const ctx = cx?.context;
   if (!ctx || typeof ctx !== "object") return null;
@@ -32,17 +73,43 @@ function buildContextSnapshot(cx) {
   const venue = cloneAndPrune(ctx.venue);
   const elo = cloneAndPrune(ctx.elo);
   const injuries = cloneAndPrune(ctx.injuries);
+  const weather = sanitizeWeather(ctx.weather);
   if (elo) snapshot.elo = elo;
   if (market) snapshot.market = market;
   if (venue) snapshot.venue = venue;
   if (injuries) snapshot.injuries = injuries;
+  if (weather) snapshot.weather = weather;
   return Object.keys(snapshot).length ? snapshot : null;
 }
 
 export function computeExplainArtifact({ season, week, predictions, context }) {
   const byId = new Map(context.map(c => [c.game_id, c]));
-  const thresholds = { elo: 15, spread: 1.5, dYPA: 0.7, dSR: 0.02, dNet: 75, venue_dYPA: 0.5, venue_dSR: 0.03, grass_bad_net: -100 };
-  const weights    = { elo: 2.0, market: 1.5, qb_ypa: 1.5, qb_sack: 1.0, rolling_net: 1.0, injuries: 1.0, venue: 0.5, surface: 0.25 };
+  const thresholds = {
+    elo: 15,
+    spread: 1.5,
+    dYPA: 0.7,
+    dSR: 0.02,
+    dNet: 75,
+    venue_dYPA: 0.5,
+    venue_dSR: 0.03,
+    grass_bad_net: -100,
+    weather_impact: 0.5,
+    weather_wind: 18,
+    weather_precip: 60,
+    weather_temp_low: 25,
+    weather_temp_high: 95
+  };
+  const weights    = {
+    elo: 2.0,
+    market: 1.5,
+    qb_ypa: 1.5,
+    qb_sack: 1.0,
+    rolling_net: 1.0,
+    injuries: 1.0,
+    venue: 0.5,
+    surface: 0.25,
+    weather: 0.5
+  };
 
   const games = predictions.map(g => {
     const cx = byId.get(g.game_id) || null;
@@ -52,6 +119,7 @@ export function computeExplainArtifact({ season, week, predictions, context }) {
     const elo = cx?.context?.elo || null;
     const market = cx?.context?.market || null;
     const venue = cx?.context?.venue || {};
+    const weather = cx?.context?.weather || null;
     const inj = cx?.context?.injuries || {};
     const qbH = cx?.context?.qb_form?.home || {};
     const qbA = cx?.context?.qb_form?.away || {};
@@ -109,6 +177,44 @@ export function computeExplainArtifact({ season, week, predictions, context }) {
     } else if (venue?.surface === "grass") {
       const v = dNet <= thresholds.grass_bad_net ? -1 : 0;
       add("surface", v, weights.surface, v ? "Grass + worse recent net yards" : "Grass neutral");
+    }
+
+    if (weather) {
+      const isDome = weather.is_dome ?? venue?.is_dome ?? null;
+      const reasons = [];
+      let vote = 0;
+      if (isDome === true) {
+        vote = +1;
+        reasons.push("Indoor conditions limit weather risk");
+      } else {
+        const impact = Number(weather.impact_score);
+        const wind = Number(weather.wind_mph);
+        const precip = Number(weather.precipitation_chance);
+        const temp = Number(weather.temperature_f);
+        if (Number.isFinite(impact) && impact >= thresholds.weather_impact) {
+          vote -= 1;
+          reasons.push(`Impact score ${impact.toFixed(2)} signals adverse weather`);
+        }
+        if (Number.isFinite(wind) && wind >= thresholds.weather_wind) {
+          vote -= 1;
+          reasons.push(`Wind ${wind.toFixed(0)} mph exceeds threshold`);
+        }
+        if (Number.isFinite(precip) && precip >= thresholds.weather_precip) {
+          vote -= 1;
+          reasons.push(`Precipitation chance ${precip.toFixed(0)}% is elevated`);
+        }
+        if (Number.isFinite(temp) && temp <= thresholds.weather_temp_low) {
+          vote -= 1;
+          reasons.push(`Cold forecast ${temp.toFixed(0)}°F`);
+        } else if (Number.isFinite(temp) && temp >= thresholds.weather_temp_high) {
+          vote -= 1;
+          reasons.push(`Heat forecast ${temp.toFixed(0)}°F`);
+        }
+        if (!reasons.length) {
+          reasons.push("Outdoor forecast appears neutral");
+        }
+      }
+      add("weather", vote, weights.weather, reasons.join("; "));
     }
 
     const snapshot = buildContextSnapshot(cx);

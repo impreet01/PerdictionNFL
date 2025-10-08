@@ -18,14 +18,24 @@ class HttpError extends Error {
   }
 }
 
-const json = (obj, status = 200) =>
-  new Response(JSON.stringify(obj), {
+function baseHeaders(status = 200, extra = {}) {
+  return {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": status === 200 ? `public, max-age=${CACHE_TTL}` : "no-store",
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET,OPTIONS",
+    "access-control-allow-headers": "*",
+    Vary: "Origin",
+    ...extra
+  };
+}
+
+function json(obj, status = 200, options = {}) {
+  return new Response(JSON.stringify(obj), {
     status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": status === 200 ? `public, max-age=${CACHE_TTL}` : "no-store"
-    }
+    headers: baseHeaders(status, options.headers)
   });
+}
 
 const toInt = (value, field) => {
   if (value == null) return null;
@@ -88,8 +98,14 @@ async function fetchJsonFile(file) {
     }
     throw new HttpError(502, `failed to fetch artifact ${file} (status ${resp.status})`);
   }
+  const text = await resp.text();
   try {
-    return await resp.json();
+    const data = JSON.parse(text);
+    return {
+      data,
+      etag: resp.headers.get("etag"),
+      lastModified: resp.headers.get("last-modified")
+    };
   } catch (err) {
     throw new HttpError(502, `invalid JSON in artifact ${file}`);
   }
@@ -141,15 +157,35 @@ async function resolveSeasonFile(prefix, seasonParam, listing) {
 }
 
 async function respondWithArtifact(prefix, url, options = {}) {
-  const resolved = await resolveSeasonWeek(prefix, url.searchParams.get("season"), url.searchParams.get("week"), options.listing);
-  const data = await fetchJsonFile(resolved.file);
-  return json({ season: resolved.season, week: resolved.week, data });
+  const resolved = await resolveSeasonWeek(
+    prefix,
+    url.searchParams.get("season"),
+    url.searchParams.get("week"),
+    options.listing
+  );
+  const { data, etag, lastModified } = await fetchJsonFile(resolved.file);
+  return json(
+    { season: resolved.season, week: resolved.week, data },
+    200,
+    { headers: filterCacheHeaders({ etag, lastModified }) }
+  );
 }
 
 async function respondWithSeasonArtifact(prefix, url, options = {}) {
   const resolved = await resolveSeasonFile(prefix, url.searchParams.get("season"), options.listing);
-  const data = await fetchJsonFile(resolved.file);
-  return json({ season: resolved.season, data });
+  const { data, etag, lastModified } = await fetchJsonFile(resolved.file);
+  return json(
+    { season: resolved.season, data },
+    200,
+    { headers: filterCacheHeaders({ etag, lastModified }) }
+  );
+}
+
+function filterCacheHeaders({ etag, lastModified }) {
+  const headers = {};
+  if (etag) headers.ETag = etag;
+  if (lastModified) headers["Last-Modified"] = lastModified;
+  return headers;
 }
 
 async function healthResponse(url) {
@@ -202,12 +238,16 @@ async function weeksResponse(url) {
 }
 
 async function contextCurrentResponse() {
-  const data = await fetchJsonFile("context_current.json");
-  return json({
-    season: coerceInt(data?.season),
-    built_through_week: coerceInt(data?.built_through_week),
-    data
-  });
+  const { data, etag, lastModified } = await fetchJsonFile("context_current.json");
+  return json(
+    {
+      season: coerceInt(data?.season),
+      built_through_week: coerceInt(data?.built_through_week),
+      data
+    },
+    200,
+    { headers: filterCacheHeaders({ etag, lastModified }) }
+  );
 }
 
 async function artifactResponse(url) {
@@ -223,8 +263,8 @@ async function artifactResponse(url) {
     throw new HttpError(400, "invalid path");
   }
   const relative = normalized.startsWith("artifacts/") ? normalized.slice("artifacts/".length) : normalized;
-  const data = await fetchJsonFile(relative);
-  return json(data);
+  const { data, etag, lastModified } = await fetchJsonFile(relative);
+  return json(data, 200, { headers: filterCacheHeaders({ etag, lastModified }) });
 }
 
 async function leaderboardResponse(url) {
@@ -234,7 +274,7 @@ async function leaderboardResponse(url) {
     throw new HttpError(400, "metric must be one of accuracy, auc, logloss, brier");
   }
   const resolved = await resolveSeasonFile("metrics", url.searchParams.get("season"));
-  const metrics = await fetchJsonFile(resolved.file);
+  const { data: metrics, etag, lastModified } = await fetchJsonFile(resolved.file);
   const cumulative = metrics?.cumulative;
   if (!cumulative || typeof cumulative !== "object") {
     throw new HttpError(404, `metrics cumulative section missing for season ${resolved.season}`);
@@ -244,7 +284,11 @@ async function leaderboardResponse(url) {
     .filter((entry) => Number.isFinite(entry.value));
   const ascending = metricParam === "logloss" || metricParam === "brier";
   entries.sort((a, b) => (ascending ? a.value - b.value : b.value - a.value));
-  return json({ season: resolved.season, metric: metricParam, leaderboard: entries });
+  return json(
+    { season: resolved.season, metric: metricParam, leaderboard: entries },
+    200,
+    { headers: filterCacheHeaders({ etag, lastModified }) }
+  );
 }
 
 function filterHistory(predictions, predicate) {
@@ -278,7 +322,7 @@ async function historyResponse(query, mode) {
   const payload = [];
   for (const item of parsed) {
     if (!seasonsToLoad.includes(item.season)) continue;
-    const data = await fetchJsonFile(item.name).catch(() => []);
+    const { data } = await fetchJsonFile(item.name).catch(() => ({ data: [] }));
     payload.push({ season: item.season, week: item.week, data: Array.isArray(data) ? data : [] });
   }
   let predicate;
@@ -328,8 +372,15 @@ async function historyResponse(query, mode) {
   return { filter, data: filtered };
 }
 
+function corsPreflight() {
+  return new Response(null, { status: 204, headers: baseHeaders(204) });
+}
+
 export default {
   async fetch(req) {
+    if (req.method === "OPTIONS") {
+      return corsPreflight();
+    }
     try {
       const url = new URL(req.url);
       const path = url.pathname.replace(/\/+$/, "") || "/";
@@ -337,6 +388,9 @@ export default {
         return json({ ok: true, message: "nfl predictions worker" });
       }
       if (path === "/health") {
+        return await healthResponse(url);
+      }
+      if (path === "/status") {
         return await healthResponse(url);
       }
       if (path === "/weeks") {

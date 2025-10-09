@@ -27,6 +27,7 @@ import {
   loadWeather as loadWeatherDS,
   loadFTNCharts as loadFTNChartsDS,
   loadPBP as loadPBPDS,
+  loadFourthDown as loadFourthDownDS,
   loadPFRAdvTeamWeekly as loadPFRAdvTeamWeeklyDS,
   listDatasetSeasons
 } from "./dataSources.js";
@@ -806,6 +807,7 @@ export async function buildSeasonDB(season) {
     loadDepthChartsDS(y),
     loadFTNChartsDS(y),
     loadPBPDS(y),
+    loadFourthDownDS(y),
     loadPFRAdvTeamWeeklyDS(y)
   ]);
 
@@ -861,7 +863,8 @@ export async function buildSeasonDB(season) {
     officialsByGame,
     snaps: snapRows,
     pfrAdvWeekly: pfrAdvMap,
-    pbp: pbpRows
+    pbp: pbpRows,
+    fourthDown: fourthDownRows
   };
 }
 

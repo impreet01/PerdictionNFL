@@ -6,6 +6,7 @@
 // Only generates rows for actual games (no fabrication of future weeks).
 
 import { aggregatePBP } from "./featureBuild_pbp.js";
+import { aggregateFourthDown } from "./featureBuild_fourthDown.js";
 import { aggregatePlayerUsage } from "./featureBuild_players.js";
 import { buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
 
@@ -67,6 +68,18 @@ export const FEATS = [
   "off_success_rate_w3",
   "off_success_rate_w5",
   "off_success_rate_exp",
+  "off_xyac_epa_per_play_s2d",
+  "off_xyac_epa_per_play_w3",
+  "off_xyac_epa_per_play_w5",
+  "off_xyac_epa_per_play_exp",
+  "off_wp_mean_s2d",
+  "off_wp_mean_w3",
+  "off_wp_mean_w5",
+  "off_wp_mean_exp",
+  "off_cpoe_mean_s2d",
+  "off_cpoe_mean_w3",
+  "off_cpoe_mean_w5",
+  "off_cpoe_mean_exp",
   "def_epa_per_play_allowed_s2d",
   "def_epa_per_play_allowed_w3",
   "def_epa_per_play_allowed_w5",
@@ -75,6 +88,18 @@ export const FEATS = [
   "def_success_rate_allowed_w3",
   "def_success_rate_allowed_w5",
   "def_success_rate_allowed_exp",
+  "def_xyac_epa_per_play_allowed_s2d",
+  "def_xyac_epa_per_play_allowed_w3",
+  "def_xyac_epa_per_play_allowed_w5",
+  "def_xyac_epa_per_play_allowed_exp",
+  "def_wp_mean_allowed_s2d",
+  "def_wp_mean_allowed_w3",
+  "def_wp_mean_allowed_w5",
+  "def_wp_mean_allowed_exp",
+  "def_cpoe_mean_allowed_s2d",
+  "def_cpoe_mean_allowed_w3",
+  "def_cpoe_mean_allowed_w5",
+  "def_cpoe_mean_allowed_exp",
   "rb_rush_share_s2d",
   "rb_rush_share_w3",
   "rb_rush_share_w5",
@@ -111,7 +136,19 @@ export const FEATS = [
   "inj_skill_out_diff",
   "inj_practice_dnp_diff",
   "inj_out_change",
-  "inj_skill_out_change"
+  "inj_skill_out_change",
+  "fourth_down_align_rate_s2d",
+  "fourth_down_align_rate_w3",
+  "fourth_down_align_rate_w5",
+  "fourth_down_align_rate_exp",
+  "fourth_down_aligned_delta_wp_s2d",
+  "fourth_down_aligned_delta_wp_w3",
+  "fourth_down_aligned_delta_wp_w5",
+  "fourth_down_aligned_delta_wp_exp",
+  "fourth_down_mismatch_delta_wp_s2d",
+  "fourth_down_mismatch_delta_wp_w3",
+  "fourth_down_mismatch_delta_wp_w5",
+  "fourth_down_mismatch_delta_wp_exp"
 ];
 
 const DECAY_LAMBDA = 0.85;
@@ -121,7 +158,19 @@ const PBP_METRICS = [
   { key: "off_epa_per_play", weightKey: "off_play_weight" },
   { key: "off_success_rate", weightKey: "off_play_weight" },
   { key: "def_epa_per_play_allowed", weightKey: "def_play_weight" },
-  { key: "def_success_rate_allowed", weightKey: "def_play_weight" }
+  { key: "def_success_rate_allowed", weightKey: "def_play_weight" },
+  { key: "off_xyac_epa_per_play", weightKey: "off_xyac_weight" },
+  { key: "off_wp_mean", weightKey: "off_wp_weight" },
+  { key: "off_cpoe_mean", weightKey: "off_cpoe_weight" },
+  { key: "def_xyac_epa_per_play_allowed", weightKey: "def_xyac_weight" },
+  { key: "def_wp_mean_allowed", weightKey: "def_wp_weight" },
+  { key: "def_cpoe_mean_allowed", weightKey: "def_cpoe_weight" }
+];
+
+const FOURTH_METRICS = [
+  { key: "fourth_down_align_rate", weightKey: "fourth_down_align_weight" },
+  { key: "fourth_down_aligned_delta_wp", weightKey: "fourth_down_aligned_weight" },
+  { key: "fourth_down_mismatch_delta_wp", weightKey: "fourth_down_mismatch_weight" }
 ];
 
 const USAGE_METRICS = [
@@ -544,6 +593,7 @@ export function buildFeatures({
   season,
   prevTeamWeekly,
   pbp = [],
+  fourthDown = [],
   playerWeekly = [],
   weather = [],
   injuries = []
@@ -569,6 +619,7 @@ export function buildFeatures({
   const twIdx = indexTeamWeek(teamWeekly || [], seasonNum);
   const tgIdx = indexTeamGame(teamGame || [], seasonNum);
   const pbpIdx = aggregatePBP({ rows: pbp || [], season: seasonNum });
+  const fourthIdx = aggregateFourthDown({ rows: fourthDown || [], season: seasonNum });
   const usageIdx = aggregatePlayerUsage({ rows: playerWeekly || [], season: seasonNum });
   const weatherIdx = indexWeather(weather || [], seasonNum);
   const injuryIdx = buildTeamInjuryIndex(injuries || [], seasonNum);
@@ -582,6 +633,7 @@ export function buildFeatures({
   const roll = new Map();
   const advRoll = new Map();
   const pbpRoll = new Map();
+  const fourthRoll = new Map();
   const usageRoll = new Map();
   const formRoll = new Map();
   const qbQbrHistory = buildTeamQBRHistory(playerWeekly || [], seasonNum);
@@ -589,6 +641,7 @@ export function buildFeatures({
     roll.set(team, new Map());
     advRoll.set(team, new Map());
     pbpRoll.set(team, {});
+    fourthRoll.set(team, {});
     usageRoll.set(team, {});
     ensureFormState(formRoll, team);
   }
@@ -614,6 +667,8 @@ export function buildFeatures({
       const aAdvRow = tgIdx.get(aKey) || {};
       const hPbpWeek = pbpIdx.get(hKey) || {};
       const aPbpWeek = pbpIdx.get(aKey) || {};
+      const hFourthWeek = fourthIdx.get(hKey) || {};
+      const aFourthWeek = fourthIdx.get(aKey) || {};
       const hUsageWeek = usageIdx.get(hKey) || {};
       const aUsageWeek = usageIdx.get(aKey) || {};
 
@@ -627,6 +682,8 @@ export function buildFeatures({
 
       const hPbpPrev = pbpRoll.get(home) || {};
       const aPbpPrev = pbpRoll.get(away) || {};
+      const hFourthPrev = fourthRoll.get(home) || {};
+      const aFourthPrev = fourthRoll.get(away) || {};
       const hUsagePrev = usageRoll.get(home) || {};
       const aUsagePrev = usageRoll.get(away) || {};
 
@@ -642,6 +699,19 @@ export function buildFeatures({
       );
       pbpRoll.set(home, hPbpState);
       pbpRoll.set(away, aPbpState);
+
+      const { state: hFourthState, features: hFourthFeats } = updateMetricCollection(
+        hFourthPrev,
+        FOURTH_METRICS,
+        hFourthWeek
+      );
+      const { state: aFourthState, features: aFourthFeats } = updateMetricCollection(
+        aFourthPrev,
+        FOURTH_METRICS,
+        aFourthWeek
+      );
+      fourthRoll.set(home, hFourthState);
+      fourthRoll.set(away, aFourthState);
 
       const { state: hUsageState, features: hUsageFeats } = updateMetricCollection(
         hUsagePrev,
@@ -746,6 +816,7 @@ export function buildFeatures({
         advMe,
         advOp,
         pbpMe,
+        fourthMe,
         usageMe,
         rolling,
         qbrVal,
@@ -814,6 +885,7 @@ export function buildFeatures({
           qb_qbr: Number.isFinite(qbrVal) ? qbrVal : 0,
           win: winLabel(game, isHome),
           ...pbpMe,
+          ...fourthMe,
           ...usageMe,
           ...weatherFeats,
           roof_dome: roofDome,
@@ -840,6 +912,7 @@ export function buildFeatures({
         hAdvS2D,
         aAdvS2D,
         hPbpFeats,
+        hFourthFeats,
         hUsageFeats,
         homeRolling,
         homeQbr,
@@ -854,6 +927,7 @@ export function buildFeatures({
         aAdvS2D,
         hAdvS2D,
         aPbpFeats,
+        aFourthFeats,
         aUsageFeats,
         awayRolling,
         awayQbr,

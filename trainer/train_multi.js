@@ -7,6 +7,7 @@ import {
   loadTeamWeekly,
   loadTeamGameAdvanced,
   loadPBP,
+  loadFourthDown,
   loadPlayerWeekly,
   loadRostersWeekly,
   loadDepthCharts,
@@ -652,6 +653,17 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     }
   }
 
+  let fourthDownRows;
+  if (data.fourthDown !== undefined) {
+    fourthDownRows = data.fourthDown;
+  } else {
+    try {
+      fourthDownRows = await loadFourthDown(resolvedSeason);
+    } catch (e) {
+      fourthDownRows = [];
+    }
+  }
+
   let weatherRows;
   if (data.weather !== undefined) {
     weatherRows = data.weather;
@@ -681,6 +693,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     season: resolvedSeason,
     prevTeamWeekly,
     pbp: pbpData,
+    fourthDown: fourthDownRows,
     playerWeekly,
     weather: weatherRows,
     injuries: injuryRows

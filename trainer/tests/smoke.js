@@ -3,6 +3,7 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync } from "fs";
 import { runTraining, writeArtifacts, updateHistoricalArtifacts } from "../train_multi.js";
+import { seedRArtifactsForTests } from "./helpers/rArtifactFixtures.js";
 
 const teams = ["A", "B", "C", "D"];
 
@@ -54,6 +55,7 @@ async function main() {
   const season = 2023;
   rmSync("artifacts", { recursive: true, force: true });
   mkdirSync("artifacts", { recursive: true });
+  await seedRArtifactsForTests();
   const schedules = [
     makeGame(season, 1, "A", "B", 24, 20),
     makeGame(season, 1, "C", "D", 17, 21),

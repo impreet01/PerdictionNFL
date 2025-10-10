@@ -38,7 +38,7 @@ main <- function() {
   }
 
   message(sprintf("Fetching weekly player stats for seasons: %s", paste(seasons, collapse = ", ")))
-  stats <- nflreadr::load_player_stats(stat_type = "weekly", seasons = seasons)
+  stats <- nflreadr::load_player_stats(seasons = seasons, summary_level = "week")
   stats <- stats[stats$season_type == "REG", , drop = FALSE]
   names(stats) <- tolower(names(stats))
 

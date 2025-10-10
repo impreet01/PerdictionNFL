@@ -41,12 +41,8 @@ main <- function() {
 
   updated <- integer(0)
   for (season in seasons) {
-    message(sprintf("Calculating fourth down model outputs for season %s", season))
-    if (is.null(weeks)) {
-      decisions <- nfl4th::calculate_fourth_down(season = season)
-    } else {
-      decisions <- nfl4th::calculate_fourth_down(season = season, weeks = weeks)
-    }
+    message(sprintf("Loading fourth down model outputs for season %s", season))
+    decisions <- nfl4th::load_4th_pbp(seasons = as.integer(season))
     if (!is.null(weeks)) {
       decisions <- decisions[decisions$week %in% weeks, , drop = FALSE]
     }

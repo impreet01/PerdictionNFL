@@ -8,6 +8,37 @@ suppressPackageStartupMessages({
   library(jsonlite)
 })
 
+#' Ensure nflverse core packages are attached quietly.
+#' @param packages Optional character vector of specific nflverse packages to verify.
+load_nflverse_packages <- function(packages = NULL) {
+  if (!requireNamespace("nflverse", quietly = TRUE)) {
+    stop(
+      "The 'nflverse' package is required. Run scripts/setup-r.sh to install R dependencies.",
+      call. = FALSE
+    )
+  }
+
+  original_quiet <- getOption("nflverse.quiet")
+  on.exit(options(nflverse.quiet = original_quiet), add = TRUE)
+  options(nflverse.quiet = TRUE)
+  suppressPackageStartupMessages(library(nflverse))
+
+  if (!is.null(packages) && length(packages) > 0) {
+    missing <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0) {
+      stop(
+        sprintf(
+          "Missing nflverse package(s): %s. Run scripts/setup-r.sh and retry.",
+          paste(missing, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
 #' Internal helper to resolve the path to this scripts directory.
 get_scripts_root <- function() {
   args <- commandArgs(trailingOnly = FALSE)

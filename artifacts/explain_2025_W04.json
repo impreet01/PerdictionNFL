@@ -10,7 +10,12 @@
     "dNet": 75,
     "venue_dYPA": 0.5,
     "venue_dSR": 0.03,
-    "grass_bad_net": -100
+    "grass_bad_net": -100,
+    "weather_impact": 0.5,
+    "weather_wind": 18,
+    "weather_precip": 60,
+    "weather_temp_low": 25,
+    "weather_temp_high": 95
   },
   "weights": {
     "elo": 2,
@@ -20,7 +25,8 @@
     "rolling_net": 1,
     "injuries": 1,
     "venue": 0.5,
-    "surface": 0.25
+    "surface": 0.25,
+    "weather": 0.5
   },
   "games": [
     {
@@ -28,7 +34,7 @@
       "home_team": "ARI",
       "away_team": "SEA",
       "pick": "SEA",
-      "blended": 0.313,
+      "blended": 0.323,
       "support_score": 2,
       "factors": [
         {
@@ -61,21 +67,48 @@
           "weight": 0.25,
           "reason": "Grass neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-PIT-MIN",
       "home_team": "PIT",
       "away_team": "MIN",
-      "pick": "MIN",
-      "blended": 0.459,
-      "support_score": 1.5,
+      "pick": "PIT",
+      "blended": 0.503,
+      "support_score": -1.5,
       "factors": [
         {
           "name": "qb_ypa",
-          "vote": 1,
+          "vote": -1,
           "weight": 1.5,
-          "reason": "ΔYPA +0.76 last 3"
+          "reason": "ΔYPA -0.76 last 3"
         },
         {
           "name": "qb_sack",
@@ -101,14 +134,41 @@
           "weight": 0.25,
           "reason": "Grass neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-ATL-WAS",
       "home_team": "ATL",
       "away_team": "WAS",
       "pick": "ATL",
-      "blended": 0.518,
+      "blended": 0.573,
       "support_score": 2,
       "factors": [
         {
@@ -135,14 +195,41 @@
           "weight": 0.5,
           "reason": "Dome + better YPA"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "fieldturf"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-BUF-NO",
       "home_team": "BUF",
       "away_team": "NO",
       "pick": "BUF",
-      "blended": 0.911,
+      "blended": 0.914,
       "support_score": 1.5,
       "factors": [
         {
@@ -169,14 +256,41 @@
           "weight": 0.5,
           "reason": "Outdoor neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "a_turf"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-DET-CLE",
       "home_team": "DET",
       "away_team": "CLE",
       "pick": "DET",
-      "blended": 0.913,
+      "blended": 0.739,
       "support_score": 2,
       "factors": [
         {
@@ -203,14 +317,41 @@
           "weight": 0.5,
           "reason": "Dome + better YPA"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "fieldturf"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-HOU-TEN",
       "home_team": "HOU",
       "away_team": "TEN",
       "pick": "HOU",
-      "blended": 0.912,
+      "blended": 0.895,
       "support_score": 2,
       "factors": [
         {
@@ -237,21 +378,48 @@
           "weight": 0.5,
           "reason": "Dome + better YPA"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "astroturf"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-NE-CAR",
       "home_team": "NE",
       "away_team": "CAR",
-      "pick": "CAR",
-      "blended": 0.464,
-      "support_score": -1.5,
+      "pick": "NE",
+      "blended": 0.528,
+      "support_score": 1.5,
       "factors": [
         {
           "name": "qb_ypa",
-          "vote": -1,
+          "vote": 1,
           "weight": 1.5,
-          "reason": "ΔYPA -3.91 last 3"
+          "reason": "ΔYPA +3.91 last 3"
         },
         {
           "name": "qb_sack",
@@ -271,14 +439,41 @@
           "weight": 0.5,
           "reason": "Outdoor neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "fieldturf"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-NYG-LAC",
       "home_team": "NYG",
       "away_team": "LAC",
       "pick": "LAC",
-      "blended": 0.277,
+      "blended": 0.303,
       "support_score": 0,
       "factors": [
         {
@@ -305,14 +500,41 @@
           "weight": 0.5,
           "reason": "Outdoor neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "fieldturf"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-TB-PHI",
       "home_team": "TB",
       "away_team": "PHI",
       "pick": "TB",
-      "blended": 0.8,
+      "blended": 0.821,
       "support_score": 1.5,
       "factors": [
         {
@@ -345,21 +567,48 @@
           "weight": 0.25,
           "reason": "Grass neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-LA-IND",
       "home_team": "LA",
       "away_team": "IND",
-      "pick": "IND",
-      "blended": 0.464,
-      "support_score": 2,
+      "pick": "LA",
+      "blended": 0.529,
+      "support_score": -1.5,
       "factors": [
         {
           "name": "qb_ypa",
-          "vote": 1,
+          "vote": -1,
           "weight": 1.5,
-          "reason": "ΔYPA +0.80 last 3"
+          "reason": "ΔYPA -0.80 last 3"
         },
         {
           "name": "qb_sack",
@@ -375,18 +624,45 @@
         },
         {
           "name": "venue",
-          "vote": 1,
+          "vote": 0,
           "weight": 0.5,
-          "reason": "Dome + better YPA"
+          "reason": "Dome neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "matrixturf"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-SF-JAX",
       "home_team": "SF",
       "away_team": "JAX",
       "pick": "SF",
-      "blended": 0.807,
+      "blended": 0.803,
       "support_score": 1.5,
       "factors": [
         {
@@ -419,14 +695,41 @@
           "weight": 0.25,
           "reason": "Grass neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-KC-BAL",
       "home_team": "KC",
       "away_team": "BAL",
       "pick": "KC",
-      "blended": 0.518,
+      "blended": 0.577,
       "support_score": -1.5,
       "factors": [
         {
@@ -459,14 +762,41 @@
           "weight": 0.25,
           "reason": "Grass neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-LV-CHI",
       "home_team": "LV",
       "away_team": "CHI",
       "pick": "CHI",
-      "blended": 0.277,
+      "blended": 0.314,
       "support_score": 2,
       "factors": [
         {
@@ -499,14 +829,41 @@
           "weight": 0.25,
           "reason": "Grass neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-DAL-GB",
       "home_team": "DAL",
       "away_team": "GB",
       "pick": "GB",
-      "blended": 0.245,
+      "blended": 0.264,
       "support_score": 2,
       "factors": [
         {
@@ -533,14 +890,41 @@
           "weight": 0.5,
           "reason": "Dome + better YPA"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": true,
+          "is_outdoor": false,
+          "surface": "matrixturf"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-MIA-NYJ",
       "home_team": "MIA",
       "away_team": "NYJ",
       "pick": "NYJ",
-      "blended": 0.245,
+      "blended": 0.263,
       "support_score": -1.5,
       "factors": [
         {
@@ -573,14 +957,41 @@
           "weight": 0.25,
           "reason": "Grass neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     },
     {
       "game_id": "2025-W04-DEN-CIN",
       "home_team": "DEN",
       "away_team": "CIN",
       "pick": "DEN",
-      "blended": 0.695,
+      "blended": 0.706,
       "support_score": 1.5,
       "factors": [
         {
@@ -613,7 +1024,34 @@
           "weight": 0.25,
           "reason": "Grass neutral"
         }
-      ]
+      ],
+      "context": {
+        "venue": {
+          "is_dome": false,
+          "is_outdoor": true,
+          "surface": "grass"
+        },
+        "injuries": {
+          "home_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          },
+          "away_counts": {
+            "out": 0,
+            "questionable": 0,
+            "skill_out": 0,
+            "ol_out": 0,
+            "practice_dnp": 0,
+            "out_change": 0,
+            "skill_out_change": 0
+          }
+        }
+      }
     }
   ]
 }

@@ -1,13 +1,3 @@
-import {
-  resolveSeason as resolveDataSeason,
-  loadPlayByPlaySeason,
-  loadFourthDownSeason,
-  loadPlayerWeeklySeason,
-  loadSeedSimulationSummary,
-  deriveAvailableWeeks,
-  deriveAvailableTeams
-} from "./handlers/dataFeeds.js";
-
 // worker/worker.js
 // Cloudflare Worker serving predictions, context, explain scorecards, models,
 // diagnostics, metrics, outcomes, and history endpoints backed by GitHub artifacts.
@@ -26,6 +16,205 @@ class HttpError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+const HAS_NODE_DATA_FEEDS = typeof process !== "undefined" && !!process.versions?.node;
+
+const DEFAULT_DATA_FEED_MAX_AGE_MS = (() => {
+  if (HAS_NODE_DATA_FEEDS && process?.env?.WORKER_DATASET_MAX_AGE_MS != null) {
+    const parsed = Number(process.env.WORKER_DATASET_MAX_AGE_MS);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return 6 * 60 * 60 * 1000;
+})();
+
+const manifestCache = new Map();
+
+let nodeDataFeedDepsPromise;
+
+function dataFeedsUnsupportedError(reason = "data feed operations") {
+  return new HttpError(501, `${reason} require a Node.js runtime`);
+}
+
+async function loadNodeDataFeedDeps() {
+  if (!HAS_NODE_DATA_FEEDS) {
+    throw dataFeedsUnsupportedError();
+  }
+  if (!nodeDataFeedDepsPromise) {
+    nodeDataFeedDepsPromise = (async () => {
+      const fsModule = await import("node:fs/promises");
+      const rArtifactsModule = await import("../trainer/rArtifacts.js");
+      const dataSourcesModule = await import("../trainer/dataSources.js");
+      const fs = fsModule?.default ?? fsModule;
+      return {
+        fs,
+        ensureArtifact: rArtifactsModule.ensure,
+        loadParquetRecords: rArtifactsModule.loadParquetRecords,
+        readManifest: rArtifactsModule.readManifest,
+        ensureSeedSimulation: rArtifactsModule.ensureSeedSimulation,
+        loadPBP: dataSourcesModule.loadPBP,
+        loadFourthDown: dataSourcesModule.loadFourthDown,
+        loadPlayerWeekly: dataSourcesModule.loadPlayerWeekly
+      };
+    })();
+  }
+  return nodeDataFeedDepsPromise;
+}
+
+async function withSkipRIngest(callback) {
+  if (!HAS_NODE_DATA_FEEDS || typeof process === "undefined") {
+    return callback();
+  }
+  const previous = process.env.SKIP_R_INGEST;
+  process.env.SKIP_R_INGEST = "1";
+  try {
+    return await callback();
+  } finally {
+    if (previous == null) {
+      delete process.env.SKIP_R_INGEST;
+    } else {
+      process.env.SKIP_R_INGEST = previous;
+    }
+  }
+}
+
+async function loadDatasetWithEnsure(dataset, season, fallbackLoader, options = {}) {
+  const maxAgeMs = Number.isFinite(Number(options.maxAgeMs))
+    ? Number(options.maxAgeMs)
+    : DEFAULT_DATA_FEED_MAX_AGE_MS;
+  try {
+    const { ensureArtifact, loadParquetRecords } = await loadNodeDataFeedDeps();
+    const { parquetPath } = await ensureArtifact(dataset, season, {
+      maxAgeMs,
+      rootDir: options.rootDir
+    });
+    return await loadParquetRecords(parquetPath);
+  } catch (err) {
+    if (!fallbackLoader) throw err;
+    return await withSkipRIngest(() => fallbackLoader(err));
+  }
+}
+
+async function getManifest(dataset) {
+  if (manifestCache.has(dataset)) {
+    return manifestCache.get(dataset);
+  }
+  const { readManifest } = await loadNodeDataFeedDeps();
+  const manifest = await readManifest(dataset).catch(() => null);
+  manifestCache.set(dataset, manifest);
+  return manifest;
+}
+
+const toSeasonInt = (value) => {
+  if (value == null) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? Math.trunc(num) : null;
+};
+
+async function resolveDataSeason(dataset, requestedSeason) {
+  const parsed = toSeasonInt(requestedSeason);
+  if (parsed != null) return parsed;
+  const manifest = await getManifest(dataset);
+  if (manifest?.seasons?.length) {
+    const seasons = manifest.seasons
+      .map((value) => toSeasonInt(value))
+      .filter((value) => Number.isFinite(value));
+    if (seasons.length) {
+      return Math.max(...seasons);
+    }
+  }
+  const now = new Date();
+  return now.getUTCFullYear();
+}
+
+async function loadPlayByPlaySeason(season, options = {}) {
+  const { loadPBP } = await loadNodeDataFeedDeps();
+  const rows = await loadDatasetWithEnsure(
+    "pbp",
+    season,
+    () => loadPBP(season),
+    options
+  );
+  return { season, rows };
+}
+
+async function loadFourthDownSeason(season, options = {}) {
+  const { loadFourthDown } = await loadNodeDataFeedDeps();
+  const rows = await loadDatasetWithEnsure(
+    "fourth-down",
+    season,
+    () => loadFourthDown(season),
+    options
+  );
+  return { season, rows };
+}
+
+async function loadPlayerWeeklySeason(season, options = {}) {
+  const { loadPlayerWeekly } = await loadNodeDataFeedDeps();
+  const rows = await loadDatasetWithEnsure(
+    "playerWeekly",
+    season,
+    () => loadPlayerWeekly(season),
+    options
+  );
+  return { season, rows };
+}
+
+async function readSeedManifest(manifestPath) {
+  if (!manifestPath) return null;
+  try {
+    const { fs } = await loadNodeDataFeedDeps();
+    const raw = await fs.readFile(manifestPath, "utf8");
+    return JSON.parse(raw);
+  } catch (err) {
+    if (err?.code === "ENOENT") return null;
+    throw err;
+  }
+}
+
+async function loadSeedSimulationSummary({ season, week, sims, maxAgeMs, rootDir } = {}) {
+  const seasonValue = toSeasonInt(season);
+  if (seasonValue == null) {
+    throw new HttpError(400, "loadSeedSimulationSummary requires a numeric season");
+  }
+  const { ensureSeedSimulation, loadParquetRecords } = await loadNodeDataFeedDeps();
+  const ensureResult = await ensureSeedSimulation(seasonValue, {
+    week,
+    sims,
+    maxAgeMs,
+    rootDir
+  });
+  const rows = await loadParquetRecords(ensureResult.parquetPath);
+  const manifest = await readSeedManifest(ensureResult.manifestPath);
+  return {
+    season: seasonValue,
+    week: week == null ? null : toSeasonInt(week),
+    rows,
+    manifest,
+    suffix: ensureResult.suffix
+  };
+}
+
+function deriveAvailableWeeks(rows, accessor = (row) => row?.week) {
+  const weeks = new Set();
+  for (const row of rows || []) {
+    const value = toSeasonInt(accessor(row));
+    if (value != null) weeks.add(value);
+  }
+  return [...weeks].sort((a, b) => a - b);
+}
+
+function deriveAvailableTeams(rows, options = {}) {
+  const { offenseKey = "posteam", defenseKey = "defteam", teamKey = "team" } = options;
+  const teams = new Set();
+  for (const row of rows || []) {
+    if (row && offenseKey && row[offenseKey]) teams.add(String(row[offenseKey]).toUpperCase());
+    if (row && defenseKey && row[defenseKey]) teams.add(String(row[defenseKey]).toUpperCase());
+    if (row && teamKey && row[teamKey]) teams.add(String(row[teamKey]).toUpperCase());
+  }
+  return [...teams].sort();
 }
 
 function baseHeaders(status = 200, extra = {}) {
@@ -837,6 +1026,16 @@ function corsPreflight() {
   return new Response(null, { status: 204, headers: baseHeaders(204) });
 }
 
+export {
+  resolveDataSeason,
+  loadPlayByPlaySeason,
+  loadFourthDownSeason,
+  loadPlayerWeeklySeason,
+  loadSeedSimulationSummary,
+  deriveAvailableWeeks,
+  deriveAvailableTeams
+};
+
 export default {
   async fetch(req) {
     if (req.method === "OPTIONS") {
@@ -933,7 +1132,11 @@ export default {
       }
       return json({ error: "Unknown endpoint" }, 404);
     } catch (err) {
-      const status = err instanceof HttpError ? err.status : 500;
+      const status = err instanceof HttpError
+        ? err.status
+        : Number.isFinite(Number(err?.status))
+          ? Number(err.status)
+          : 500;
       return json({ error: String(err?.message || err) }, status);
     }
   }

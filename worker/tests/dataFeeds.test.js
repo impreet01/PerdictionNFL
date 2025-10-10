@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import path from "node:path";
 
 import {
-  resolveSeason,
+  resolveDataSeason as resolveSeason,
   loadPlayByPlaySeason,
   loadFourthDownSeason,
   loadPlayerWeeklySeason,
   loadSeedSimulationSummary,
   deriveAvailableWeeks,
   deriveAvailableTeams
-} from "../handlers/dataFeeds.js";
+} from "../worker.js";
 import { seedRArtifactsForTests, seedSeedSimArtifacts } from "../../trainer/tests/helpers/rArtifactFixtures.js";
 
 async function main() {

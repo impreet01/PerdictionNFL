@@ -39,11 +39,28 @@ main <- function() {
   }
 
   message(sprintf("Fetching play-by-play for seasons: %s", paste(seasons, collapse = ", ")))
-  # nflreadr::load_pbp already returns the fully enriched nflfastR dataset,
-  # so no additional calculate_* helpers are required here.
+  # nflreadr::load_pbp already returns the fully enriched nflfastR dataset.
+  # The nflfastR documentation (https://www.nflfastr.com/) recommends
+  # retrieving play-by-play data via nflreadr, which includes drive and
+  # series annotations previously produced by calculate_* helpers.
   pbp <- nflreadr::load_pbp(seasons = seasons)
-  pbp <- nflfastR::calculate_drive_info(pbp)
-  pbp <- nflfastR::calculate_series_info(pbp)
+
+  maybe_calculate <- function(name, data) {
+    fn <- get0(name, envir = asNamespace("nflfastR"), inherits = FALSE)
+    if (is.function(fn)) {
+      message(sprintf("Applying nflfastR::%s()", name))
+      fn(data)
+    } else {
+      message(sprintf(
+        "nflfastR::%s() not available; skipping because load_pbp already includes these fields",
+        name
+      ))
+      data
+    }
+  }
+
+  pbp <- maybe_calculate("calculate_drive_info", pbp)
+  pbp <- maybe_calculate("calculate_series_info", pbp)
 
   updated <- integer(0)
   for (season in seasons) {

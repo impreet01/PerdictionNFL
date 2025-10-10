@@ -151,6 +151,42 @@ summarise_simulation <- function(sim_object) {
     overall <- sim_object$overall
   } else if (is.data.frame(sim_object)) {
     overall <- sim_object
+  } else if (is.list(sim_object) && !is.null(sim_object$standings)) {
+    standings <- sim_object$standings
+    if (!is.data.frame(standings)) {
+      standings <- as.data.frame(standings)
+    }
+    if (!"team" %in% names(standings)) {
+      stop("team column missing in standings output")
+    }
+    teams <- sort(unique(as.character(standings$team)))
+    summarise_column <- function(column) {
+      if (!column %in% names(standings)) {
+        return(rep(NA_real_, length(teams)))
+      }
+      values <- standings[[column]]
+      if (is.logical(values)) {
+        values <- as.numeric(values)
+      }
+      split_values <- split(values, as.character(standings$team))
+      vapply(
+        teams,
+        function(team) {
+          team_values <- split_values[[team]]
+          if (is.null(team_values) || all(is.na(team_values))) {
+            return(NA_real_)
+          }
+          mean(team_values, na.rm = TRUE)
+        },
+        numeric(1)
+      )
+    }
+    overall <- data.frame(team = teams, stringsAsFactors = FALSE)
+    overall$playoff <- summarise_column("playoff")
+    overall$div1 <- summarise_column("div1")
+    overall$seed1 <- summarise_column("seed1")
+    overall$draft1 <- summarise_column("draft1")
+    overall$wins <- summarise_column("wins")
   } else {
     stop("Unexpected simulation output structure")
   }

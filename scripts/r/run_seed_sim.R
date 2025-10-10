@@ -15,7 +15,7 @@ get_script_dir <- function() {
 script_dir <- get_script_dir()
 source(file.path(script_dir, "common.R"))
 
-load_nflverse_packages("nflseedR")
+load_nflverse_packages(c("nflseedR", "nflreadr"))
 
 suppressPackageStartupMessages({
   library(readr)

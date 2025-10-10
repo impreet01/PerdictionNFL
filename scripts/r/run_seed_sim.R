@@ -108,10 +108,13 @@ extract_team_priors <- function(model_json) {
 
 build_sim_args <- function(season, sims, week, priors) {
   sim_fun <- NULL
+  sim_fun_name <- NULL
   if ("sim_season" %in% ls("package:nflseedR")) {
     sim_fun <- get("sim_season", asNamespace("nflseedR"))
+    sim_fun_name <- "sim_season"
   } else if ("simulate_nfl" %in% ls("package:nflseedR")) {
     sim_fun <- get("simulate_nfl", asNamespace("nflseedR"))
+    sim_fun_name <- "simulate_nfl"
   } else {
     stop("nflseedR::sim_season or simulate_nfl not found")
   }
@@ -136,7 +139,7 @@ build_sim_args <- function(season, sims, week, priors) {
     if ("current_week" %in% formals_names) {
       args$current_week <- week
     }
-    if ("test_week" %in% formals_names) {
+    if ("test_week" %in% formals_names && !identical(sim_fun_name, "simulate_nfl")) {
       args$test_week <- week
     }
   }
@@ -147,6 +150,13 @@ build_sim_args <- function(season, sims, week, priors) {
 }
 
 summarise_simulation <- function(sim_object) {
+  if (is.list(sim_object) && all(c("teams", "games") %in% names(sim_object)) &&
+      length(sim_object) == 2 && !inherits(sim_object, "nflseedR_simulation")) {
+    stop(
+      "Simulation aborted early and returned only teams/games. ",
+      "This usually happens when `test_week` is set."
+    )
+  }
   if (is.list(sim_object) && !is.null(sim_object$overall)) {
     overall <- sim_object$overall
   } else if (is.data.frame(sim_object)) {

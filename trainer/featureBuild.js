@@ -9,6 +9,7 @@ import { aggregatePBP } from "./featureBuild_pbp.js";
 import { aggregateFourthDown } from "./featureBuild_fourthDown.js";
 import { aggregatePlayerUsage } from "./featureBuild_players.js";
 import { buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
+import { normalizeTeamCode } from "./teamCodes.js";
 
 export const FEATS = [
   "off_1st_down_s2d",
@@ -194,11 +195,7 @@ const num = (value, def = 0) => {
 
 const dateOnly = (value) => (value ? String(value).slice(0, 10) : null);
 
-const normTeam = (value) => {
-  if (!value) return null;
-  const s = String(value).trim().toUpperCase();
-  return s || null;
-};
+const normTeam = (...values) => normalizeTeamCode(...values);
 
 const weightedAverage = (history = []) => {
   if (!history.length) return 0;
@@ -281,7 +278,7 @@ function buildTeamQBRHistory(rows = [], season) {
     if (!Number.isFinite(week)) continue;
     const pos = String(row.position ?? row.player_position ?? row.pos ?? "").toUpperCase();
     if (pos && pos !== "QB") continue;
-    const team = normTeam(row.recent_team ?? row.team ?? row.team_abbr ?? row.posteam);
+    const team = normTeam(row.recent_team, row.team, row.team_abbr, row.posteam);
     if (!team) continue;
     const qbr = Number(row.qbr_total ?? row.qbr ?? row.total_qbr ?? row.espn_qbr ?? row.qbr_raw ?? row.qbr_offense);
     if (!Number.isFinite(qbr)) continue;
@@ -359,7 +356,7 @@ function indexTeamWeek(rows = [], season) {
   const idx = new Map();
   for (const row of rows) {
     if (Number(row.season) !== Number(season)) continue;
-    const team = normTeam(row.team ?? row.team_abbr ?? row.team_code);
+    const team = normTeam(row.team, row.team_abbr, row.team_code);
     if (!team) continue;
     const week = Number(row.week ?? row.game_week ?? row.week_number);
     if (!Number.isFinite(week)) continue;
@@ -372,7 +369,7 @@ function indexTeamGame(rows = [], season) {
   const idx = new Map();
   for (const row of rows) {
     if (Number(row.season) !== Number(season)) continue;
-    const team = normTeam(row.team ?? row.team_abbr ?? row.team_code ?? row.posteam);
+    const team = normTeam(row.team, row.team_abbr, row.team_code, row.posteam);
     if (!team) continue;
     const week = Number(row.week ?? row.game_week ?? row.week_number);
     if (!Number.isFinite(week)) continue;
@@ -386,8 +383,8 @@ function indexWeather(rows = [], season) {
   for (const row of rows) {
     if (Number(row.season) !== Number(season)) continue;
     const wk = Number(row.week);
-    const home = normTeam(row.home_team ?? row.home);
-    const away = normTeam(row.away_team ?? row.away);
+    const home = normTeam(row.home_team, row.home);
+    const away = normTeam(row.away_team, row.away);
     const key = row.game_key ?? (Number.isFinite(wk) && home && away
       ? `${season}-W${String(wk).padStart(2, '0')}-${home}-${away}`
       : null);

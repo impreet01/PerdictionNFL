@@ -63,27 +63,27 @@ function makeTeamGameRow(season, week, team) {
 async function main() {
   const season = 2023;
   const week = 1;
-  const schedules = [makeGame(season, week, "A", "B")];
+  const schedules = [makeGame(season, week, "AA", "BB")];
   const teamWeekly = [
-    makeTeamRow(season, week, "A", "B"),
-    makeTeamRow(season, week, "B", "A")
+    makeTeamRow(season, week, "AA", "BB"),
+    makeTeamRow(season, week, "BB", "AA")
   ];
   const teamGame = [
-    makeTeamGameRow(season, week, "A"),
-    makeTeamGameRow(season, week, "B")
+    makeTeamGameRow(season, week, "AA"),
+    makeTeamGameRow(season, week, "BB")
   ];
 
   const weatherRows = [
     {
       season,
       week,
-      home_team: "A",
-      away_team: "B",
+      home_team: "AA",
+      away_team: "BB",
       temperature_f: 35,
       precipitation_chance: 80,
       wind_mph: 20,
       impact_score: 0.6,
-      game_key: `${season}-W${String(week).padStart(2, "0")}-A-B`,
+      game_key: `${season}-W${String(week).padStart(2, "0")}-AA-BB`,
       fetched_at: "2023-09-01T12:00:00Z"
     }
   ];
@@ -100,8 +100,8 @@ async function main() {
     injuries: []
   });
 
-  const homeRow = features.find((row) => row.team === "A" && row.week === week && row.season === season && row.home === 1);
-  const awayRow = features.find((row) => row.team === "B" && row.week === week && row.season === season && row.home === 0);
+  const homeRow = features.find((row) => row.team === "AA" && row.week === week && row.season === season && row.home === 1);
+  const awayRow = features.find((row) => row.team === "BB" && row.week === week && row.season === season && row.home === 0);
 
   assert(homeRow, "Home row missing");
   assert(awayRow, "Away row missing");

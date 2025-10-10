@@ -4,6 +4,7 @@
 // Output one row per game (home-team perspective) with differential features.
 
 import { buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
+import { normalizeTeamCode } from "./teamCodes.js";
 
 const BT_FEATURES = [
   "diff_total_yards",
@@ -59,11 +60,7 @@ const isReg = (v) => {
   return s === "" || s.startsWith("REG");
 };
 
-const normTeam = (value) => {
-  if (!value) return null;
-  const s = String(value).trim().toUpperCase();
-  return s || null;
-};
+const normTeam = (...values) => normalizeTeamCode(...values);
 
 const pick = (primary, fallback, keys = []) => {
   for (const key of keys) {
@@ -143,7 +140,7 @@ function enrichWithRatio(avg) {
 function seedPrevAverages(prevTeamWeekly) {
   const byTeam = new Map();
   for (const row of prevTeamWeekly || []) {
-    const team = normTeam(row.team || row.team_abbr || row.team_code);
+    const team = normTeam(row.team, row.team_abbr, row.team_code);
     if (!team) continue;
     const stats = baseStats(row);
     const prev =
@@ -183,7 +180,7 @@ function indexTeamGame(rows = [], season) {
   const idx = new Map();
   for (const row of rows || []) {
     if (Number(row.season) !== Number(season)) continue;
-    const team = normTeam(row.team || row.team_abbr || row.team_code || row.posteam);
+    const team = normTeam(row.team, row.team_abbr, row.team_code, row.posteam);
     if (!team) continue;
     const week = Number(row.week ?? row.game_week ?? row.week_number);
     if (!Number.isFinite(week)) continue;
@@ -210,7 +207,7 @@ export function buildBTFeatures({
   const twSeason = (teamWeekly || []).filter((r) => Number(r.season) === Number(season));
   const twIdx = new Map();
   for (const row of twSeason) {
-    const team = normTeam(row.team || row.team_abbr || row.team_code);
+    const team = normTeam(row.team, row.team_abbr, row.team_code);
     if (!team) continue;
     const week = Number(row.week ?? row.game_week ?? row.week_number);
     if (!Number.isFinite(week)) continue;

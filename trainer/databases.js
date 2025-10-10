@@ -12,6 +12,7 @@ import path from "path";
 import axios from "axios";
 import zlib from "zlib";
 import { parse } from "csv-parse/sync";
+import { normalizeTeamCode } from "./teamCodes.js";
 import {
   loadSchedules as loadSchedulesDS,
   loadESPNQBR as loadESPNQBRDS,
@@ -416,8 +417,8 @@ function summarizeMarkets(markets, schedules, weekCap) {
   for (const r of schedules || []) {
     const season = toInt(r.season ?? r.year);
     const week = toInt(r.week ?? r.game_week ?? r.gameday);
-    const home = (r.home_team ?? r.home ?? r.home_team_abbr ?? r.team_home ?? "").toString().trim().toUpperCase();
-    const away = (r.away_team ?? r.away ?? r.away_team_abbr ?? r.team_away ?? "").toString().trim().toUpperCase();
+    const home = normalizeTeamCode(r.home_team, r.home, r.home_team_abbr, r.team_home);
+    const away = normalizeTeamCode(r.away_team, r.away, r.away_team_abbr, r.team_away);
     if (!season || !week || !home || !away) continue;
     const key = matchupKey(season, week, home, away);
     if (!scheduleLookup.has(key)) {
@@ -437,8 +438,8 @@ function summarizeMarkets(markets, schedules, weekCap) {
     const week = toInt(row.week);
     if (!season || !week) continue;
     if (weekCap && week > weekCap) continue;
-    const home = (row.home_team ?? row.home ?? "").toString().trim().toUpperCase();
-    const away = (row.away_team ?? row.away ?? "").toString().trim().toUpperCase();
+    const home = normalizeTeamCode(row.home_team, row.home);
+    const away = normalizeTeamCode(row.away_team, row.away);
     if (!home || !away) continue;
 
     const schedKey = matchupKey(season, week, home, away);
@@ -517,8 +518,8 @@ function summarizeWeather(weatherRows, schedules, weekCap) {
   for (const r of schedules || []) {
     const season = toInt(r.season ?? r.year);
     const week = toInt(r.week ?? r.game_week ?? r.gameday);
-    const home = (r.home_team ?? r.home ?? r.home_team_abbr ?? r.team_home ?? "").toString().trim().toUpperCase();
-    const away = (r.away_team ?? r.away ?? r.away_team_abbr ?? r.team_away ?? "").toString().trim().toUpperCase();
+    const home = normalizeTeamCode(r.home_team, r.home, r.home_team_abbr, r.team_home);
+    const away = normalizeTeamCode(r.away_team, r.away, r.away_team_abbr, r.team_away);
     if (!season || !week || !home || !away) continue;
     const key = matchupKey(season, week, home, away);
     if (!scheduleLookup.has(key)) {
@@ -538,8 +539,8 @@ function summarizeWeather(weatherRows, schedules, weekCap) {
     const week = toInt(row.week);
     if (!season || !week) continue;
     if (weekCap && week > weekCap) continue;
-    const home = (row.home_team ?? row.home ?? "").toString().trim().toUpperCase();
-    const away = (row.away_team ?? row.away ?? "").toString().trim().toUpperCase();
+    const home = normalizeTeamCode(row.home_team, row.home);
+    const away = normalizeTeamCode(row.away_team, row.away);
     if (!home || !away) continue;
 
     const schedKey = matchupKey(season, week, home, away);

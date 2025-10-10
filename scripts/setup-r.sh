@@ -38,25 +38,36 @@ if ! command -v Rscript >/dev/null 2>&1; then
   exit 1
 fi
 
-Rscript - <<'RSCRIPT'
-required <- c(
-  "nflreadr",
-  "nflfastR",
-  "nflseedR",
-  "nfl4th",
-  "nflplotR",
-  "arrow",
-  "optparse",
-  "jsonlite",
-  "readr"
-)
+pkg_dir="$(dirname "$0")/r"
+pkg_list_file="$pkg_dir/package-list.txt"
+pkg_manifest_file="$pkg_dir/package-manifest.txt"
+
+if [[ ! -f "$pkg_list_file" ]]; then
+  echo "Error: package list file not found at $pkg_list_file" >&2
+  exit 1
+fi
+
+pkg_source_file="$pkg_list_file"
+if [[ -f "$pkg_manifest_file" ]]; then
+  echo "Using dependency manifest at $pkg_manifest_file"
+  pkg_source_file="$pkg_manifest_file"
+else
+  echo "Dependency manifest not found; using package list at $pkg_list_file"
+fi
+
+PKG_LIST_FILE="$pkg_source_file" Rscript - <<'RSCRIPT'
+pkg_file <- Sys.getenv("PKG_LIST_FILE")
+message(sprintf("Reading required packages from %s", pkg_file))
+required <- readLines(pkg_file, warn = FALSE)
+required <- trimws(required)
+required <- required[nzchar(required) & !grepl("^#", required)]
 if (getOption("repos")["CRAN"] %in% c("@CRAN@", NA)) {
   options(repos = c(CRAN = "https://cloud.r-project.org"))
 }
 install_if_missing <- function(pkg) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     message(sprintf("Installing %s", pkg))
-    install.packages(pkg)
+    install.packages(pkg, dependencies = TRUE)
   } else {
     message(sprintf("%s already installed", pkg))
   }

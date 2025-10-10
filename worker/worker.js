@@ -1,3 +1,13 @@
+import {
+  resolveSeason as resolveDataSeason,
+  loadPlayByPlaySeason,
+  loadFourthDownSeason,
+  loadPlayerWeeklySeason,
+  loadSeedSimulationSummary,
+  deriveAvailableWeeks,
+  deriveAvailableTeams
+} from "./handlers/dataFeeds.js";
+
 // worker/worker.js
 // Cloudflare Worker serving predictions, context, explain scorecards, models,
 // diagnostics, metrics, outcomes, and history endpoints backed by GitHub artifacts.
@@ -401,6 +411,226 @@ async function respondWithContext(url) {
   return json(body, 200, { headers: filterCacheHeaders({ etag, lastModified }) });
 }
 
+async function respondWithPlayByPlay(url) {
+  const season = await resolveDataSeason("pbp", url.searchParams.get("season"));
+  const week = url.searchParams.get("week") != null ? toInt(url.searchParams.get("week"), "week") : null;
+  const teamParam = url.searchParams.get("team");
+  const gameParam = url.searchParams.get("game_id");
+
+  const { rows } = await loadPlayByPlaySeason(season);
+  const availableWeeks = deriveAvailableWeeks(rows);
+  const availableTeams = deriveAvailableTeams(rows, { offenseKey: "posteam", defenseKey: "defteam" });
+
+  let filtered = rows;
+  const filters = {};
+
+  if (week != null) {
+    filtered = filtered.filter((row) => Number(row?.week) === week);
+    filters.week = week;
+    if (!filtered.length) {
+      throw new HttpError(404, `no play-by-play rows for season ${season} week ${week}`);
+    }
+  }
+
+  if (teamParam) {
+    const teams = normalizeTeamCodes(parseCsvParam(teamParam));
+    if (!teams.size) {
+      throw new HttpError(400, "team query parameter must include at least one value");
+    }
+    filtered = filtered.filter((row) => {
+      const offense = String(row?.posteam || "").toUpperCase();
+      const defense = String(row?.defteam || "").toUpperCase();
+      return teams.has(offense) || teams.has(defense);
+    });
+    filters.teams = [...teams];
+    if (!filtered.length) {
+      throw new HttpError(404, `no play-by-play rows for requested teams`);
+    }
+  }
+
+  if (gameParam) {
+    const gameId = gameParam.trim();
+    if (!gameId) {
+      throw new HttpError(400, "game_id query parameter must not be empty");
+    }
+    const upper = gameId.toUpperCase();
+    filtered = filtered.filter((row) => String(row?.game_id || "").toUpperCase() === upper);
+    filters.game_id = gameId;
+    if (!filtered.length) {
+      throw new HttpError(404, `no play-by-play rows for game_id ${gameId}`);
+    }
+  }
+
+  const { data, pagination } = paginateArray(filtered, url, {
+    defaultChunkSize: 200,
+    maxChunkSize: 1000
+  });
+
+  const body = {
+    season,
+    week,
+    data,
+    pagination,
+    available_weeks: availableWeeks,
+    available_teams: availableTeams
+  };
+  if (Object.keys(filters).length) {
+    body.filters = filters;
+  }
+  return json(body);
+}
+
+async function respondWithPlayerWeekly(url) {
+  const season = await resolveDataSeason("playerWeekly", url.searchParams.get("season"));
+  const week = url.searchParams.get("week") != null ? toInt(url.searchParams.get("week"), "week") : null;
+  const teamParam = url.searchParams.get("team");
+  const positionParam = url.searchParams.get("position");
+
+  const { rows } = await loadPlayerWeeklySeason(season);
+  let filtered = rows.filter((row) => row?.season_type === "REG");
+  const filters = {};
+
+  if (week != null) {
+    filtered = filtered.filter((row) => Number(row?.week) === week);
+    filters.week = week;
+    if (!filtered.length) {
+      throw new HttpError(404, `no player-weekly rows for season ${season} week ${week}`);
+    }
+  }
+
+  if (teamParam) {
+    const teams = normalizeTeamCodes(parseCsvParam(teamParam));
+    if (!teams.size) {
+      throw new HttpError(400, "team query parameter must include at least one value");
+    }
+    filtered = filtered.filter((row) => teams.has(String(row?.recent_team || "").toUpperCase()));
+    filters.teams = [...teams];
+    if (!filtered.length) {
+      throw new HttpError(404, `no player-weekly rows for requested teams`);
+    }
+  }
+
+  if (positionParam) {
+    const positions = parseCsvParam(positionParam)
+      .map((value) => value.toUpperCase())
+      .filter((value) => value.length > 0);
+    if (!positions.length) {
+      throw new HttpError(400, "position query parameter must include at least one value");
+    }
+    const set = new Set(positions);
+    filtered = filtered.filter((row) => set.has(String(row?.position || "").toUpperCase()));
+    filters.positions = positions;
+    if (!filtered.length) {
+      throw new HttpError(404, `no player-weekly rows for requested positions`);
+    }
+  }
+
+  const { data, pagination } = paginateArray(filtered, url, {
+    defaultChunkSize: 300,
+    maxChunkSize: 1000
+  });
+
+  const availableTeams = deriveAvailableTeams(rows, {
+    offenseKey: null,
+    defenseKey: null,
+    teamKey: "recent_team"
+  });
+  const availableWeeks = deriveAvailableWeeks(rows);
+  const availablePositions = [...new Set(rows.map((row) => String(row?.position || "").toUpperCase()).filter((v) => v))].sort();
+
+  const body = {
+    season,
+    week,
+    data,
+    pagination,
+    available_weeks: availableWeeks,
+    available_teams: availableTeams,
+    available_positions: availablePositions
+  };
+  if (Object.keys(filters).length) {
+    body.filters = filters;
+  }
+  return json(body);
+}
+
+async function respondWithFourthDown(url) {
+  const season = await resolveDataSeason("fourth-down", url.searchParams.get("season"));
+  const week = url.searchParams.get("week") != null ? toInt(url.searchParams.get("week"), "week") : null;
+  const teamParam = url.searchParams.get("team");
+
+  const { rows } = await loadFourthDownSeason(season);
+  let filtered = rows;
+  const filters = {};
+
+  if (week != null) {
+    filtered = filtered.filter((row) => Number(row?.week) === week);
+    filters.week = week;
+    if (!filtered.length) {
+      throw new HttpError(404, `no fourth-down rows for season ${season} week ${week}`);
+    }
+  }
+
+  if (teamParam) {
+    const teams = normalizeTeamCodes(parseCsvParam(teamParam));
+    if (!teams.size) {
+      throw new HttpError(400, "team query parameter must include at least one value");
+    }
+    filtered = filtered.filter((row) => teams.has(String(row?.posteam || "").toUpperCase()));
+    filters.teams = [...teams];
+    if (!filtered.length) {
+      throw new HttpError(404, `no fourth-down rows for requested teams`);
+    }
+  }
+
+  const { data, pagination } = paginateArray(filtered, url, {
+    defaultChunkSize: 150,
+    maxChunkSize: 500
+  });
+
+  const availableWeeks = deriveAvailableWeeks(rows);
+  const availableTeams = deriveAvailableTeams(rows, {
+    offenseKey: "posteam",
+    defenseKey: null,
+    teamKey: "posteam"
+  });
+
+  const body = {
+    season,
+    week,
+    data,
+    pagination,
+    available_weeks: availableWeeks,
+    available_teams: availableTeams
+  };
+  if (Object.keys(filters).length) {
+    body.filters = filters;
+  }
+  return json(body);
+}
+
+async function respondWithSeedSimulation(url) {
+  const seasonParam = url.searchParams.get("season");
+  if (seasonParam == null) {
+    throw new HttpError(400, "season query parameter is required");
+  }
+  const season = toInt(seasonParam, "season");
+  const week = url.searchParams.get("week") != null ? toInt(url.searchParams.get("week"), "week") : null;
+  const sims = url.searchParams.get("sims") != null ? toInt(url.searchParams.get("sims"), "sims") : undefined;
+
+  const summary = await loadSeedSimulationSummary({ season, week, sims });
+
+  const body = {
+    season: summary.season,
+    week: summary.week,
+    simulations: summary.manifest?.simulations ?? sims ?? null,
+    data: summary.rows
+  };
+  if (summary.manifest) {
+    body.manifest = summary.manifest;
+  }
+  return json(body);
+}
+
 async function healthResponse(url) {
   const listing = await listArtifacts();
   const predictions = parseWeekFiles(listing, "predictions");
@@ -630,6 +860,18 @@ export default {
       }
       if (path === "/context/current") {
         return await contextCurrentResponse();
+      }
+      if (path === "/data/pbp") {
+        return await respondWithPlayByPlay(url);
+      }
+      if (path === "/data/player-weekly") {
+        return await respondWithPlayerWeekly(url);
+      }
+      if (path === "/data/fourth-down") {
+        return await respondWithFourthDown(url);
+      }
+      if (path === "/simulations/seed") {
+        return await respondWithSeedSimulation(url);
       }
       if (path === "/injuries") {
         return await respondWithInjuries(url);

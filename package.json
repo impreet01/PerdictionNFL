@@ -12,17 +12,16 @@
     "fetch:markets": "node scripts/fetchRotowireMarkets.js",
     "fetch:weather": "node scripts/fetchRotowireWeather.js",
     "validate:artifacts": "node scripts/validateArtifacts.js",
-    "test": "node trainer/tests/rArtifacts.test.js && node worker/tests/dataFeeds.test.js && node trainer/tests/model_ann.test.js && node trainer/tests/weatherContext.test.js && node trainer/tests/smoke.js"
+    "test": "node trainer/tests/model_ann.test.js && node trainer/tests/weatherContext.test.js && node trainer/tests/smoke.js"
   },
   "dependencies": {
-    "ajv": "^8.17.1",
     "axios": "^1.7.7",
+    "ajv": "^8.17.1",
     "cheerio": "^1.0.0",
-    "csv-parse": "^5.5.6",
     "ml-cart": "^2.0.1",
     "ml-logistic-regression": "^2.0.0",
     "ml-matrix": "^6.11.0",
-    "papaparse": "^5.4.1",
-    "parquetjs-lite": "^0.8.7"
+    "csv-parse": "^5.5.6",
+    "papaparse": "^5.4.1"
   }
 }

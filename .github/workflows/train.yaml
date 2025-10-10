@@ -37,22 +37,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup R
-        id: setup-r
-        uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: '4.3.3'
-
-      - name: Export R dependency manifest
-        run: Rscript scripts/r/export-package-manifest.R
-
-      - name: Cache R packages
-        uses: actions/cache@v3
-        with:
-          path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-${{ hashFiles('scripts/r/package-list.txt', 'scripts/r/package-manifest.txt', 'scripts/setup-r.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-
       - name: Ensure lockfile
         run: |
           if [ ! -f package-lock.json ]; then
@@ -66,21 +50,13 @@ jobs:
         run: |
           npm ci || npm install --no-audit --no-fund
 
-      - name: Install R packages
-        run: ./scripts/setup-r.sh
-
       - name: Resolve season (auto unless override)
         run: |
           if [ -n "${{ github.event.inputs.season }}" ]; then
-            SEASON="${{ github.event.inputs.season }}"
+            echo "SEASON=${{ github.event.inputs.season }}" >> $GITHUB_ENV
           else
-            SEASON=$(node -e 'console.log(new Date().getFullYear())')
+            echo "SEASON=$(node -e 'console.log(new Date().getFullYear())')" >> $GITHUB_ENV
           fi
-          if [ "$SEASON" -lt 2020 ]; then
-            SEASON=2020
-            echo "Season clamped to $SEASON to satisfy nflverse coverage"
-          fi
-          echo "SEASON=$SEASON" >> $GITHUB_ENV
           echo "Resolved SEASON=$SEASON"
 
       - name: Resolve week (auto unless override)
@@ -100,19 +76,6 @@ jobs:
 
       - name: Run unit tests
         run: npm test
-
-      - name: Build nflverse datasets
-        env:
-          START_SEASON: 2020
-          SEASON: ${{ env.SEASON }}
-          WEEK: ${{ steps.resolve.outputs.WEEK }}
-        run: |
-          RANGE="${START_SEASON}-${SEASON}"
-          echo "Fetching nflverse datasets for seasons $RANGE"
-          Rscript scripts/r/fetch_pbp.R --season="$RANGE"
-          Rscript scripts/r/fetch_player_weekly.R --season="$RANGE"
-          Rscript scripts/r/fetch_fourth_down.R --season="$RANGE"
-          Rscript scripts/r/run_seed_sim.R --season="$SEASON" --week="$WEEK" --sims=2000
 
       - name: Fetch Rotowire injuries
         env:

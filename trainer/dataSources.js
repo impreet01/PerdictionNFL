@@ -7,7 +7,6 @@ import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 
 import { getDataConfig } from './config.js';
-import { ensure as ensureRArtifact, loadParquetRecords } from './rArtifacts.js';
 
 // ---------- discovery helpers ----------
 const GH_ROOT = 'https://api.github.com/repos/nflverse/nflverse-data';
@@ -413,7 +412,6 @@ export const caches = {
   depthCharts: new Map(),
   ftnCharts:   new Map(),
   pbp:         new Map(),
-  fourthDown:  new Map(),
   pfrAdv:      new Map(), // merged weekly map (season)
   injuries:    new Map(),
   markets:     new Map(),
@@ -1010,15 +1008,6 @@ export async function loadSnapCounts(season){
 export async function loadTeamWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadTeamWeekly season');
   return cached(caches.teamWeekly, y, async()=>{
-    try {
-      const { parquetPath } = await ensureRArtifact('teamWeekly', y);
-      const rows = await loadParquetRecords(parquetPath);
-      sanityCheckRows('teamWeekly', rows);
-      console.log(`[loadTeamWeekly] using R artifact rows=${rows.length}`);
-      return rows;
-    } catch (err) {
-      console.warn(`[loadTeamWeekly] R artifact unavailable: ${err?.message || err}`);
-    }
     const resolved = await resolveDatasetUrl('teamWeekly', y, REL.teamWeekly);
     const targetUrl = resolved?.url ?? REL.teamWeekly(y);
     const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
@@ -1034,15 +1023,6 @@ export async function loadTeamGameAdvanced(season){
 export async function loadPlayerWeekly(season){
   const y = toInt(season); if(y==null) throw new Error('loadPlayerWeekly season');
   return cached(caches.playerWeekly, y, async()=>{
-    try {
-      const { parquetPath } = await ensureRArtifact('playerWeekly', y);
-      const rows = await loadParquetRecords(parquetPath);
-      sanityCheckRows('playerWeekly', rows);
-      console.log(`[loadPlayerWeekly] using R artifact rows=${rows.length}`);
-      return rows;
-    } catch (err) {
-      console.warn(`[loadPlayerWeekly] R artifact unavailable: ${err?.message || err}`);
-    }
     const resolved = await resolveDatasetUrl('playerWeekly', y, REL.playerWeekly);
     const targetUrl = resolved?.url ?? REL.playerWeekly(y);
     const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
@@ -1087,36 +1067,12 @@ export async function loadFTNCharts(season){
 export async function loadPBP(season){
   const y = toInt(season); if(y==null) throw new Error('loadPBP season');
   return cached(caches.pbp, y, async()=>{
-    try {
-      const { parquetPath } = await ensureRArtifact('pbp', y);
-      const rows = await loadParquetRecords(parquetPath);
-      sanityCheckRows('pbp', rows);
-      console.log(`[loadPBP] using R artifact rows=${rows.length}`);
-      return rows;
-    } catch (err) {
-      console.warn(`[loadPBP] R artifact unavailable: ${err?.message || err}`);
-    }
     const resolved = await resolveDatasetUrl('pbp', y, REL.pbp);
     const targetUrl = resolved?.url ?? REL.pbp(y);
     const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
     sanityCheckRows('pbp', rows);
     console.log(`[loadPBP] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
-  });
-}
-
-export async function loadFourthDown(season){
-  const y = toInt(season); if(y==null) throw new Error('loadFourthDown season');
-  return cached(caches.fourthDown, y, async()=>{
-    try {
-      const { parquetPath } = await ensureRArtifact('fourth-down', y);
-      const rows = await loadParquetRecords(parquetPath);
-      console.log(`[loadFourthDown] using R artifact rows=${rows.length}`);
-      return rows;
-    } catch (err) {
-      console.warn(`[loadFourthDown] R artifact unavailable: ${err?.message || err}`);
-      return [];
-    }
   });
 }
 

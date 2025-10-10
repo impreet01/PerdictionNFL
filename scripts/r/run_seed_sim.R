@@ -31,13 +31,23 @@ locate_model_file <- function(season, week = NULL) {
       return(candidate)
     }
   }
-  pattern <- sprintf("^model_%d_W(\\\d{2})\\.json$", season)
+  pattern <- sprintf("^model_%d_W([0-9]{2})[.]json$", season)
   matches <- list.files(artifacts_dir, pattern = pattern, full.names = TRUE)
   if (length(matches) == 0) {
     return(NULL)
   }
-  weeks <- as.integer(sub(sprintf("model_%d_W(\\\d{2})\\.json", season), "\\1", basename(matches)))
-  matches[order(weeks, decreasing = TRUE)][1]
+  capture <- utils::strcapture(
+    pattern,
+    basename(matches),
+    data.frame(week = integer())
+  )
+  valid <- !is.na(capture$week)
+  if (!any(valid)) {
+    return(NULL)
+  }
+  matches_valid <- matches[valid]
+  weeks <- capture$week[valid]
+  matches_valid[order(weeks, decreasing = TRUE)][1]
 }
 
 extract_team_priors <- function(model_json) {

@@ -52,7 +52,8 @@ function makeTeamGameRow(season, week, team, thirdAtt, thirdConv, redAtt, redTd,
 }
 
 async function main() {
-  const season = 2023;
+  const now = new Date();
+  const season = now.getUTCFullYear();
   rmSync("artifacts", { recursive: true, force: true });
   mkdirSync("artifacts", { recursive: true });
   await seedRArtifactsForTests();
@@ -82,6 +83,9 @@ async function main() {
     );
   }
 
+  const latestWeek = schedules.reduce((max, g) => Math.max(max, Number(g.week) || 0), 0);
+  const firstWeek = Math.max(1, latestWeek - 2);
+
   const options = {
     btBootstrapSamples: 20,
     annSeeds: 3,
@@ -94,7 +98,7 @@ async function main() {
 
   const week1 = await runTraining({
     season,
-    week: 1,
+    week: firstWeek,
     data: { schedules, teamWeekly, teamGame, prevTeamWeekly: [] },
     options
   });
@@ -111,7 +115,7 @@ async function main() {
 
   const result = await runTraining({
     season,
-    week: 3,
+    week: latestWeek,
     data: { schedules, teamWeekly, teamGame, prevTeamWeekly: [] },
     options
   });
@@ -135,13 +139,14 @@ async function main() {
   const indexPath = `artifacts/season_index_${season}.json`;
   if (!existsSync(indexPath)) throw new Error("Smoke test: season index missing");
   const indexData = JSON.parse(readFileSync(indexPath, "utf8"));
-  if (indexData.latest_completed_week !== 3) throw new Error("Smoke test: season index latest week incorrect");
-  if (!Array.isArray(indexData.weeks) || indexData.weeks.length !== 3)
+  if (indexData.latest_completed_week !== latestWeek)
+    throw new Error("Smoke test: season index latest week incorrect");
+  if (!Array.isArray(indexData.weeks) || indexData.weeks.length !== latestWeek)
     throw new Error("Smoke test: season index weeks incorrect");
-  const week3Meta = indexData.weeks.find((w) => w.week === 3);
-  if (!week3Meta?.completed) throw new Error("Smoke test: week 3 metadata missing completion");
-  if (!week3Meta.metrics?.exists || !week3Meta.outcomes?.exists)
-    throw new Error("Smoke test: week 3 metadata missing artifacts");
+  const latestMeta = indexData.weeks.find((w) => w.week === latestWeek);
+  if (!latestMeta?.completed) throw new Error("Smoke test: latest week metadata missing completion");
+  if (!latestMeta.metrics?.exists || !latestMeta.outcomes?.exists)
+    throw new Error("Smoke test: latest week metadata missing artifacts");
 
   const summaryPath = `artifacts/season_summary_${season}.json`;
   if (!existsSync(summaryPath)) throw new Error("Smoke test: season summary missing");
@@ -151,8 +156,8 @@ async function main() {
     throw new Error("Smoke test: season summary weekly summaries incorrect");
   if (!Array.isArray(summaryData.week_metadata) || summaryData.week_metadata.length !== indexData.weeks.length)
     throw new Error("Smoke test: season summary metadata mismatch");
-  const summaryWeek3 = summaryData.week_metadata.find((w) => w.week === 3);
-  if (!summaryWeek3?.completed) throw new Error("Smoke test: summary missing completed week metadata");
+  const summaryLatest = summaryData.week_metadata.find((w) => w.week === latestWeek);
+  if (!summaryLatest?.completed) throw new Error("Smoke test: summary missing completed week metadata");
   if (!Array.isArray(summaryData.weekly_game_counts) || summaryData.weekly_game_counts[0]?.games < 2)
     throw new Error("Smoke test: season summary game counts incorrect");
 

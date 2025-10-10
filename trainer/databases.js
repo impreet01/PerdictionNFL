@@ -794,6 +794,7 @@ export async function buildSeasonDB(season) {
     depthRows,
     ftnRows,
     pbpRows,
+    fourthDownRows,
     pfrAdvMap
   ] = await Promise.all([
     loadSchedulesDS(),

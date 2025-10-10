@@ -1,5 +1,13 @@
 import fs from "fs";
 import path from "path";
+import {
+  loadTrainingState,
+  saveTrainingState,
+  shouldRunHistoricalBootstrap,
+  markBootstrapCompleted,
+  recordLatestRun,
+  BOOTSTRAP_KEYS
+} from "./trainingState.js";
 
 const ARTIFACTS_DIR = path.resolve("artifacts");
 const PREDICTION_PREFIX = "predictions";
@@ -188,7 +196,60 @@ function persistCalibrationHistory({ season, week, beta, intercept, weights }) {
   fs.appendFileSync(csvPath, contents, "utf8");
 }
 
-export function runHybridV2(season, week) {
+function discoverSeasonWeekPairs() {
+  if (!fs.existsSync(ARTIFACTS_DIR)) {
+    return [];
+  }
+  const entries = fs.readdirSync(ARTIFACTS_DIR);
+  const modelPattern = new RegExp(`^${MODEL_PREFIX}_(\\d{4})_W(\\d{2})\\.json$`);
+  const seasonMap = new Map();
+  for (const entry of entries) {
+    const match = entry.match(modelPattern);
+    if (!match) continue;
+    const season = Number(match[1]);
+    const week = Number(match[2]);
+    if (!Number.isFinite(season) || !Number.isFinite(week)) continue;
+    const predictionName = buildFileName(PREDICTION_PREFIX, season, week, "");
+    if (!fs.existsSync(path.join(ARTIFACTS_DIR, predictionName))) continue;
+    if (!seasonMap.has(season)) {
+      seasonMap.set(season, new Set());
+    }
+    seasonMap.get(season).add(week);
+  }
+  return Array.from(seasonMap.entries())
+    .map(([season, weeks]) => ({ season, weeks: Array.from(weeks).sort((a, b) => a - b) }))
+    .sort((a, b) => a.season - b.season);
+}
+
+function runHybridBootstrap(state) {
+  const discovered = discoverSeasonWeekPairs();
+  const processed = [];
+  for (const entry of discovered) {
+    const completedWeeks = [];
+    for (const week of entry.weeks) {
+      try {
+        runHybridV2(entry.season, week, { state, updateState: false });
+        completedWeeks.push(week);
+      } catch (err) {
+        console.warn(
+          `[hybrid/bootstrap] failed for season ${entry.season} week ${week}: ${err?.message || err}`
+        );
+      }
+    }
+    if (completedWeeks.length) {
+      processed.push({ season: entry.season, weeks: completedWeeks });
+    }
+  }
+  if (processed.length) {
+    markBootstrapCompleted(state, BOOTSTRAP_KEYS.HYBRID, {
+      seasons: processed.map(({ season, weeks }) => ({ season, weeks }))
+    });
+  }
+  return processed;
+}
+
+export function runHybridV2(season, week, options = {}) {
+  const { state: providedState = null, updateState = true } = options;
   if (!Number.isInteger(season) || season < 1900) {
     throw new Error(`Invalid season provided: ${season}`);
   }
@@ -220,14 +281,37 @@ export function runHybridV2(season, week) {
 
   persistCalibrationHistory({ season, week, beta, intercept, weights });
 
+  if (updateState) {
+    const state = providedState ?? loadTrainingState();
+    recordLatestRun(state, BOOTSTRAP_KEYS.HYBRID, { season, week });
+    saveTrainingState(state);
+  }
+
   console.table({ season, week, beta, intercept, ...weights });
   console.log(
     `Hybrid v2 calibration complete for season ${season} week ${week} → updated ${modelFileName}, ${predictionsFileName}`
   );
+  return { beta, intercept, weights };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const season = Number.parseInt(process.env.SEASON ?? new Date().getFullYear(), 10);
   const week = Number.parseInt(process.env.WEEK ?? "1", 10);
-  runHybridV2(season, week);
+  let state = loadTrainingState();
+  const bootstrapRequired = shouldRunHistoricalBootstrap(state, BOOTSTRAP_KEYS.HYBRID);
+
+  if (bootstrapRequired) {
+    const processed = runHybridBootstrap(state);
+    if (processed.length) {
+      const summary = processed
+        .map((entry) => `${entry.season}:W${entry.weeks.join("/")}`)
+        .join(", ");
+      console.log(`[hybrid/bootstrap] completed initial calibration for ${summary}`);
+    } else {
+      console.log("[hybrid/bootstrap] no historical calibrations executed (missing artifacts?)");
+    }
+    saveTrainingState(state);
+  }
+
+  runHybridV2(season, week, { state });
 }

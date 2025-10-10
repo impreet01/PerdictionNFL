@@ -39,8 +39,9 @@ main <- function() {
   }
 
   message(sprintf("Fetching play-by-play for seasons: %s", paste(seasons, collapse = ", ")))
+  # nflreadr::load_pbp already returns the fully enriched nflfastR dataset,
+  # so no additional calculate_* helpers are required here.
   pbp <- nflreadr::load_pbp(seasons = seasons)
-  pbp <- nflfastR:::calculate_nflfastR_vars(pbp)
   pbp <- nflfastR::calculate_drive_info(pbp)
   pbp <- nflfastR::calculate_series_info(pbp)
 

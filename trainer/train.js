@@ -14,6 +14,11 @@ import LogisticRegression from "ml-logistic-regression";
 import { DecisionTreeClassifier as CART } from "ml-cart";
 import { Matrix } from "ml-matrix";
 import { resolveSeasonList } from "./databases.js";
+import {
+  loadTrainingState,
+  shouldRunHistoricalBootstrap,
+  BOOTSTRAP_KEYS
+} from "./trainingState.js";
 
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
@@ -114,10 +119,14 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
 (async function main(){
   console.log(`Training season ${TARGET_SEASON}, week ${TARGET_WEEK}`);
 
+  const trainingState = loadTrainingState();
+  const bootstrapRequired = shouldRunHistoricalBootstrap(trainingState, BOOTSTRAP_KEYS.MODEL);
+  const includeAllResolved = bootstrapRequired || INCLUDE_ALL;
+
   const discoveredSeasons = await listDatasetSeasons('teamWeekly').catch(() => []);
   const seasonsResolved = await resolveSeasonList({
     targetSeason: TARGET_SEASON,
-    includeAll: INCLUDE_ALL,
+    includeAll: includeAllResolved,
     sinceSeason: SINCE_SEASON,
     maxSeasons: MAX_SEASONS,
     availableSeasons: discoveredSeasons

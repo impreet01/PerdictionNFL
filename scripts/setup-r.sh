@@ -61,9 +61,24 @@ message(sprintf("Reading required packages from %s", pkg_file))
 required <- readLines(pkg_file, warn = FALSE)
 required <- trimws(required)
 required <- required[nzchar(required) & !grepl("^#", required)]
-if (getOption("repos")["CRAN"] %in% c("@CRAN@", NA)) {
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+# Prefer Posit Package Manager binaries on common CI runners to avoid
+# repeated source builds (for example duckdb taking minutes to compile).
+`%||%` <- function(lhs, rhs) if (is.null(lhs) || is.na(lhs)) rhs else lhs
+repos <- getOption("repos")
+cran_repo <- repos["CRAN"]
+if (.Platform$OS.type == "unix") {
+  sysname <- Sys.info()[["sysname"]]
+  if (identical(sysname, "Linux")) {
+    repos["CRAN"] <- "https://packagemanager.posit.co/cran/__linux__/jammy/latest"
+  } else if (identical(sysname, "Darwin")) {
+    repos["CRAN"] <- "https://packagemanager.posit.co/cran/__macos__/big-sur/latest"
+  }
 }
+if (is.null(cran_repo) || cran_repo %in% c("@CRAN@", NA)) {
+  repos["CRAN"] <- repos["CRAN"] %||% "https://cloud.r-project.org"
+}
+options(repos = repos)
 install_if_missing <- function(pkg) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     message(sprintf("Installing %s", pkg))

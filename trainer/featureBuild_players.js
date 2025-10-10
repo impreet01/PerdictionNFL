@@ -1,8 +1,6 @@
 // trainer/featureBuild_players.js
 // Aggregate player-week data into team usage metrics.
 
-import { normalizeTeamCode } from "./teamCodes.js";
-
 const isReg = (v) => {
   if (v == null) return true;
   const s = String(v).trim().toUpperCase();
@@ -14,7 +12,11 @@ const num = (value, def = 0) => {
   return Number.isFinite(n) ? n : def;
 };
 
-const normTeam = (...values) => normalizeTeamCode(...values);
+const normTeam = (value) => {
+  if (!value) return null;
+  const s = String(value).trim().toUpperCase();
+  return s || null;
+};
 
 const normPos = (value) => {
   if (!value) return "";
@@ -56,7 +58,7 @@ export function aggregatePlayerUsage({ rows = [], season }) {
     const week = Number(row.week ?? row.game_week ?? row.week_number);
     if (!Number.isFinite(week)) continue;
 
-    const team = normTeam(row.recent_team, row.team, row.team_abbr, row.posteam);
+    const team = normTeam(row.recent_team ?? row.team ?? row.team_abbr ?? row.posteam);
     if (!team) continue;
 
     const pos = normPos(row.position ?? row.player_position ?? row.pos);

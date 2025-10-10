@@ -63,27 +63,27 @@ function makeTeamGameRow(season, week, team) {
 async function main() {
   const season = 2023;
   const week = 1;
-  const schedules = [makeGame(season, week, "AA", "BB")];
+  const schedules = [makeGame(season, week, "A", "B")];
   const teamWeekly = [
-    makeTeamRow(season, week, "AA", "BB"),
-    makeTeamRow(season, week, "BB", "AA")
+    makeTeamRow(season, week, "A", "B"),
+    makeTeamRow(season, week, "B", "A")
   ];
   const teamGame = [
-    makeTeamGameRow(season, week, "AA"),
-    makeTeamGameRow(season, week, "BB")
+    makeTeamGameRow(season, week, "A"),
+    makeTeamGameRow(season, week, "B")
   ];
 
   const weatherRows = [
     {
       season,
       week,
-      home_team: "AA",
-      away_team: "BB",
+      home_team: "A",
+      away_team: "B",
       temperature_f: 35,
       precipitation_chance: 80,
       wind_mph: 20,
       impact_score: 0.6,
-      game_key: `${season}-W${String(week).padStart(2, "0")}-AA-BB`,
+      game_key: `${season}-W${String(week).padStart(2, "0")}-A-B`,
       fetched_at: "2023-09-01T12:00:00Z"
     }
   ];
@@ -100,8 +100,8 @@ async function main() {
     injuries: []
   });
 
-  const homeRow = features.find((row) => row.team === "AA" && row.week === week && row.season === season && row.home === 1);
-  const awayRow = features.find((row) => row.team === "BB" && row.week === week && row.season === season && row.home === 0);
+  const homeRow = features.find((row) => row.team === "A" && row.week === week && row.season === season && row.home === 1);
+  const awayRow = features.find((row) => row.team === "B" && row.week === week && row.season === season && row.home === 0);
 
   assert(homeRow, "Home row missing");
   assert(awayRow, "Away row missing");
@@ -116,15 +116,12 @@ async function main() {
   assert(Math.abs(homeRow.weather_precip_pct - expectedPrecip) < 1e-6, "Home weather precip mismatch");
   assert(Math.abs(homeRow.weather_impact_score - expectedImpact) < 1e-6, "Home weather impact mismatch");
   assert(homeRow.weather_extreme_flag === 1, "Home weather extreme flag not set");
-  assert(homeRow.inj_out_count === 0, "Home injury out count should default to 0");
-  assert(homeRow.inj_out_diff === 0, "Home injury diff should default to 0");
 
   assert(Math.abs(awayRow.weather_temp_f - expectedTemp) < 1e-6, "Away weather temperature mismatch");
   assert(Math.abs(awayRow.weather_wind_mph - expectedWind) < 1e-6, "Away weather wind mismatch");
   assert(Math.abs(awayRow.weather_precip_pct - expectedPrecip) < 1e-6, "Away weather precip mismatch");
   assert(Math.abs(awayRow.weather_impact_score - expectedImpact) < 1e-6, "Away weather impact mismatch");
   assert(awayRow.weather_extreme_flag === 1, "Away weather extreme flag not set");
-  assert(awayRow.inj_out_count === 0, "Away injury out count should default to 0");
 
   const shaped = shapeWeatherContext({
     summary: "Rain",

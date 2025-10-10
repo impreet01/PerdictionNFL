@@ -23,17 +23,12 @@ Train, evaluate, and serve NFL win probabilities using only open nflverse data â
    - `WEEK` (defaults to 6; the trainer iterates from Week 1 up to this value if historical data exists)
    - `ANN_SEEDS`, `ANN_MAX_EPOCHS`, `BT_B`, etc. to tune ensemble search.
    - `ROTOWIRE_ENABLED` (`true` is required for the Rotowire injury fetcher to run and write artifacts)
-3. (Optional) Install the R ingestion toolchain prerequisites:
-   ```bash
-   bash scripts/setup-r.sh
-   ```
-   The script installs `libcurl` development headers on most Linux distributions before pulling the required CRAN packages (`nflreadr`, `nflfastR`, `nflseedR`, etc.). If your environment uses an unsupported package manager, install the equivalent `libcurl` development package manually and re-run the script.
-4. Run the full ensemble trainer:
+3. Run the full ensemble trainer:
    ```bash
    npm run train:multi
    ```
    This downloads nflverse data, consumes the Rotowire injury artifacts, builds features, fits every model, calibrates the blend, and writes artifacts under `artifacts/` for each completed week up to `WEEK`.
-5. (Optional) Run the legacy single-week trainer for the logistic/tree hybrid only:
+4. (Optional) Run the legacy single-week trainer for the logistic/tree hybrid only:
    ```bash
    npm run train
    ```

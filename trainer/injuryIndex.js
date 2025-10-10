@@ -3,8 +3,6 @@
 // Shared helpers for transforming Rotowire injury artifacts into
 // per-team snapshots that downstream feature builders can consume.
 
-import { normalizeTeamCode } from "./teamCodes.js";
-
 const KEY_SKILL_POSITIONS = new Set(["QB", "RB", "WR", "TE"]);
 const KEY_OFFENSIVE_LINE = new Set(["LT", "RT", "LG", "RG", "C", "OL", "T", "G", "OT", "OG"]);
 
@@ -24,7 +22,11 @@ const ZERO_SNAPSHOT = Object.freeze({
   player_status: {}
 });
 
-const normTeam = (...values) => normalizeTeamCode(...values);
+const normTeam = (value) => {
+  if (!value) return null;
+  const s = String(value).trim().toUpperCase();
+  return s || null;
+};
 
 const classifyStatus = (statusRaw = "") => {
   if (!statusRaw) return null;
@@ -110,7 +112,7 @@ export function buildTeamInjuryIndex(rows = [], season) {
     if (Number(row.season) !== seasonNum) continue;
     const week = Number(row.week);
     if (!Number.isFinite(week) || week < 1) continue;
-    const team = normTeam(row.team, row.team_abbr, row.recent_team, row.club_code);
+    const team = normTeam(row.team || row.team_abbr || row.recent_team || row.club_code);
     if (!team) continue;
     const playerKey = normalizePlayerKey(row);
     const player = playerKey || String(row.player || row.player_name || "").trim();

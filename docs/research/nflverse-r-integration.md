@@ -40,7 +40,7 @@
 
 3. **Adopt nflverse feature columns.**
    - Modify feature builders to consume `nflfastR` columns such as `epa`, `wp`, `cpoe`, `xyac_epa`, and drive/series IDs directly from the R-generated parquet files.
-   - Integrate `nfl4th::calculate_fourth_down()` outputs into situational models (e.g., classification label for whether the recommended decision matched actual play call).
+  - Integrate `nfl4th::load_4th_pbp()` outputs into situational models (e.g., classification label for whether the recommended decision matched actual play call).
 
 4. **Layer season simulations.**
    - Export weekly team strength distributions from our existing model, feed them to an `nflseedR` script that runs, say, 20,000 simulations per week, and persist probability summaries (`make_playoffs`, `win_division`, `top_seed`, `draft_pick`).

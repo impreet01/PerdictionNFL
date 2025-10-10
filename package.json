@@ -12,7 +12,7 @@
     "fetch:markets": "node scripts/fetchRotowireMarkets.js",
     "fetch:weather": "node scripts/fetchRotowireWeather.js",
     "validate:artifacts": "node scripts/validateArtifacts.js",
-    "test": "node trainer/tests/rArtifacts.test.js && node trainer/tests/model_ann.test.js && node trainer/tests/weatherContext.test.js && node trainer/tests/smoke.js"
+    "test": "node trainer/tests/rArtifacts.test.js && node worker/tests/dataFeeds.test.js && node trainer/tests/model_ann.test.js && node trainer/tests/weatherContext.test.js && node trainer/tests/smoke.js"
   },
   "dependencies": {
     "ajv": "^8.17.1",

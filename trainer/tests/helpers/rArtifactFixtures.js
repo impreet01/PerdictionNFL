@@ -20,10 +20,13 @@ export async function seedRArtifactsForTests(rootDir = path.resolve("artifacts",
   await fs.rm(rootDir, { recursive: true, force: true });
   await fs.mkdir(rootDir, { recursive: true });
 
+  const season = 2025;
+  const week = 1;
+
   const pbpRows = [
     {
-      season: 2023,
-      week: 1,
+      season,
+      week,
       season_type: "REG",
       posteam: "KAN",
       defteam: "DET",
@@ -31,11 +34,17 @@ export async function seedRArtifactsForTests(rootDir = path.resolve("artifacts",
       success: 1,
       xyac_epa: 0.2,
       wp: 0.65,
-      cpoe: 5
+      cpoe: 5,
+      play_id: "1234",
+      game_id: "2025_01_DET_KAN",
+      qtr: 1,
+      down: 1,
+      ydstogo: 10,
+      yardline_100: 75
     },
     {
-      season: 2023,
-      week: 1,
+      season,
+      week,
       season_type: "REG",
       posteam: "DET",
       defteam: "KAN",
@@ -43,11 +52,17 @@ export async function seedRArtifactsForTests(rootDir = path.resolve("artifacts",
       success: 0,
       xyac_epa: -0.1,
       wp: 0.45,
-      cpoe: -2
+      cpoe: -2,
+      play_id: "1235",
+      game_id: "2025_01_DET_KAN",
+      qtr: 2,
+      down: 3,
+      ydstogo: 6,
+      yardline_100: 48
     },
     {
-      season: 2023,
-      week: 1,
+      season,
+      week,
       season_type: "REG",
       posteam: "KAN",
       defteam: "DET",
@@ -55,12 +70,18 @@ export async function seedRArtifactsForTests(rootDir = path.resolve("artifacts",
       success: 1,
       xyac_epa: 0.05,
       wp: 0.66,
-      cpoe: 1
+      cpoe: 1,
+      play_id: "1236",
+      game_id: "2025_01_DET_KAN",
+      qtr: 4,
+      down: 2,
+      ydstogo: 4,
+      yardline_100: 32
     }
   ];
 
   await writeParquet(
-    path.join(rootDir, "pbp", "2023.parquet"),
+    path.join(rootDir, "pbp", `${season}.parquet`),
     {
       season: { type: "INT64" },
       week: { type: "INT64" },
@@ -71,47 +92,61 @@ export async function seedRArtifactsForTests(rootDir = path.resolve("artifacts",
       success: { type: "BOOLEAN", optional: true },
       xyac_epa: { type: "DOUBLE", optional: true },
       wp: { type: "DOUBLE", optional: true },
-      cpoe: { type: "DOUBLE", optional: true }
+      cpoe: { type: "DOUBLE", optional: true },
+      play_id: { type: "UTF8", optional: true },
+      game_id: { type: "UTF8", optional: true },
+      qtr: { type: "INT64", optional: true },
+      down: { type: "INT64", optional: true },
+      ydstogo: { type: "INT64", optional: true },
+      yardline_100: { type: "DOUBLE", optional: true }
     },
     pbpRows
   );
 
   const fourthRows = [
     {
-      season: 2023,
-      week: 1,
+      season,
+      week,
       posteam: "DET",
       recommendation: "go",
       actual: "go",
-      delta_wp: 0.07
+      delta_wp: 0.07,
+      yardline_100: 45,
+      vegas_wp: 0.52
     },
     {
-      season: 2023,
-      week: 1,
+      season,
+      week,
       posteam: "DET",
       recommendation: "punt",
       actual: "go",
-      delta_wp: -0.05
+      delta_wp: -0.05,
+      yardline_100: 38,
+      vegas_wp: 0.49
     },
     {
-      season: 2023,
-      week: 1,
+      season,
+      week,
       posteam: "KAN",
       recommendation: "go",
       actual: "punt",
-      delta_wp: -0.02
+      delta_wp: -0.02,
+      yardline_100: 41,
+      vegas_wp: 0.61
     }
   ];
 
   await writeParquet(
-    path.join(rootDir, "fourth-down", "2023.parquet"),
+    path.join(rootDir, "fourth_down", `${season}.parquet`),
     {
       season: { type: "INT64" },
       week: { type: "INT64" },
       posteam: { type: "UTF8" },
       recommendation: { type: "UTF8" },
       actual: { type: "UTF8" },
-      delta_wp: { type: "DOUBLE" }
+      delta_wp: { type: "DOUBLE" },
+      yardline_100: { type: "DOUBLE", optional: true },
+      vegas_wp: { type: "DOUBLE", optional: true }
     },
     fourthRows
   );
@@ -152,8 +187,8 @@ export async function seedRArtifactsForTests(rootDir = path.resolve("artifacts",
   const playerRows = Array.from({ length: 4000 }, (_, idx) => {
     const template = playerTemplates[idx % playerTemplates.length];
     return {
-      season: 2023,
-      week: 1,
+      season,
+      week,
       season_type: "REG",
       recent_team: template.recent_team,
       position: template.position,
@@ -167,7 +202,7 @@ export async function seedRArtifactsForTests(rootDir = path.resolve("artifacts",
   });
 
   await writeParquet(
-    path.join(rootDir, "playerWeekly", "2023.parquet"),
+    path.join(rootDir, "player_weekly", `${season}.parquet`),
     {
       season: { type: "INT64" },
       week: { type: "INT64" },
@@ -183,6 +218,70 @@ export async function seedRArtifactsForTests(rootDir = path.resolve("artifacts",
     },
     playerRows
   );
+  const manifest = JSON.stringify(
+    {
+      generated_at: new Date().toISOString(),
+      seasons: [season],
+      files: [
+        { season, path: `${season}.parquet` }
+      ]
+    },
+    null,
+    2
+  );
+
+  await fs.writeFile(path.join(rootDir, "pbp", "manifest.json"), manifest);
+  await fs.writeFile(path.join(rootDir, "fourth_down", "manifest.json"), manifest);
+  await fs.writeFile(path.join(rootDir, "player_weekly", "manifest.json"), manifest);
+}
+
+export async function seedSeedSimArtifacts(rootDir = path.resolve("artifacts", "r-data")) {
+  await fs.mkdir(path.join(rootDir, "seed_sim"), { recursive: true });
+  const schema = new parquet.ParquetSchema({
+    team: { type: "UTF8" },
+    make_playoffs: { type: "DOUBLE", optional: true },
+    win_division: { type: "DOUBLE", optional: true },
+    top_seed: { type: "DOUBLE", optional: true },
+    draft_pick: { type: "DOUBLE", optional: true },
+    mean_wins: { type: "DOUBLE", optional: true }
+  });
+  const writer = await parquet.ParquetWriter.openFile(
+    schema,
+    path.join(rootDir, "seed_sim", "seed_sim_2025_W01.parquet")
+  );
+  try {
+    await writer.appendRow({
+      team: "KAN",
+      make_playoffs: 0.89,
+      win_division: 0.71,
+      top_seed: 0.24,
+      draft_pick: 28.2,
+      mean_wins: 12.3
+    });
+    await writer.appendRow({
+      team: "DET",
+      make_playoffs: 0.66,
+      win_division: 0.58,
+      top_seed: 0.12,
+      draft_pick: 22.7,
+      mean_wins: 11.0
+    });
+  } finally {
+    await writer.close();
+  }
+
+  const manifest = JSON.stringify(
+    {
+      generated_at: new Date().toISOString(),
+      season: 2025,
+      week: 1,
+      simulations: 2000,
+      parquet: "seed_sim_2025_W01.parquet"
+    },
+    null,
+    2
+  );
+  await fs.writeFile(path.join(rootDir, "seed_sim", "manifest_2025_W01.json"), manifest);
 }
 
 export default seedRArtifactsForTests;

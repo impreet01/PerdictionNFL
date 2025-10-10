@@ -157,6 +157,7 @@ async function main() {
     throw new Error("Smoke test: season summary game counts incorrect");
 
   console.log("Smoke test passed");
+  process.exit(0);
 }
 
 main().catch((err) => {

@@ -10,6 +10,63 @@ const DEFAULT_MAX_AGE_MS = Number.isFinite(Number(process.env.R_ARTIFACT_MAX_AGE
   ? Number(process.env.R_ARTIFACT_MAX_AGE_MS)
   : undefined;
 
+const DATASET_CONFIG_ENTRIES = [
+  {
+    keys: ["pbp"],
+    slug: "pbp",
+    scriptName: "fetch_pbp.R"
+  },
+  {
+    keys: ["playerWeekly", "player_weekly", "player-weekly"],
+    slug: "player_weekly",
+    scriptName: "fetch_player_weekly.R"
+  },
+  {
+    keys: ["fourth-down", "fourth_down", "fourthDown"],
+    slug: "fourth_down",
+    scriptName: "fetch_fourth_down.R"
+  },
+  {
+    keys: ["seed-sim", "seed_sim", "seedSim"],
+    slug: "seed_sim",
+    scriptName: "run_seed_sim.R"
+  }
+];
+
+const DATASET_CONFIG_INDEX = new Map();
+
+function normaliseKey(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+for (const entry of DATASET_CONFIG_ENTRIES) {
+  for (const key of entry.keys) {
+    DATASET_CONFIG_INDEX.set(normaliseKey(key), entry);
+  }
+}
+
+function resolveDatasetConfig(dataset) {
+  if (!dataset) throw new Error("dataset is required");
+  const rawKey = String(dataset);
+  const normalised = normaliseKey(rawKey);
+  const entry = DATASET_CONFIG_INDEX.get(normalised);
+  if (entry) {
+    return {
+      slug: entry.slug,
+      scriptName: entry.scriptName,
+      label: entry.keys[0]
+    };
+  }
+  const safeSlug = rawKey;
+  return {
+    slug: safeSlug,
+    scriptName: `fetch_${safeSlug}.R`,
+    label: rawKey
+  };
+}
+
 function resolveRoot(rootDir) {
   if (rootDir) return path.resolve(rootDir);
   const envRoot = process.env.R_ARTIFACTS_ROOT;
@@ -19,12 +76,13 @@ function resolveRoot(rootDir) {
 
 export function artifactPaths(dataset, season, options = {}) {
   if (!dataset) throw new Error("artifactPaths requires dataset");
+  const config = resolveDatasetConfig(dataset);
   const seasonLabel = season != null ? String(season) : "latest";
   const root = resolveRoot(options.rootDir);
-  const datasetDir = path.join(root, dataset);
+  const datasetDir = path.join(root, config.slug);
   const parquetPath = path.join(datasetDir, `${seasonLabel}.parquet`);
   const manifestPath = path.join(datasetDir, "manifest.json");
-  return { root, datasetDir, parquetPath, manifestPath };
+  return { root, datasetDir, parquetPath, manifestPath, config };
 }
 
 async function statSafe(filePath) {
@@ -68,7 +126,7 @@ function formatSpawnError(dataset, season, cause) {
 
 export async function ensure(dataset, season, options = {}) {
   const { maxAgeMs, script, args = [], rootDir } = options;
-  const { datasetDir, parquetPath, manifestPath } = artifactPaths(dataset, season, { rootDir });
+  const { datasetDir, parquetPath, manifestPath, config } = artifactPaths(dataset, season, { rootDir });
   const fresh = await isFresh(parquetPath, { maxAgeMs });
   if (fresh) {
     return { parquetPath, manifestPath };
@@ -80,22 +138,22 @@ export async function ensure(dataset, season, options = {}) {
     );
   }
 
-  const rScript = script || path.resolve("scripts", "r", `fetch_${dataset}.R`);
+  const scriptName = script || path.resolve("scripts", "r", config.scriptName);
   const seasonArg = season != null ? ["--season", String(season)] : [];
   await ensureDir(datasetDir);
 
   try {
-    await execFileAsync("Rscript", [rScript, ...seasonArg, ...args], {
+    await execFileAsync("Rscript", [scriptName, ...seasonArg, ...args], {
       cwd: process.cwd(),
       env: process.env
     });
   } catch (err) {
-    throw formatSpawnError(dataset, season, err);
+    throw formatSpawnError(config.label, season, err);
   }
 
   const finalFresh = await isFresh(parquetPath, { maxAgeMs });
   if (!finalFresh) {
-    throw new Error(`[rArtifacts] ${dataset} ${season} parquet not created at ${parquetPath}`);
+    throw new Error(`[rArtifacts] ${config.label} ${season} parquet not created at ${parquetPath}`);
   }
   return { parquetPath, manifestPath };
 }
@@ -127,10 +185,68 @@ export async function loadParquetRecords(filePath) {
   }
 }
 
+export async function ensureSeedSimulation(season, options = {}) {
+  const seasonNum = Number(season);
+  if (!Number.isFinite(seasonNum)) {
+    throw new Error("ensureSeedSimulation requires a numeric season");
+  }
+  const weekNum = options.week == null ? null : Number(options.week);
+  if (options.week != null && !Number.isFinite(weekNum)) {
+    throw new Error("ensureSeedSimulation week must be numeric when provided");
+  }
+  const sims = options.sims == null ? null : Number(options.sims);
+  const suffix = weekNum != null
+    ? `${seasonNum}_W${String(weekNum).padStart(2, "0")}`
+    : `${seasonNum}`;
+
+  const root = resolveRoot(options.rootDir);
+  const datasetDir = path.join(root, "seed_sim");
+  const parquetPath = path.join(datasetDir, `seed_sim_${suffix}.parquet`);
+  const manifestPath = path.join(datasetDir, `manifest_${suffix}.json`);
+
+  const fresh = await isFresh(parquetPath, { maxAgeMs: options.maxAgeMs });
+  if (fresh) {
+    return { parquetPath, manifestPath, suffix };
+  }
+
+  if (shouldSkipIngest()) {
+    throw new Error(
+      `[rArtifacts] seed_sim ${suffix} missing or stale but SKIP_R_INGEST=1. Falling back to legacy sources.`
+    );
+  }
+
+  await ensureDir(datasetDir);
+  const rScript = options.script || path.resolve("scripts", "r", "run_seed_sim.R");
+  const args = ["--season", String(seasonNum)];
+  if (weekNum != null) {
+    args.push("--week", String(weekNum));
+  }
+  if (Number.isFinite(sims) && sims > 0) {
+    args.push("--sims", String(Math.floor(sims)));
+  }
+
+  try {
+    await execFileAsync("Rscript", [rScript, ...args], {
+      cwd: process.cwd(),
+      env: process.env
+    });
+  } catch (err) {
+    throw formatSpawnError("seed_sim", suffix, err);
+  }
+
+  const finalFresh = await isFresh(parquetPath, { maxAgeMs: options.maxAgeMs });
+  if (!finalFresh) {
+    throw new Error(`[rArtifacts] seed_sim ${suffix} parquet not created at ${parquetPath}`);
+  }
+
+  return { parquetPath, manifestPath, suffix };
+}
+
 export default {
   artifactPaths,
   ensure,
   isFresh,
   readManifest,
-  loadParquetRecords
+  loadParquetRecords,
+  ensureSeedSimulation
 };

@@ -16,13 +16,24 @@ async function main() {
 
   await seedRArtifactsForTests(rootDir);
 
-  const season = 2023;
+  const season = 2025;
 
   const pbpRows = await loadPBP(season);
   assert.equal(pbpRows.length, 3, "pbp rows should come from generated parquet artifact");
+  assert.ok(
+    Object.prototype.hasOwnProperty.call(pbpRows[0], "yardline_100"),
+    "pbp rows should expose nflfastR yardline_100"
+  );
+  assert.ok(
+    Object.prototype.hasOwnProperty.call(pbpRows[0], "play_id"),
+    "pbp rows should expose play identifiers"
+  );
+
+  const cachedAgain = await loadPBP(season);
+  assert.strictEqual(cachedAgain, pbpRows, "loadPBP should reuse cached season payloads");
 
   const pbpAgg = aggregatePBP({ rows: pbpRows, season });
-  const kanWeek1 = pbpAgg.get("2023-1-KAN");
+  const kanWeek1 = pbpAgg.get("2025-1-KAN");
   assert.ok(kanWeek1, "aggregatePBP should include Kansas City week 1");
   for (const key of [
     "off_xyac_epa_per_play",
@@ -37,9 +48,13 @@ async function main() {
 
   const fourthRows = await loadFourthDown(season);
   assert.equal(fourthRows.length, 3, "fourth-down rows should come from generated parquet artifact");
+  assert.ok(
+    Object.prototype.hasOwnProperty.call(fourthRows[0], "vegas_wp"),
+    "fourth-down rows should expose vegas_wp probability"
+  );
 
   const fourthAgg = aggregateFourthDown({ rows: fourthRows, season });
-  const detWeek1 = fourthAgg.get("2023-1-DET");
+  const detWeek1 = fourthAgg.get("2025-1-DET");
   assert.ok(detWeek1, "aggregateFourthDown should include Detroit week 1");
   for (const key of [
     "fourth_down_align_rate",
@@ -52,6 +67,10 @@ async function main() {
 
   const playerRows = await loadPlayerWeekly(season);
   assert(playerRows.length >= 4000, "playerWeekly rows should satisfy sanity threshold");
+  assert.ok(
+    Object.prototype.hasOwnProperty.call(playerRows[0], "season_type"),
+    "playerWeekly rows should retain season_type column"
+  );
 
   caches.pbp.clear();
   caches.fourthDown.clear();

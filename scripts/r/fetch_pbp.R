@@ -15,10 +15,7 @@ get_script_dir <- function() {
 script_dir <- get_script_dir()
 source(file.path(script_dir, "common.R"))
 
-suppressPackageStartupMessages({
-  library(nflreadr)
-  library(nflfastR)
-})
+load_nflverse_packages(c("nflreadr", "nflfastR"))
 
 main <- function() {
   option_list <- list(

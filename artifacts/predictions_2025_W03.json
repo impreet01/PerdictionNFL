@@ -7,7 +7,7 @@
     "week": 3,
     "forecast": 0.5,
     "probs": {
-      "logistic": 0.994,
+      "logistic": 0.997,
       "tree": 0.5,
       "bt": 0.5,
       "ann": 0.5,
@@ -29,24 +29,24 @@
         0.5
       ]
     },
-    "natural_language": "AA vs DD: logistic 99.371%, tree 50%, BT 50%, ANN 49.999%, blended 50.005%. Key differentials: Total yards edge +12.00 (favorable); Possession time edge +12.00 (favorable); Penalty yards edge +6.00 (needs attention). Trend watch: Red-zone TD rate is higher than league average by 4.1% (favorable).",
+    "natural_language": "AA vs DD: logistic 99.733%, tree 50%, BT 50%, ANN 49.996%, blended 49.992%. Key differentials: Total yards edge +12.00 (favorable); Possession time edge +12.00 (favorable); Penalty yards edge +6.00 (needs attention). Trend watch: Red-zone TD rate is higher than league average by 4.7% (favorable).",
     "top_drivers": [
       {
-        "feature": "wins_s2d",
+        "feature": "wins_exp",
         "direction": "positive",
-        "magnitude": 2.0588606600312116,
+        "magnitude": 0.5795450805558093,
         "source": "logit"
       },
       {
-        "feature": "red-zone TD rate",
+        "feature": "losses_exp",
         "direction": "positive",
-        "magnitude": 0.8521271224783283,
+        "magnitude": 0.5795450805558093,
         "source": "logit"
       },
       {
-        "feature": "elo_pre",
+        "feature": "off_pass_att_s2d",
         "direction": "positive",
-        "magnitude": 0.8047888940669624,
+        "magnitude": 0.485738968523669,
         "source": "logit"
       },
       {
@@ -68,15 +68,15 @@
         "source": "bt"
       },
       {
-        "feature": "QB air yards per attempt (5wk)",
-        "direction": "negative",
-        "magnitude": 0.000010574787349040612,
+        "feature": "sack rate",
+        "direction": "positive",
+        "magnitude": 0.00001330672729755774,
         "source": "ann"
       },
       {
-        "feature": "inj_practice_dnp_diff",
+        "feature": "off_turnovers_s2d_minus_opp",
         "direction": "negative",
-        "magnitude": 0.000009232358849210733,
+        "magnitude": 0.000012114067152318209,
         "source": "ann"
       }
     ],
@@ -90,7 +90,7 @@
     "week": 3,
     "forecast": 0.5,
     "probs": {
-      "logistic": 0.109,
+      "logistic": 0.263,
       "tree": 0.5,
       "bt": 0.5,
       "ann": 0.5,
@@ -112,24 +112,24 @@
         0.5
       ]
     },
-    "natural_language": "BB vs CC: logistic 10.938%, tree 50%, BT 50%, ANN 50.004%, blended 50.009%. Key differentials: Turnovers even ±0.00 (balanced); R-ratio even ±0.00 (balanced); Penalty yards even ±0.00 (balanced).",
+    "natural_language": "BB vs CC: logistic 26.342%, tree 50%, BT 50%, ANN 50.004%, blended 50%. Key differentials: Turnovers even ±0.00 (balanced); R-ratio even ±0.00 (balanced); Penalty yards even ±0.00 (balanced). Trend watch: Red-zone TD rate is higher than league average by 3.6% (favorable).",
     "top_drivers": [
       {
-        "feature": "losses_s2d",
+        "feature": "wins_exp",
         "direction": "negative",
-        "magnitude": 2.064486165375559,
+        "magnitude": 0.5795450805558093,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_exp",
+        "direction": "negative",
+        "magnitude": 0.5795450805558093,
         "source": "logit"
       },
       {
         "feature": "elo_pre",
         "direction": "negative",
-        "magnitude": 0.8047888940669624,
-        "source": "logit"
-      },
-      {
-        "feature": "red-zone TD rate",
-        "direction": "positive",
-        "magnitude": 0.5567230533525072,
+        "magnitude": 0.3792374786864776,
         "source": "logit"
       },
       {
@@ -151,15 +151,15 @@
         "source": "bt"
       },
       {
-        "feature": "defensive EPA/play allowed (S2D)",
+        "feature": "sack rate",
         "direction": "positive",
-        "magnitude": 0.000014771866506602937,
+        "magnitude": 0.000013182049692086936,
         "source": "ann"
       },
       {
-        "feature": "QB air yards per attempt (5wk)",
+        "feature": "off_turnovers_s2d_minus_opp",
         "direction": "negative",
-        "magnitude": 0.00001351695820515904,
+        "magnitude": 0.000011975953782211642,
         "source": "ann"
       }
     ],

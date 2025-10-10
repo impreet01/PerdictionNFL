@@ -146,6 +146,12 @@ jobs:
           echo "Training SEASON=$SEASON WEEK=$WEEK"
           SEASON=$SEASON WEEK=$WEEK npm run train:multi
 
+      - name: Run Hybrid v2 Calibration
+        run: node trainer/hybrid_v2.js
+        env:
+          SEASON: ${{ env.SEASON }}
+          WEEK: ${{ steps.resolve.outputs.WEEK }}
+
       - name: Validate artifacts against schemas
         run: |
           echo "Validating artifacts in artifacts/"

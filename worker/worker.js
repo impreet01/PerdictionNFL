@@ -121,6 +121,16 @@ async function fetchJsonFile(file) {
   }
 }
 
+function preferHybridPredictionFile(listing, season, week, fallback) {
+  if (!Array.isArray(listing)) {
+    return fallback;
+  }
+  const paddedWeek = String(week).padStart(2, "0");
+  const hybridName = `predictions_${season}_W${paddedWeek}_hybrid_v2.json`;
+  const match = listing.find((item) => item?.name === hybridName && item?.type === "file");
+  return match ? hybridName : fallback;
+}
+
 async function resolveSeasonWeek(prefix, seasonParam, weekParam, listing) {
   const seasonInput = toInt(seasonParam, "season");
   const weekInput = toInt(weekParam, "week");
@@ -145,7 +155,11 @@ async function resolveSeasonWeek(prefix, seasonParam, weekParam, listing) {
   if (!exact) {
     throw new HttpError(404, `${prefix} artifact missing for season ${season} week ${week}`);
   }
-  return { season, week, file: exact.name, listing: data };
+  let file = exact.name;
+  if (prefix === "predictions") {
+    file = preferHybridPredictionFile(data, season, week, file);
+  }
+  return { season, week, file, listing: data };
 }
 
 async function resolveSeasonFile(prefix, seasonParam, listing) {
@@ -656,7 +670,7 @@ async function healthResponse(url) {
     .sort((a, b) => a.week - b.week)
     .map((p) => ({
       week: p.week,
-      predictions_file: p.name,
+      predictions_file: preferHybridPredictionFile(listing, season, p.week, p.name),
       model_file: modelMap.get(`${season}-${p.week}`) || null,
       injuries_file: injuriesMap.get(`${season}-${p.week}`) || null
     }));

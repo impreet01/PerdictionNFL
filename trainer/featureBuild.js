@@ -8,22 +8,32 @@
 import { aggregatePBP } from "./featureBuild_pbp.js";
 import { aggregateFourthDown } from "./featureBuild_fourthDown.js";
 import { aggregatePlayerUsage } from "./featureBuild_players.js";
-import { buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
+import { buildTeamInjuryIndex, getTeamInjurySnapshot, normalizePlayerKey } from "./injuryIndex.js";
 import { normalizeTeamCode } from "./teamCodes.js";
 
 export const FEATS = [
   "off_1st_down_s2d",
   "off_total_yds_s2d",
+  "off_total_yds_exp",
   "off_rush_yds_s2d",
+  "off_rush_yds_exp",
   "off_pass_yds_s2d",
+  "off_pass_yds_exp",
   "off_turnovers_s2d",
+  "off_turnovers_exp",
   "def_1st_down_s2d",
   "def_total_yds_s2d",
+  "def_total_yds_exp",
   "def_rush_yds_s2d",
+  "def_rush_yds_exp",
   "def_pass_yds_s2d",
+  "def_pass_yds_exp",
   "def_turnovers_s2d",
+  "def_turnovers_exp",
   "wins_s2d",
   "losses_s2d",
+  "wins_exp",
+  "losses_exp",
   "home",
   "sim_winrate_same_loc_s2d",
   "sim_pointdiff_same_loc_s2d",
@@ -48,6 +58,10 @@ export const FEATS = [
   "off_pass_att_s2d",
   "off_rush_att_s2d",
   "off_neutral_pass_rate_s2d",
+  "off_third_down_pct_exp",
+  "off_red_zone_td_pct_exp",
+  "off_sack_rate_exp",
+  "off_neutral_pass_rate_exp",
   "off_third_down_pct_s2d_minus_opp",
   "off_red_zone_td_pct_s2d_minus_opp",
   "off_sack_rate_s2d_minus_opp",
@@ -138,6 +152,8 @@ export const FEATS = [
   "inj_practice_dnp_diff",
   "inj_out_change",
   "inj_skill_out_change",
+  "injury_return_delta",
+  "injury_return_count",
   "fourth_down_align_rate_s2d",
   "fourth_down_align_rate_w3",
   "fourth_down_align_rate_w5",
@@ -149,7 +165,13 @@ export const FEATS = [
   "fourth_down_mismatch_delta_wp_s2d",
   "fourth_down_mismatch_delta_wp_w3",
   "fourth_down_mismatch_delta_wp_w5",
-  "fourth_down_mismatch_delta_wp_exp"
+  "fourth_down_mismatch_delta_wp_exp",
+  "market_delta_spread",
+  "momentum_composite",
+  "off_eff_residual",
+  "off_eff_recalibrate",
+  "def_eff_residual",
+  "def_eff_recalibrate"
 ];
 
 const DECAY_LAMBDA = 0.85;
@@ -193,6 +215,11 @@ const num = (value, def = 0) => {
   return Number.isFinite(n) ? n : def;
 };
 
+const maybeNum = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
 const dateOnly = (value) => (value ? String(value).slice(0, 10) : null);
 
 const normTeam = (...values) => normalizeTeamCode(...values);
@@ -208,10 +235,42 @@ const weightedAverage = (history = []) => {
   return total / history.length;
 };
 
-const windowAverage = (history = [], size = 3) => {
+const triangularAverage = (arr = [], size = 3) => {
+  if (!arr.length) return 0;
+  const slice = arr.slice(-size);
+  let total = 0;
+  let weightSum = 0;
+  for (let i = 0; i < slice.length; i += 1) {
+    const value = Number(slice[i]);
+    if (!Number.isFinite(value)) continue;
+    const weight = i + 1; // give most recent the highest weight
+    total += value * weight;
+    weightSum += weight;
+  }
+  return weightSum > 0 ? total / weightSum : 0;
+};
+
+const windowAverage = (history = [], size = 3, { triangular = false } = {}) => {
   if (!history.length) return 0;
+  if (triangular) return triangularAverage(history.map((entry) => entry.value ?? entry));
   const slice = history.slice(-size);
   return weightedAverage(slice);
+};
+
+const updateExponential = (prevExp, value, weight = 1) => {
+  if (!Number.isFinite(value)) return Number(prevExp) || 0;
+  if (!Number.isFinite(weight) || weight <= 0) weight = 1;
+  if (prevExp == null || !Number.isFinite(prevExp)) return value;
+  return DECAY_LAMBDA * prevExp + (1 - DECAY_LAMBDA) * value;
+};
+
+const updateHistory = (prevHistory = [], value, limit = MAX_HISTORY) => {
+  const history = Array.isArray(prevHistory) ? prevHistory.slice() : [];
+  if (Number.isFinite(value)) {
+    history.push(value);
+    if (history.length > limit) history.shift();
+  }
+  return history;
 };
 
 const avgLast = (arr = [], k = 3) => {
@@ -533,30 +592,89 @@ function advancedSignals(row = {}) {
 }
 
 function updateAdvanced(prev = {}, metrics = {}) {
-  const thirdAtt = num(prev.off_third_down_att_s2d) + num(metrics.thirdAtt);
-  const thirdConv = num(prev.off_third_down_conv_s2d) + num(metrics.thirdConv);
-  const redAtt = num(prev.off_red_zone_att_s2d) + num(metrics.redAtt);
-  const redTD = num(prev.off_red_zone_td_s2d) + num(metrics.redTD);
-  const passAtt = num(prev.off_pass_att_s2d) + num(metrics.passAtt);
-  const rushAtt = num(prev.off_rush_att_s2d) + num(metrics.rushAtt);
-  const sacks = num(prev.off_sacks_taken_s2d) + num(metrics.sacksTaken);
-  const dropbacks = passAtt + sacks;
-  const neutralDenom = passAtt + rushAtt;
+  const next = {};
 
-  return {
-    off_third_down_att_s2d: thirdAtt,
-    off_third_down_conv_s2d: thirdConv,
-    off_third_down_pct_s2d: thirdAtt ? thirdConv / thirdAtt : 0,
-    off_red_zone_att_s2d: redAtt,
-    off_red_zone_td_s2d: redTD,
-    off_red_zone_td_pct_s2d: redAtt ? redTD / redAtt : 0,
-    off_pass_att_s2d: passAtt,
-    off_rush_att_s2d: rushAtt,
-    off_sacks_taken_s2d: sacks,
-    off_dropbacks_s2d: dropbacks,
-    off_sack_rate_s2d: dropbacks ? sacks / dropbacks : 0,
-    off_neutral_pass_rate_s2d: neutralDenom ? passAtt / neutralDenom : 0
-  };
+  const thirdAttVal = num(metrics.thirdAtt);
+  const thirdConvVal = num(metrics.thirdConv);
+  const redAttVal = num(metrics.redAtt);
+  const redTDVal = num(metrics.redTD);
+  const passAttVal = num(metrics.passAtt);
+  const rushAttVal = num(metrics.rushAtt);
+  const sacksVal = num(metrics.sacksTaken);
+  const dropbacksVal = passAttVal + sacksVal;
+  const neutralDenom = passAttVal + rushAttVal;
+
+  const thirdAttHist = updateHistory(prev.__hist_third_att, thirdAttVal);
+  const thirdConvHist = updateHistory(prev.__hist_third_conv, thirdConvVal);
+  const redAttHist = updateHistory(prev.__hist_red_att, redAttVal);
+  const redTDHist = updateHistory(prev.__hist_red_td, redTDVal);
+  const passAttHist = updateHistory(prev.__hist_pass_att, passAttVal);
+  const rushAttHist = updateHistory(prev.__hist_rush_att, rushAttVal);
+  const sacksHist = updateHistory(prev.__hist_sacks_taken, sacksVal);
+  const dropbacksHist = updateHistory(prev.__hist_dropbacks, dropbacksVal);
+
+  const thirdPctVal = thirdAttVal > 0 ? thirdConvVal / thirdAttVal : null;
+  const redPctVal = redAttVal > 0 ? redTDVal / redAttVal : null;
+  const sackRateVal = dropbacksVal > 0 ? sacksVal / dropbacksVal : null;
+  const neutralRateVal = neutralDenom > 0 ? passAttVal / neutralDenom : null;
+
+  const thirdPctHist = updateHistory(prev.__hist_third_pct, thirdPctVal);
+  const redPctHist = updateHistory(prev.__hist_red_pct, redPctVal);
+  const sackRateHist = updateHistory(prev.__hist_sack_rate, sackRateVal);
+  const neutralRateHist = updateHistory(prev.__hist_neutral_rate, neutralRateVal);
+
+  next.off_third_down_att_s2d = triangularAverage(thirdAttHist);
+  next.off_third_down_conv_s2d = triangularAverage(thirdConvHist);
+  next.off_red_zone_att_s2d = triangularAverage(redAttHist);
+  next.off_red_zone_td_s2d = triangularAverage(redTDHist);
+  next.off_pass_att_s2d = triangularAverage(passAttHist);
+  next.off_rush_att_s2d = triangularAverage(rushAttHist);
+  next.off_sacks_taken_s2d = triangularAverage(sacksHist);
+  next.off_dropbacks_s2d = triangularAverage(dropbacksHist);
+
+  const thirdPct = triangularAverage(thirdPctHist);
+  const redPct = triangularAverage(redPctHist);
+  const sackRate = triangularAverage(sackRateHist);
+  const neutralRate = triangularAverage(neutralRateHist);
+
+  const thirdPctExp = updateExponential(prev.__exp_third_pct, Number.isFinite(thirdPctVal) ? thirdPctVal : thirdPct);
+  const redPctExp = updateExponential(prev.__exp_red_pct, Number.isFinite(redPctVal) ? redPctVal : redPct);
+  const sackRateExp = updateExponential(prev.__exp_sack_rate, Number.isFinite(sackRateVal) ? sackRateVal : sackRate);
+  const neutralRateExp = updateExponential(
+    prev.__exp_neutral_rate,
+    Number.isFinite(neutralRateVal) ? neutralRateVal : neutralRate
+  );
+
+  next.off_third_down_pct_s2d = Number.isFinite(thirdPct) ? thirdPct : 0;
+  next.off_red_zone_td_pct_s2d = Number.isFinite(redPct) ? redPct : 0;
+  next.off_sack_rate_s2d = Number.isFinite(sackRate) ? sackRate : 0;
+  next.off_neutral_pass_rate_s2d = Number.isFinite(neutralRate) ? neutralRate : 0;
+
+  next.off_third_down_pct_exp = Number.isFinite(thirdPctExp) ? thirdPctExp : next.off_third_down_pct_s2d;
+  next.off_red_zone_td_pct_exp = Number.isFinite(redPctExp) ? redPctExp : next.off_red_zone_td_pct_s2d;
+  next.off_sack_rate_exp = Number.isFinite(sackRateExp) ? sackRateExp : next.off_sack_rate_s2d;
+  next.off_neutral_pass_rate_exp = Number.isFinite(neutralRateExp)
+    ? neutralRateExp
+    : next.off_neutral_pass_rate_s2d;
+
+  next.__hist_third_att = thirdAttHist;
+  next.__hist_third_conv = thirdConvHist;
+  next.__hist_red_att = redAttHist;
+  next.__hist_red_td = redTDHist;
+  next.__hist_pass_att = passAttHist;
+  next.__hist_rush_att = rushAttHist;
+  next.__hist_sacks_taken = sacksHist;
+  next.__hist_dropbacks = dropbacksHist;
+  next.__hist_third_pct = thirdPctHist;
+  next.__hist_red_pct = redPctHist;
+  next.__hist_sack_rate = sackRateHist;
+  next.__hist_neutral_rate = neutralRateHist;
+  next.__exp_third_pct = thirdPctExp;
+  next.__exp_red_pct = redPctExp;
+  next.__exp_sack_rate = sackRateExp;
+  next.__exp_neutral_rate = neutralRateExp;
+
+  return next;
 }
 
 function zeroAdvanced() {
@@ -564,15 +682,19 @@ function zeroAdvanced() {
     off_third_down_att_s2d: 0,
     off_third_down_conv_s2d: 0,
     off_third_down_pct_s2d: 0,
+    off_third_down_pct_exp: 0,
     off_red_zone_att_s2d: 0,
     off_red_zone_td_s2d: 0,
     off_red_zone_td_pct_s2d: 0,
+    off_red_zone_td_pct_exp: 0,
     off_pass_att_s2d: 0,
     off_rush_att_s2d: 0,
     off_sacks_taken_s2d: 0,
     off_dropbacks_s2d: 0,
     off_sack_rate_s2d: 0,
-    off_neutral_pass_rate_s2d: 0
+    off_sack_rate_exp: 0,
+    off_neutral_pass_rate_s2d: 0,
+    off_neutral_pass_rate_exp: 0
   };
 }
 
@@ -593,7 +715,8 @@ export function buildFeatures({
   fourthDown = [],
   playerWeekly = [],
   weather = [],
-  injuries = []
+  injuries = [],
+  markets = []
 }) {
   const seasonNum = Number(season);
   if (!Number.isFinite(seasonNum)) return [];
@@ -620,11 +743,20 @@ export function buildFeatures({
   const usageIdx = aggregatePlayerUsage({ rows: playerWeekly || [], season: seasonNum });
   const weatherIdx = indexWeather(weather || [], seasonNum);
   const injuryIdx = buildTeamInjuryIndex(injuries || [], seasonNum);
+  const playerWeekIdx =
+    typeof indexPlayerWeeks === "function" ? indexPlayerWeeks(playerWeekly || [], seasonNum) : new Map();
+  const marketIdx = typeof indexMarkets === "function" ? indexMarkets(markets || [], seasonNum) : new Map();
 
   const lastDate = new Map();
   const elo = new Map();
+  const eloHistory = new Map();
+  const qbTrendState = new Map();
+  const residualState = new Map();
+  const playerBaselineState = new Map();
   for (const team of teams) {
     elo.set(team, seedElo(team, prevTeamWeekly));
+    eloHistory.set(team, [elo.get(team)]);
+    qbTrendState.set(team, []);
   }
 
   const roll = new Map();
@@ -726,20 +858,243 @@ export function buildFeatures({
       const hPrev = roll.get(home).get(week - 1) || {};
       const aPrev = roll.get(away).get(week - 1) || {};
 
-      const updateRoll = (prev, sig) => ({
-        off_1st_down_s2d: num(prev.off_1st_down_s2d) + num(sig.offFD),
-        off_total_yds_s2d: num(prev.off_total_yds_s2d) + num(sig.offTotal),
-        off_rush_yds_s2d: num(prev.off_rush_yds_s2d) + num(sig.rushYds),
-        off_pass_yds_s2d: num(prev.off_pass_yds_s2d) + num(sig.passYds),
-        off_turnovers_s2d: num(prev.off_turnovers_s2d) + num(sig.offTO),
-        def_1st_down_s2d: num(prev.def_1st_down_s2d) + num(sig.defFDAllowed),
-        def_total_yds_s2d: num(prev.def_total_yds_s2d) + num(sig.defTotalAllowed),
-        def_rush_yds_s2d: num(prev.def_rush_yds_s2d) + num(sig.defRushAllowed),
-        def_pass_yds_s2d: num(prev.def_pass_yds_s2d) + num(sig.defPassAllowed),
-        def_turnovers_s2d: num(prev.def_turnovers_s2d) + num(sig.defTO),
-        wins_s2d: num(prev.wins_s2d),
-        losses_s2d: num(prev.losses_s2d)
-      });
+const BASE_ROLLING_FIELDS = [
+  { field: "off_1st_down", getter: (sig) => num(sig.offFD) },
+  { field: "off_total_yds", getter: (sig) => num(sig.offTotal) },
+  { field: "off_rush_yds", getter: (sig) => num(sig.rushYds) },
+  { field: "off_pass_yds", getter: (sig) => num(sig.passYds) },
+  { field: "off_turnovers", getter: (sig) => num(sig.offTO) },
+  { field: "def_1st_down", getter: (sig) => num(sig.defFDAllowed) },
+  { field: "def_total_yds", getter: (sig) => num(sig.defTotalAllowed) },
+  { field: "def_rush_yds", getter: (sig) => num(sig.defRushAllowed) },
+  { field: "def_pass_yds", getter: (sig) => num(sig.defPassAllowed) },
+  { field: "def_turnovers", getter: (sig) => num(sig.defTO) }
+];
+
+const updateRoll = (prev = {}, sig = {}) => {
+  const next = {};
+  for (const cfg of BASE_ROLLING_FIELDS) {
+    const value = cfg.getter(sig);
+    const histKey = `__hist_${cfg.field}`;
+    const expKey = `__exp_${cfg.field}`;
+    const history = updateHistory(prev[histKey], value);
+    const weighted = triangularAverage(history);
+    const expVal = updateExponential(prev[expKey], value);
+    next[`${cfg.field}_s2d`] = Number.isFinite(weighted) ? weighted : 0;
+    next[`${cfg.field}_exp`] = Number.isFinite(expVal) ? expVal : 0;
+    next[histKey] = history;
+    next[expKey] = expVal;
+  }
+  next.wins_s2d = Number.isFinite(prev.wins_s2d) ? prev.wins_s2d : 0;
+  next.losses_s2d = Number.isFinite(prev.losses_s2d) ? prev.losses_s2d : 0;
+  next.__hist_wins = Array.isArray(prev.__hist_wins) ? prev.__hist_wins.slice() : [];
+  next.__exp_wins = Number.isFinite(prev.__exp_wins) ? prev.__exp_wins : null;
+  next.wins_exp = Number.isFinite(prev.__exp_wins) ? prev.__exp_wins : Number(next.wins_s2d) || 0;
+  next.losses_exp = Number.isFinite(prev.__exp_wins) ? 1 - prev.__exp_wins : Number(next.losses_s2d) || 0;
+  return next;
+};
+
+const updateWinHistory = (prev = {}, result = null) => {
+  const history = Array.isArray(prev.__hist_wins) ? prev.__hist_wins.slice() : [];
+  if (Number.isFinite(result)) {
+    history.push(result);
+    if (history.length > MAX_HISTORY) history.shift();
+  }
+  const winsWeighted = triangularAverage(history);
+  const exp = Number.isFinite(result)
+    ? updateExponential(prev.__exp_wins, result)
+    : prev.__exp_wins != null
+      ? prev.__exp_wins
+      : Number.isFinite(winsWeighted)
+        ? winsWeighted
+        : 0;
+  return {
+    history,
+    wins: Number.isFinite(winsWeighted) ? winsWeighted : Number(prev.wins_s2d) || 0,
+    losses: Number.isFinite(winsWeighted) ? 1 - winsWeighted : Number(prev.losses_s2d) || 0,
+    exp
+  };
+};
+
+const playerKeyFromWeekly = (row = {}) => {
+  const normalized = normalizePlayerKey(row);
+  if (normalized) return normalized;
+  const fallback = row.player_id ?? row.player ?? row.player_name ?? row.gsis_id ?? null;
+  return fallback ? String(fallback).trim().toUpperCase() : null;
+};
+
+function indexPlayerWeeks(rows = [], season) {
+  const seasonNum = Number(season);
+  const map = new Map();
+  for (const row of rows || []) {
+    if (Number(row.season) !== seasonNum) continue;
+    const week = Number(row.week ?? row.game_week ?? row.week_number);
+    if (!Number.isFinite(week)) continue;
+    const team = normTeam(row.recent_team, row.team, row.team_abbr, row.posteam);
+    if (!team) continue;
+    const key = `${seasonNum}-${week}-${team}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row);
+  }
+  return map;
+}
+
+function indexMarkets(rows = [], season) {
+  const map = new Map();
+  const seasonNum = Number(season);
+  for (const row of rows || []) {
+    if (Number(row.season ?? row.year ?? seasonNum) !== seasonNum) continue;
+    const week = Number(row.week ?? row.game_week ?? row.week_number);
+    if (!Number.isFinite(week)) continue;
+    const home = normTeam(row.home_team, row.home, row.team_home);
+    const away = normTeam(row.away_team, row.away, row.team_away);
+    if (!home || !away) continue;
+    const key = `${seasonNum}-W${String(week).padStart(2, "0")}-${home}-${away}`;
+    const market = row.market && typeof row.market === "object" ? row.market : row;
+    const spreadOpen =
+      maybeNum(market.spread_open) ??
+      maybeNum(market.opening_spread) ??
+      maybeNum(market.spread_pre) ??
+      maybeNum(market.open_spread) ??
+      maybeNum(market.initial_spread);
+    const spreadClose =
+      maybeNum(market.spread_close) ??
+      maybeNum(market.closing_spread) ??
+      maybeNum(market.spread) ??
+      maybeNum(market.final_spread);
+    map.set(key, {
+      open: spreadOpen,
+      close: spreadClose,
+      delta:
+        Number.isFinite(spreadOpen) && Number.isFinite(spreadClose) ? spreadClose - spreadOpen : null,
+      source: market.source ?? row.source ?? null
+    });
+  }
+  return map;
+}
+
+const RESIDUAL_THRESHOLD = 0.15;
+
+function ensureResidualState(map, team) {
+  if (!map.has(team)) {
+    map.set(team, { offense: [], defense: [], offConsec: 0, defConsec: 0 });
+  }
+  return map.get(team);
+}
+
+function computePlayerContribution(row = {}) {
+  const rushEPA = maybeNum(row.rush_epa ?? row.rushing_epa);
+  const recEPA = maybeNum(row.rec_epa ?? row.receiving_epa);
+  const passEPA = maybeNum(row.pass_epa ?? row.passing_epa ?? row.pass_epa_total);
+  const epaSum = [rushEPA, recEPA, passEPA]
+    .filter((val) => Number.isFinite(val))
+    .reduce((sum, val) => sum + val, 0);
+  if (Number.isFinite(epaSum) && epaSum !== 0) return epaSum;
+  const rushYds = maybeNum(row.rushing_yards ?? row.rush_yards ?? row.rush_yds);
+  const recYds = maybeNum(row.receiving_yards ?? row.rec_yards ?? row.rec_yds);
+  const passYds = maybeNum(row.passing_yards ?? row.pass_yards ?? row.pass_yds);
+  const yards = (rushYds || 0) + (recYds || 0) + (passYds || 0);
+  if (Number.isFinite(yards) && yards !== 0) return yards / 100;
+  const touchdowns = maybeNum(row.total_tds ?? row.touchdowns ?? row.rushing_tds ?? row.receiving_tds);
+  if (Number.isFinite(touchdowns) && touchdowns !== 0) return touchdowns * 0.7;
+  return 0.05;
+}
+
+function updatePlayerBaselineState(map, playerKey, contribution) {
+  if (!playerKey || !Number.isFinite(contribution)) return;
+  const prev = map.get(playerKey) || { total: 0, games: 0, avg: 0 };
+  prev.total += contribution;
+  prev.games += 1;
+  prev.avg = prev.games > 0 ? prev.total / prev.games : 0;
+  map.set(playerKey, prev);
+}
+
+function computeReturningDelta({ team, season, week, injuryIdx, playerBaselineState }) {
+  const current = getTeamInjurySnapshot(injuryIdx, season, week, team);
+  const previous = getTeamInjurySnapshot(injuryIdx, season, week - 1, team);
+  const prevOut = new Set(previous.players_out || []);
+  const currOut = new Set(current.players_out || []);
+  let delta = 0;
+  let count = 0;
+  for (const playerKey of prevOut) {
+    if (currOut.has(playerKey)) continue;
+    const baseline = playerBaselineState.get(playerKey);
+    const contribution = baseline && Number.isFinite(baseline.avg) ? baseline.avg : 0.1;
+    delta += contribution;
+    count += 1;
+  }
+  return { delta, count };
+}
+
+function computeTrend(history = []) {
+  const slice = history.slice(-3);
+  if (slice.length < 2) return 0;
+  let total = 0;
+  let weightSum = 0;
+  for (let i = 1; i < slice.length; i += 1) {
+    const diff = Number(slice[i]) - Number(slice[i - 1]);
+    if (!Number.isFinite(diff)) continue;
+    const weight = i;
+    total += diff * weight;
+    weightSum += weight;
+  }
+  return weightSum ? total / weightSum : 0;
+}
+
+function computeMomentumComposite(eloMomentum, qbMomentum) {
+  const scaledElo = Number.isFinite(eloMomentum) ? eloMomentum * 0.01 : 0;
+  const scaledQb = Number.isFinite(qbMomentum) ? qbMomentum * 0.02 : 0;
+  return scaledElo + scaledQb;
+}
+
+function pushScalarHistory(map, team, value) {
+  if (!Number.isFinite(value)) return;
+  const arr = map.get(team) || [];
+  arr.push(value);
+  if (arr.length > MAX_HISTORY) arr.shift();
+  map.set(team, arr);
+}
+
+const computeResidual = (actual, expected) => {
+  if (!Number.isFinite(actual) || !Number.isFinite(expected)) return 0;
+  if (!expected) return actual ? Math.sign(actual) * 0.2 : 0;
+  return (actual - expected) / Math.max(Math.abs(expected), 1);
+};
+
+function updateResidualState(state, type, residual) {
+  if (!Number.isFinite(residual)) return;
+  const arrKey = type === "defense" ? "defense" : "offense";
+  const consecKey = type === "defense" ? "defConsec" : "offConsec";
+  const arr = state[arrKey];
+  arr.push(residual);
+  if (arr.length > MAX_HISTORY) arr.shift();
+  if (Math.abs(residual) > RESIDUAL_THRESHOLD) {
+    state[consecKey] = Math.min(MAX_HISTORY, state[consecKey] + 1);
+  } else {
+    state[consecKey] = 0;
+  }
+}
+
+      const homePrevOffExp = Number.isFinite(hPrev.off_total_yds_exp)
+        ? hPrev.off_total_yds_exp
+        : Number.isFinite(hPrev.off_total_yds_s2d)
+          ? hPrev.off_total_yds_s2d
+          : 0;
+      const homePrevDefExp = Number.isFinite(hPrev.def_total_yds_exp)
+        ? hPrev.def_total_yds_exp
+        : Number.isFinite(hPrev.def_total_yds_s2d)
+          ? hPrev.def_total_yds_s2d
+          : 0;
+      const awayPrevOffExp = Number.isFinite(aPrev.off_total_yds_exp)
+        ? aPrev.off_total_yds_exp
+        : Number.isFinite(aPrev.off_total_yds_s2d)
+          ? aPrev.off_total_yds_s2d
+          : 0;
+      const awayPrevDefExp = Number.isFinite(aPrev.def_total_yds_exp)
+        ? aPrev.def_total_yds_exp
+        : Number.isFinite(aPrev.def_total_yds_s2d)
+          ? aPrev.def_total_yds_s2d
+          : 0;
 
       const hS2D = updateRoll(hPrev, hSignals);
       const aS2D = updateRoll(aPrev, aSignals);
@@ -757,15 +1112,35 @@ export function buildFeatures({
       if (scores) {
         const homeWin = scores.hs > scores.as ? 1 : 0;
         const awayWin = 1 - homeWin;
-        hS2D.wins_s2d = num(hPrev.wins_s2d) + homeWin;
-        hS2D.losses_s2d = num(hPrev.losses_s2d) + (1 - homeWin);
-        aS2D.wins_s2d = num(aPrev.wins_s2d) + awayWin;
-        aS2D.losses_s2d = num(aPrev.losses_s2d) + (1 - awayWin);
+        const homeWinState = updateWinHistory(hPrev, homeWin);
+        const awayWinState = updateWinHistory(aPrev, awayWin);
+        hS2D.wins_s2d = homeWinState.wins;
+        hS2D.losses_s2d = homeWinState.losses;
+        hS2D.__hist_wins = homeWinState.history;
+        hS2D.__exp_wins = homeWinState.exp;
+        hS2D.wins_exp = homeWinState.exp;
+        hS2D.losses_exp = 1 - homeWinState.exp;
+
+        aS2D.wins_s2d = awayWinState.wins;
+        aS2D.losses_s2d = awayWinState.losses;
+        aS2D.__hist_wins = awayWinState.history;
+        aS2D.__exp_wins = awayWinState.exp;
+        aS2D.wins_exp = awayWinState.exp;
+        aS2D.losses_exp = 1 - awayWinState.exp;
       } else {
-        hS2D.wins_s2d = num(hPrev.wins_s2d);
-        hS2D.losses_s2d = num(hPrev.losses_s2d);
-        aS2D.wins_s2d = num(aPrev.wins_s2d);
-        aS2D.losses_s2d = num(aPrev.losses_s2d);
+        hS2D.wins_s2d = Number.isFinite(hPrev.wins_s2d) ? hPrev.wins_s2d : 0;
+        hS2D.losses_s2d = Number.isFinite(hPrev.losses_s2d) ? hPrev.losses_s2d : 0;
+        hS2D.__hist_wins = Array.isArray(hPrev.__hist_wins) ? hPrev.__hist_wins.slice() : [];
+        hS2D.__exp_wins = hPrev.__exp_wins;
+        hS2D.wins_exp = Number.isFinite(hPrev.__exp_wins) ? hPrev.__exp_wins : hS2D.wins_s2d;
+        hS2D.losses_exp = Number.isFinite(hPrev.__exp_wins) ? 1 - hPrev.__exp_wins : hS2D.losses_s2d;
+
+        aS2D.wins_s2d = Number.isFinite(aPrev.wins_s2d) ? aPrev.wins_s2d : 0;
+        aS2D.losses_s2d = Number.isFinite(aPrev.losses_s2d) ? aPrev.losses_s2d : 0;
+        aS2D.__hist_wins = Array.isArray(aPrev.__hist_wins) ? aPrev.__hist_wins.slice() : [];
+        aS2D.__exp_wins = aPrev.__exp_wins;
+        aS2D.wins_exp = Number.isFinite(aPrev.__exp_wins) ? aPrev.__exp_wins : aS2D.wins_s2d;
+        aS2D.losses_exp = Number.isFinite(aPrev.__exp_wins) ? 1 - aPrev.__exp_wins : aS2D.losses_s2d;
       }
 
       const homeRest = daysBetween(lastDate.get(home) || null, gameDate);
@@ -817,7 +1192,8 @@ export function buildFeatures({
         usageMe,
         rolling,
         qbrVal,
-        weatherFeats = {}
+        weatherFeats = {},
+        extras = {}
       ) => {
         const adv = advMe || zeroAdvanced();
         const advOpp = advOp || zeroAdvanced();
@@ -833,16 +1209,26 @@ export function buildFeatures({
           game_date: gameDate,
           off_1st_down_s2d: num(me.off_1st_down_s2d),
           off_total_yds_s2d: num(me.off_total_yds_s2d),
+          off_total_yds_exp: num(me.off_total_yds_exp),
           off_rush_yds_s2d: num(me.off_rush_yds_s2d),
+          off_rush_yds_exp: num(me.off_rush_yds_exp),
           off_pass_yds_s2d: num(me.off_pass_yds_s2d),
+          off_pass_yds_exp: num(me.off_pass_yds_exp),
           off_turnovers_s2d: num(me.off_turnovers_s2d),
+          off_turnovers_exp: num(me.off_turnovers_exp),
           def_1st_down_s2d: num(me.def_1st_down_s2d),
           def_total_yds_s2d: num(me.def_total_yds_s2d),
+          def_total_yds_exp: num(me.def_total_yds_exp),
           def_rush_yds_s2d: num(me.def_rush_yds_s2d),
+          def_rush_yds_exp: num(me.def_rush_yds_exp),
           def_pass_yds_s2d: num(me.def_pass_yds_s2d),
+          def_pass_yds_exp: num(me.def_pass_yds_exp),
           def_turnovers_s2d: num(me.def_turnovers_s2d),
+          def_turnovers_exp: num(me.def_turnovers_exp),
           wins_s2d: num(me.wins_s2d),
           losses_s2d: num(me.losses_s2d),
+          wins_exp: num(me.wins_exp),
+          losses_exp: num(me.losses_exp),
           sim_winrate_same_loc_s2d: 0,
           sim_pointdiff_same_loc_s2d: 0,
           sim_count_same_loc_s2d: 0,
@@ -885,6 +1271,10 @@ export function buildFeatures({
           ...fourthMe,
           ...usageMe,
           ...weatherFeats,
+          off_third_down_pct_exp: num(adv.off_third_down_pct_exp),
+          off_red_zone_td_pct_exp: num(adv.off_red_zone_td_pct_exp),
+          off_sack_rate_exp: num(adv.off_sack_rate_exp),
+          off_neutral_pass_rate_exp: num(adv.off_neutral_pass_rate_exp),
           roof_dome: roofDome,
           roof_outdoor: roofOutdoor,
           inj_out_count: injuryCurrent.out,
@@ -896,9 +1286,66 @@ export function buildFeatures({
           inj_skill_out_diff: injuryCurrent.skill_out - injuryOpponent.skill_out,
           inj_practice_dnp_diff: injuryCurrent.practice_dnp - injuryOpponent.practice_dnp,
           inj_out_change: injuryCurrent.out - injuryPrev.out,
-          inj_skill_out_change: injuryCurrent.skill_out - injuryPrev.skill_out
+          inj_skill_out_change: injuryCurrent.skill_out - injuryPrev.skill_out,
+          injury_return_delta: Number(extras.injuryReturnDelta ?? 0),
+          injury_return_count: Number(extras.injuryReturnCount ?? 0),
+          market_delta_spread: Number(extras.marketDelta ?? 0),
+          momentum_composite: Number(extras.momentum ?? 0),
+          off_eff_residual: Number(extras.offResidual ?? 0),
+          off_eff_recalibrate: Number(extras.offResidualFlag ?? 0),
+          def_eff_residual: Number(extras.defResidual ?? 0),
+          def_eff_recalibrate: Number(extras.defResidualFlag ?? 0)
         };
       };
+
+      const homeResidualSnap = ensureResidualState(residualState, home);
+      const awayResidualSnap = ensureResidualState(residualState, away);
+      const homeOffResidualFeat = homeResidualSnap.offense.length
+        ? homeResidualSnap.offense[homeResidualSnap.offense.length - 1]
+        : 0;
+      const homeDefResidualFeat = homeResidualSnap.defense.length
+        ? homeResidualSnap.defense[homeResidualSnap.defense.length - 1]
+        : 0;
+      const homeOffRecal = homeResidualSnap.offConsec >= 2 ? 1 : 0;
+      const homeDefRecal = homeResidualSnap.defConsec >= 2 ? 1 : 0;
+
+      const awayOffResidualFeat = awayResidualSnap.offense.length
+        ? awayResidualSnap.offense[awayResidualSnap.offense.length - 1]
+        : 0;
+      const awayDefResidualFeat = awayResidualSnap.defense.length
+        ? awayResidualSnap.defense[awayResidualSnap.defense.length - 1]
+        : 0;
+      const awayOffRecal = awayResidualSnap.offConsec >= 2 ? 1 : 0;
+      const awayDefRecal = awayResidualSnap.defConsec >= 2 ? 1 : 0;
+
+      const marketKey = `${seasonNum}-W${String(week).padStart(2, "0")}-${home}-${away}`;
+      const marketEntry = marketIdx.get(marketKey);
+      const homeMarketDelta = Number.isFinite(marketEntry?.delta) ? marketEntry.delta : 0;
+      const awayMarketDelta = Number.isFinite(marketEntry?.delta) ? -marketEntry.delta : 0;
+
+      const homeReturn = computeReturningDelta({
+        team: home,
+        season: seasonNum,
+        week,
+        injuryIdx,
+        playerBaselineState
+      });
+      const awayReturn = computeReturningDelta({
+        team: away,
+        season: seasonNum,
+        week,
+        injuryIdx,
+        playerBaselineState
+      });
+
+      const homeMomentum = computeMomentumComposite(
+        computeTrend(eloHistory.get(home) || []),
+        computeTrend(qbTrendState.get(home) || [])
+      );
+      const awayMomentum = computeMomentumComposite(
+        computeTrend(eloHistory.get(away) || []),
+        computeTrend(qbTrendState.get(away) || [])
+      );
 
       const homeRow = mkRow(
         home,
@@ -913,7 +1360,17 @@ export function buildFeatures({
         hUsageFeats,
         homeRolling,
         homeQbr,
-        weatherFeats
+        weatherFeats,
+        {
+          injuryReturnDelta: homeReturn.delta,
+          injuryReturnCount: homeReturn.count,
+          marketDelta: homeMarketDelta,
+          momentum: homeMomentum,
+          offResidual: homeOffResidualFeat,
+          offResidualFlag: homeOffRecal,
+          defResidual: homeDefResidualFeat,
+          defResidualFlag: homeDefRecal
+        }
       );
       const awayRow = mkRow(
         away,
@@ -928,9 +1385,58 @@ export function buildFeatures({
         aUsageFeats,
         awayRolling,
         awayQbr,
-        weatherFeats
+        weatherFeats,
+        {
+          injuryReturnDelta: awayReturn.delta,
+          injuryReturnCount: awayReturn.count,
+          marketDelta: awayMarketDelta,
+          momentum: awayMomentum,
+          offResidual: awayOffResidualFeat,
+          offResidualFlag: awayOffRecal,
+          defResidual: awayDefResidualFeat,
+          defResidualFlag: awayDefRecal
+        }
       );
       out.push(homeRow, awayRow);
+
+      const homeActualOff = num(hSignals.offTotal);
+      const homeActualDef = num(hSignals.defTotalAllowed);
+      const awayActualOff = num(aSignals.offTotal);
+      const awayActualDef = num(aSignals.defTotalAllowed);
+
+      updateResidualState(
+        homeResidualSnap,
+        "offense",
+        computeResidual(homeActualOff, homePrevOffExp)
+      );
+      updateResidualState(
+        homeResidualSnap,
+        "defense",
+        computeResidual(homeActualDef, homePrevDefExp)
+      );
+      updateResidualState(
+        awayResidualSnap,
+        "offense",
+        computeResidual(awayActualOff, awayPrevOffExp)
+      );
+      updateResidualState(
+        awayResidualSnap,
+        "defense",
+        computeResidual(awayActualDef, awayPrevDefExp)
+      );
+
+      const homePlayers = playerWeekIdx.get(hKey) || [];
+      for (const playerRow of homePlayers) {
+        const pKey = playerKeyFromWeekly(playerRow);
+        const contribution = computePlayerContribution(playerRow);
+        updatePlayerBaselineState(playerBaselineState, pKey, contribution);
+      }
+      const awayPlayers = playerWeekIdx.get(aKey) || [];
+      for (const playerRow of awayPlayers) {
+        const pKey = playerKeyFromWeekly(playerRow);
+        const contribution = computePlayerContribution(playerRow);
+        updatePlayerBaselineState(playerBaselineState, pKey, contribution);
+      }
 
       updateFormSnapshots(homeFormState, hSignals, hUsageWeek);
       updateFormSnapshots(awayFormState, aSignals, aUsageWeek);
@@ -947,7 +1453,14 @@ export function buildFeatures({
         const delta = K * (outcomeHome - expectedHome);
         elo.set(home, homeElo + delta);
         elo.set(away, awayElo - delta);
+        pushScalarHistory(eloHistory, home, elo.get(home));
+        pushScalarHistory(eloHistory, away, elo.get(away));
       }
+
+      const homeQbrCurrent = maybeNum(latestTeamQBR(qbQbrHistory, home, week));
+      const awayQbrCurrent = maybeNum(latestTeamQBR(qbQbrHistory, away, week));
+      if (homeQbrCurrent != null) pushScalarHistory(qbTrendState, home, homeQbrCurrent);
+      if (awayQbrCurrent != null) pushScalarHistory(qbTrendState, away, awayQbrCurrent);
     }
   }
 

@@ -5,7 +5,8 @@ import {
   loadTeamGameAdvanced,
   listDatasetSeasons,
   loadWeather,
-  loadInjuries
+  loadInjuries,
+  loadMarkets
 } from "./dataSources.js";
 import { buildFeatures, FEATS } from "./featureBuild.js";
 import { writeFileSync, mkdirSync } from "fs";
@@ -86,6 +87,28 @@ function chooseHybridWeight(y, pL, pT){
   }
   return bestW;
 }
+
+function applyOnlineLearning(weights, rows, epochs = 2, baseLr = 2e-3) {
+  if (!Array.isArray(weights) || !weights.length) return weights;
+  const tuned = weights.slice();
+  const ordered = rows
+    .slice()
+    .sort((a, b) => (a.season === b.season ? a.week - b.week : a.season - b.season));
+  let lr = baseLr;
+  for (let epoch = 0; epoch < Math.max(1, epochs); epoch += 1) {
+    for (const row of ordered) {
+      const features = FEATS.map((k) => Number(row[k] ?? 0));
+      const target = Number(row.win ?? 0);
+      const prediction = sigmoid(dot(tuned, features));
+      const error = target - prediction;
+      for (let i = 0; i < tuned.length; i += 1) {
+        tuned[i] += lr * error * (features[i] || 0);
+      }
+    }
+    lr *= 0.9;
+  }
+  return tuned;
+}
 function round3(x){ return Math.round(Number(x)*1000)/1000; }
 
 (async function main(){
@@ -120,6 +143,8 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
     try { weatherRows = await loadWeather(season); } catch (_) {}
     let injuryRows = [];
     try { injuryRows = await loadInjuries(season); } catch (_) {}
+    let marketRows = [];
+    try { marketRows = await loadMarkets(season); } catch (_) {}
     const featRows = buildFeatures({
       teamWeekly,
       teamGame,
@@ -127,7 +152,8 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
       season,
       prevTeamWeekly,
       weather: weatherRows,
-      injuries: injuryRows
+      injuries: injuryRows,
+      markets: marketRows
     });
     allRows.push(...featRows);
     seasonSummaries.push({ season, rows: featRows.length });
@@ -154,6 +180,13 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
   const yL = Matrix.columnVector(yL_raw);
   const logit = new LogisticRegression({ numSteps: 2500, learningRate: 5e-3 });
   logit.train(XL, yL);
+
+  const tunedWeights = applyOnlineLearning(toArray1D(logit.theta || logit.weights), train, 2, 1.5e-3);
+  if (Array.isArray(tunedWeights) && tunedWeights.length === FEATS.length) {
+    const tunedMatrix = Matrix.columnVector(tunedWeights);
+    logit.theta = tunedMatrix;
+    logit.weights = tunedMatrix;
+  }
 
   const { X: Xtest_raw } = Xy(test);
   const pL_train = vectorizeProba(logit.theta || logit.weights, XL_raw);

@@ -18,7 +18,10 @@ const ZERO_SNAPSHOT = Object.freeze({
   ol_out: 0,
   ol_questionable: 0,
   practice_dnp: 0,
-  practice_limited: 0
+  practice_limited: 0,
+  players_out: [],
+  player_positions: {},
+  player_status: {}
 });
 
 const normTeam = (...values) => normalizeTeamCode(...values);
@@ -71,8 +74,32 @@ const cloneSnapshot = (snapshot = ZERO_SNAPSHOT) => ({
   ol_out: snapshot.ol_out || 0,
   ol_questionable: snapshot.ol_questionable || 0,
   practice_dnp: snapshot.practice_dnp || 0,
-  practice_limited: snapshot.practice_limited || 0
+  practice_limited: snapshot.practice_limited || 0,
+  players_out: Array.isArray(snapshot.players_out) ? [...snapshot.players_out] : [],
+  player_positions: snapshot.player_positions ? { ...snapshot.player_positions } : {},
+  player_status: snapshot.player_status ? { ...snapshot.player_status } : {}
 });
+
+const normalizePlayerKey = (row = {}) => {
+  const candidates = [
+    row.gsis_id,
+    row.gsis,
+    row.player_id,
+    row.player,
+    row.player_name,
+    row.esb_id,
+    row.rotowire_id,
+    row.rotowire_player_id
+  ];
+  for (const candidate of candidates) {
+    if (candidate == null) continue;
+    const str = String(candidate).trim();
+    if (str) return str.toUpperCase();
+  }
+  return null;
+};
+
+export { normalizePlayerKey };
 
 export function buildTeamInjuryIndex(rows = [], season) {
   const seasonNum = Number(season);
@@ -85,7 +112,8 @@ export function buildTeamInjuryIndex(rows = [], season) {
     if (!Number.isFinite(week) || week < 1) continue;
     const team = normTeam(row.team, row.team_abbr, row.recent_team, row.club_code);
     if (!team) continue;
-    const player = String(row.player || row.player_name || row.gsis_id || row.esb_id || "").trim();
+    const playerKey = normalizePlayerKey(row);
+    const player = playerKey || String(row.player || row.player_name || "").trim();
     const statusRaw = row.status ?? row.injury_status ?? row.designation ?? "";
     const practiceRaw = row.practice ?? row.practice_status ?? row.practice_notes ?? row.practice_text ?? "";
     const dedupKey = `${seasonNum}|${week}|${team}|${player}|${statusRaw}|${practiceRaw}`;
@@ -116,9 +144,16 @@ export function buildTeamInjuryIndex(rows = [], season) {
     const pos = String(row.position || row.pos || row.player_position || "").toUpperCase();
     const isSkill = KEY_SKILL_POSITIONS.has(pos);
     const isOl = KEY_OFFENSIVE_LINE.has(pos);
+    if (playerKey) {
+      snapshot.player_positions[playerKey] = pos || snapshot.player_positions[playerKey] || null;
+      snapshot.player_status[playerKey] = bucket || snapshot.player_status[playerKey] || null;
+    }
     if (bucket === "out") {
       if (isSkill) snapshot.skill_out += 1;
       if (isOl) snapshot.ol_out += 1;
+      if (playerKey && !snapshot.players_out.includes(playerKey)) {
+        snapshot.players_out.push(playerKey);
+      }
     } else if (bucket) {
       if (isSkill) snapshot.skill_questionable += 1;
       if (isOl) snapshot.ol_questionable += 1;

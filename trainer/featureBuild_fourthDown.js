@@ -1,11 +1,9 @@
 // trainer/featureBuild_fourthDown.js
 // Aggregate fourth-down decision model outputs into team-week features.
 
-const normTeam = (value) => {
-  if (!value) return null;
-  const s = String(value).trim().toUpperCase();
-  return s || null;
-};
+import { normalizeTeamCode } from "./teamCodes.js";
+
+const normTeam = (...values) => normalizeTeamCode(...values);
 
 const toFinite = (value) => {
   const n = Number(value);
@@ -46,7 +44,7 @@ export function aggregateFourthDown({ rows = [], season }) {
     if (Number(row.season) !== seasonNum) continue;
     const week = Number(row.week ?? row.game_week ?? row.week_number);
     if (!Number.isFinite(week)) continue;
-    const team = normTeam(row.posteam ?? row.offense ?? row.team);
+    const team = normTeam(row.posteam, row.offense, row.team);
     if (!team) continue;
 
     const rec = ensure(out, `${seasonNum}-${week}-${team}`);

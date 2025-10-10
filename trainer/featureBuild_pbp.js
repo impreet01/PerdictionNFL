@@ -1,6 +1,8 @@
 // trainer/featureBuild_pbp.js
 // Aggregate play-by-play rows into team-week level EPA and success rate metrics.
 
+import { normalizeTeamCode } from "./teamCodes.js";
+
 const isReg = (v) => {
   if (v == null) return true;
   const s = String(v).trim().toUpperCase();
@@ -12,11 +14,7 @@ const num = (value, def = 0) => {
   return Number.isFinite(n) ? n : def;
 };
 
-const normTeam = (value) => {
-  if (!value) return null;
-  const s = String(value).trim().toUpperCase();
-  return s || null;
-};
+const normTeam = (...values) => normalizeTeamCode(...values);
 
 function ensure(map, key) {
   if (!map.has(key)) {
@@ -75,8 +73,8 @@ export function aggregatePBP({ rows = [], season }) {
     const week = Number(row.week ?? row.game_week ?? row.week_number);
     if (!Number.isFinite(week)) continue;
 
-    const posteam = normTeam(row.posteam ?? row.offense ?? row.offense_team);
-    const defteam = normTeam(row.defteam ?? row.defense ?? row.defense_team);
+    const posteam = normTeam(row.posteam, row.offense, row.offense_team);
+    const defteam = normTeam(row.defteam, row.defense, row.defense_team);
     const epa = num(row.epa, 0);
     const success = successValue(row.success, epa > 0 ? 1 : 0);
     const xyac = toFinite(row.xyac_epa ?? row.xyAC_epa ?? row.xyacepa);

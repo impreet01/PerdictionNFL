@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "fs";
 import { runTraining, writeArtifacts, updateHistoricalArtifacts } from "../train_multi.js";
 import { seedRArtifactsForTests } from "./helpers/rArtifactFixtures.js";
 
-const teams = ["A", "B", "C", "D"];
+const teams = ["AA", "BB", "CC", "DD"];
 
 function makeGame(season, week, home, away, homeScore, awayScore) {
   return {
@@ -58,12 +58,12 @@ async function main() {
   mkdirSync("artifacts", { recursive: true });
   await seedRArtifactsForTests();
   const schedules = [
-    makeGame(season, 1, "A", "B", 24, 20),
-    makeGame(season, 1, "C", "D", 17, 21),
-    makeGame(season, 2, "A", "C", 30, 27),
-    makeGame(season, 2, "B", "D", 10, 14),
-    makeGame(season, 3, "A", "D", 28, 31),
-    makeGame(season, 3, "B", "C", 24, 17)
+    makeGame(season, 1, "AA", "BB", 24, 20),
+    makeGame(season, 1, "CC", "DD", 17, 21),
+    makeGame(season, 2, "AA", "CC", 30, 27),
+    makeGame(season, 2, "BB", "DD", 10, 14),
+    makeGame(season, 3, "AA", "DD", 28, 31),
+    makeGame(season, 3, "BB", "CC", 24, 17)
   ];
   const teamWeekly = [];
   const teamGame = [];

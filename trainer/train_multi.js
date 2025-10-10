@@ -28,6 +28,7 @@ import { DecisionTreeClassifier as CART } from "ml-cart";
 import { Matrix, SVD } from "ml-matrix";
 import { logLoss, brier, accuracy, aucRoc, calibrationBins } from "./metrics.js";
 import { buildSeasonDB, attachAdvWeeklyDiff } from "./databases.js";
+import { normalizeTeamCode } from "./teamCodes.js";
 
 const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 
@@ -557,12 +558,6 @@ function ensureArray(arr, len, fill = 0.5) {
 
 const makeGameId = (row) =>
   `${row.season}-W${String(row.week).padStart(2, "0")}-${row.team}-${row.opponent}`;
-
-const normalizeTeamCode = (value) => {
-  if (!value) return null;
-  const str = String(value).trim().toUpperCase();
-  return str || null;
-};
 
 const isRegularSeason = (value) => {
   if (value == null) return true;

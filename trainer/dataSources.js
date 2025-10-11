@@ -1036,10 +1036,19 @@ export async function loadRostersWeekly(season){
   return cached(caches.rosterWeekly, y, async()=>{
     const resolved = await resolveDatasetUrl('rosterWeekly', y, REL.rosterWeekly);
     const targetUrl = resolved?.url ?? REL.rosterWeekly(y);
-    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
-    sanityCheckRows('rosterWeekly', rows);
-    console.log(`[loadRostersWeekly] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
-    return rows;
+    try {
+      const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
+      sanityCheckRows('rosterWeekly', rows);
+      console.log(`[loadRostersWeekly] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
+      return rows;
+    } catch (err) {
+      const msg = err?.message || String(err);
+      if (msg.includes('404')) {
+        console.warn(`[loadRostersWeekly] missing data for season ${y} at ${targetUrl}: ${msg}`);
+        return [];
+      }
+      throw err;
+    }
   });
 }
 export async function loadDepthCharts(season){

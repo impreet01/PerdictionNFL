@@ -1188,11 +1188,20 @@ export async function loadPBP(season){
   const loader = async()=>{
     const resolved = await resolveDatasetUrl('pbp', y, REL.pbp);
     const targetUrl = resolved?.url ?? REL.pbp(y);
-    const { rows, checksum } = await fetchPbpSeason(targetUrl, y);
-    sanityCheckRows('pbp', rows);
-    const source = resolved?.url ?? targetUrl;
-    console.log(`[loadPBP] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
-    return rows;
+    try {
+      const { rows, checksum } = await fetchPbpSeason(targetUrl, y);
+      sanityCheckRows('pbp', rows);
+      const source = resolved?.url ?? targetUrl;
+      console.log(`[loadPBP] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
+      return rows;
+    } catch (err) {
+      const msg = err?.message || String(err);
+      if (msg.includes('404')) {
+        console.warn(`[loadPBP] missing data for season ${y} at ${targetUrl}: ${msg}`);
+        return [];
+      }
+      throw err;
+    }
   };
   if (PBP_CACHE_LIMIT === 0) {
     if (caches.pbp.size) caches.pbp.clear();

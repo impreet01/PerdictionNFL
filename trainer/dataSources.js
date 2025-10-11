@@ -3,8 +3,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { parse } from 'csv-parse/sync';
+import { parse as parseStream } from 'csv-parse';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
+import { Readable, Transform } from 'node:stream';
+import { pipeline as streamPipeline } from 'node:stream/promises';
 
 import { getDataConfig } from './config.js';
 
@@ -397,6 +400,83 @@ export async function fetchCsvFlexible(url){
   const txt = decoded.toString('utf8');
   const rows = parse(txt, { columns:true, skip_empty_lines:true, relax_column_count:true, trim:true });
   return { rows, source:url, checksum };
+}
+
+function normalizeSuccessFlag(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? (value > 0 ? 1 : 0) : null;
+  const str = String(value).trim();
+  if (!str) return null;
+  if (/^(true|t|yes|y)$/i.test(str)) return 1;
+  if (/^(false|f|no|n)$/i.test(str)) return 0;
+  const num = Number(str);
+  if (Number.isFinite(num)) return num > 0 ? 1 : 0;
+  return null;
+}
+
+function mapPbpRow(raw, seasonFilter) {
+  const season = toInt(raw.season ?? raw.game_season ?? raw.year);
+  if (season == null || (seasonFilter != null && season !== seasonFilter)) return null;
+  const week = toInt(raw.week ?? raw.game_week ?? raw.week_number);
+  if (week == null) return null;
+
+  const out = { season, week };
+  const seasonType = raw.season_type ?? raw.game_type ?? null;
+  if (seasonType != null && seasonType !== '') out.season_type = seasonType;
+
+  for (const key of ['posteam', 'offense', 'offense_team', 'defteam', 'defense', 'defense_team']) {
+    const val = raw[key];
+    if (val != null && val !== '') out[key] = val;
+  }
+
+  const epa = Number(raw.epa);
+  if (Number.isFinite(epa)) out.epa = epa;
+
+  const success = normalizeSuccessFlag(raw.success);
+  if (success != null) out.success = success;
+
+  return out;
+}
+
+async function fetchPbpSeason(url, season) {
+  let buf = await fetchBuffer(url);
+  const rows = [];
+  const hash = crypto.createHash('sha256');
+  const parser = parseStream({
+    columns: true,
+    skip_empty_lines: true,
+    relax_column_count: true,
+    trim: true
+  });
+
+  parser.on('readable', () => {
+    let record;
+    while ((record = parser.read()) !== null) {
+      const filtered = mapPbpRow(record, season);
+      if (filtered) rows.push(filtered);
+    }
+  });
+
+  const hashingStream = new Transform({
+    transform(chunk, enc, cb) {
+      hash.update(chunk);
+      cb(null, chunk);
+    }
+  });
+
+  const streams = [Readable.from(buf)];
+  if (isGz(url)) streams.push(zlib.createGunzip());
+  streams.push(hashingStream, parser);
+
+  try {
+    await streamPipeline(...streams);
+  } finally {
+    buf = null;
+  }
+
+  const checksum = hash.digest('hex');
+  return { rows, checksum };
 }
 
 const ALL_SCHEDULES_KEY = Symbol('schedules-all');
@@ -1108,8 +1188,9 @@ export async function loadPBP(season){
   const loader = async()=>{
     const resolved = await resolveDatasetUrl('pbp', y, REL.pbp);
     const targetUrl = resolved?.url ?? REL.pbp(y);
-    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
+    const { rows, checksum } = await fetchPbpSeason(targetUrl, y);
     sanityCheckRows('pbp', rows);
+    const source = resolved?.url ?? targetUrl;
     console.log(`[loadPBP] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
   };

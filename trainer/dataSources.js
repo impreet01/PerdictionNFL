@@ -418,10 +418,40 @@ export const caches = {
   weather:     new Map(),
 };
 
-async function cached(store,key,loader){
-  if(store.has(key)) return store.get(key);
+function parseCacheLimit(value, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  if (num <= 0) return 0;
+  return Math.floor(num);
+}
+
+const PBP_CACHE_LIMIT = parseCacheLimit(process.env.PBP_CACHE_LIMIT, 2);
+
+function enforceCacheLimit(store, limit) {
+  if (!Number.isFinite(limit) || limit <= 0) return;
+  const normalized = Math.floor(limit);
+  while (store.size > normalized) {
+    const oldest = store.keys().next().value;
+    if (oldest === undefined) break;
+    store.delete(oldest);
+  }
+}
+
+async function cached(store, key, loader, options = {}) {
+  if (store.has(key)) return store.get(key);
   const val = await loader();
-  store.set(key,val);
+  store.set(key, val);
+  const { maxSize } = options;
+  if (maxSize != null) {
+    const limit = Number(maxSize);
+    if (Number.isFinite(limit)) {
+      if (limit <= 0) {
+        store.delete(key);
+      } else {
+        enforceCacheLimit(store, limit);
+      }
+    }
+  }
   return val;
 }
 
@@ -1075,14 +1105,19 @@ export async function loadFTNCharts(season){
 }
 export async function loadPBP(season){
   const y = toInt(season); if(y==null) throw new Error('loadPBP season');
-  return cached(caches.pbp, y, async()=>{
+  const loader = async()=>{
     const resolved = await resolveDatasetUrl('pbp', y, REL.pbp);
     const targetUrl = resolved?.url ?? REL.pbp(y);
     const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
     sanityCheckRows('pbp', rows);
     console.log(`[loadPBP] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
-  });
+  };
+  if (PBP_CACHE_LIMIT === 0) {
+    if (caches.pbp.size) caches.pbp.clear();
+    return loader();
+  }
+  return cached(caches.pbp, y, loader, { maxSize: PBP_CACHE_LIMIT });
 }
 
 // ---------- PFR advanced weekly (merge rush/def/pass/rec) ----------

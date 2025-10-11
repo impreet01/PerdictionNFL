@@ -42,6 +42,17 @@ const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
 
+const DEFAULT_MIN_TRAIN_SEASON = 2020;
+const DEFAULT_MAX_TRAIN_SEASONS = Number.POSITIVE_INFINITY;
+
+const envMinSeason = Number(process.env.MIN_TRAIN_SEASON);
+const MIN_TRAIN_SEASON = Number.isFinite(envMinSeason) ? envMinSeason : DEFAULT_MIN_TRAIN_SEASON;
+
+const envMaxSeasons = Number(process.env.MAX_TRAIN_SEASONS);
+const MAX_TRAIN_SEASONS = Number.isFinite(envMaxSeasons) && envMaxSeasons > 0
+  ? envMaxSeasons
+  : DEFAULT_MAX_TRAIN_SEASONS;
+
 const HISTORICAL_ARTIFACT_PREFIXES = [
   "predictions",
   "context",
@@ -632,9 +643,14 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   if (data.prevTeamWeekly !== undefined) {
     prevTeamWeekly = data.prevTeamWeekly;
   } else {
-    try {
-      prevTeamWeekly = await loadTeamWeekly(resolvedSeason - 1);
-    } catch (e) {
+    const prevSeason = resolvedSeason - 1;
+    if (prevSeason >= MIN_TRAIN_SEASON) {
+      try {
+        prevTeamWeekly = await loadTeamWeekly(prevSeason);
+      } catch (e) {
+        prevTeamWeekly = [];
+      }
+    } else {
       prevTeamWeekly = [];
     }
   }
@@ -1446,9 +1462,14 @@ async function loadSeasonData(season) {
   }
 
   let prevTeamWeekly;
-  try {
-    prevTeamWeekly = await loadTeamWeekly(season - 1);
-  } catch (err) {
+  const prevSeason = season - 1;
+  if (prevSeason >= MIN_TRAIN_SEASON) {
+    try {
+      prevTeamWeekly = await loadTeamWeekly(prevSeason);
+    } catch (err) {
+      prevTeamWeekly = [];
+    }
+  } else {
     prevTeamWeekly = [];
   }
 
@@ -1547,6 +1568,8 @@ async function main() {
     seasonsInScope = await resolveSeasonList({
       targetSeason,
       includeAll: true,
+      sinceSeason: MIN_TRAIN_SEASON,
+      maxSeasons: Number.isFinite(MAX_TRAIN_SEASONS) ? MAX_TRAIN_SEASONS : null,
       availableSeasons: discoveredSeasons
     });
   }

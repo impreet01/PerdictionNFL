@@ -1,0 +1,170 @@
+[
+  {
+    "game_id": "2022-W21-PHI-SF",
+    "home_team": "PHI",
+    "away_team": "SF",
+    "season": 2022,
+    "week": 21,
+    "forecast": 0.581,
+    "probs": {
+      "logistic": 0.376,
+      "tree": 0.946,
+      "bt": 1,
+      "ann": 0.502,
+      "blended": 0.581
+    },
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.575,
+      "post": 0.581
+    },
+    "ci": {
+      "bt90": [
+        1,
+        1
+      ]
+    },
+    "natural_language": "PHI vs SF: logistic 37.574%, tree 94.643%, BT 99.991%, ANN 50.231%, blended 58.145%. Key differentials: Total yards edge +23.75 (favorable); Turnovers edge +17.63 (favorable); Penalty yards deficit 2.20 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 0.8996613177881592,
+        "source": "logit"
+      },
+      {
+        "feature": "def_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 0.707032798268884,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "positive",
+        "magnitude": 0.5249956779229865,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLRLRL",
+        "direction": "positive",
+        "magnitude": 0.4464285714285714,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.25813271224663104,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.015916268458911708,
+        "source": "bt"
+      },
+      {
+        "feature": "RB rush share (exp)",
+        "direction": "negative",
+        "magnitude": 0.000011826985042053833,
+        "source": "ann"
+      },
+      {
+        "feature": "qb_qbr",
+        "direction": "negative",
+        "magnitude": 0.000010650931501811877,
+        "source": "ann"
+      }
+    ],
+    "actual": 1,
+    "forecast_hybrid_v2": 0.5960035281943437
+  },
+  {
+    "game_id": "2022-W21-KC-CIN",
+    "home_team": "KC",
+    "away_team": "CIN",
+    "season": 2022,
+    "week": 21,
+    "forecast": 0.872,
+    "probs": {
+      "logistic": 0.828,
+      "tree": 0.946,
+      "bt": 0.997,
+      "ann": 0.502,
+      "blended": 0.872
+    },
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.87,
+      "post": 0.872
+    },
+    "ci": {
+      "bt90": [
+        0.997,
+        0.997
+      ]
+    },
+    "natural_language": "KC vs CIN: logistic 82.822%, tree 94.643%, BT 99.719%, ANN 50.231%, blended 87.234%. Key differentials: Total yards edge +47.78 (favorable); Turnovers edge +11.50 (favorable); Penalty yards edge +10.78 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 0.9044390849334695,
+        "source": "logit"
+      },
+      {
+        "feature": "offensive EPA/play (3wk)",
+        "direction": "positive",
+        "magnitude": 0.7101469548500594,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "positive",
+        "magnitude": 0.5249956779229865,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLRLRL",
+        "direction": "positive",
+        "magnitude": 0.4464285714285714,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.5341702439113898,
+        "source": "bt"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "negative",
+        "magnitude": 0.06690329338474105,
+        "source": "bt"
+      },
+      {
+        "feature": "RB rush share (exp)",
+        "direction": "negative",
+        "magnitude": 0.00001186546479495328,
+        "source": "ann"
+      },
+      {
+        "feature": "qb_qbr",
+        "direction": "negative",
+        "magnitude": 0.000010762571916526117,
+        "source": "ann"
+      }
+    ],
+    "actual": 1,
+    "forecast_hybrid_v2": 0.6844885322250726
+  }
+]

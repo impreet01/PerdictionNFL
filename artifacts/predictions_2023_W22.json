@@ -1,0 +1,86 @@
+[
+  {
+    "game_id": "2023-W22-KC-SF",
+    "home_team": "KC",
+    "away_team": "SF",
+    "season": 2023,
+    "week": 22,
+    "forecast": 0.121,
+    "probs": {
+      "logistic": 0.087,
+      "tree": 0.625,
+      "bt": 0.373,
+      "ann": 0.501,
+      "blended": 0.121
+    },
+    "blend_weights": {
+      "logistic": 0.95,
+      "tree": 0,
+      "bt": 0,
+      "ann": 0.05
+    },
+    "calibration": {
+      "pre": 0.108,
+      "post": 0.121
+    },
+    "ci": {
+      "bt90": [
+        0.207,
+        0.55
+      ]
+    },
+    "natural_language": "KC vs SF: logistic 8.708%, tree 62.5%, BT 37.253%, ANN 50.14%, blended 12.128%. Key differentials: Turnovers edge +167.73 (favorable); Total yards deficit 44.60 (needs attention); Penalty yards deficit 7.78 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "defensive success rate allowed (3wk)",
+        "direction": "positive",
+        "magnitude": 2.437680712100261,
+        "source": "logit"
+      },
+      {
+        "feature": "offensive success rate (3wk)",
+        "direction": "negative",
+        "magnitude": 1.90793226710772,
+        "source": "logit"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 1.2991291514306096,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RRLLLL",
+        "direction": "positive",
+        "magnitude": 0.125,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "negative",
+        "magnitude": 0.3183778151257833,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.036162647669958935,
+        "source": "bt"
+      },
+      {
+        "feature": "RB rush share (exp)",
+        "direction": "negative",
+        "magnitude": 0.000012720906111461906,
+        "source": "ann"
+      },
+      {
+        "feature": "qb_qbr",
+        "direction": "negative",
+        "magnitude": 0.000010014133414342971,
+        "source": "ann"
+      }
+    ],
+    "actual": 1,
+    "forecast_hybrid_v2": 0.6039388161375785
+  }
+]

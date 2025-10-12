@@ -1,0 +1,170 @@
+[
+  {
+    "game_id": "2023-W21-BAL-KC",
+    "home_team": "BAL",
+    "away_team": "KC",
+    "season": 2023,
+    "week": 21,
+    "forecast": 0.338,
+    "probs": {
+      "logistic": 0.312,
+      "tree": 0.222,
+      "bt": 0.96,
+      "ann": 0.505,
+      "blended": 0.338
+    },
+    "blend_weights": {
+      "logistic": 0.85,
+      "tree": 0.1,
+      "bt": 0,
+      "ann": 0.05
+    },
+    "calibration": {
+      "pre": 0.312,
+      "post": 0.338
+    },
+    "ci": {
+      "bt90": [
+        0.96,
+        0.96
+      ]
+    },
+    "natural_language": "BAL vs KC: logistic 31.151%, tree 22.222%, BT 96.016%, ANN 50.477%, blended 33.776%. Key differentials: Turnovers deficit 490.02 (needs attention); Total yards edge +19.51 (favorable); Penalty yards edge +6.26 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 1.2478181278503468,
+        "source": "logit"
+      },
+      {
+        "feature": "offensive EPA/play (3wk)",
+        "direction": "negative",
+        "magnitude": 0.7240984726449363,
+        "source": "logit"
+      },
+      {
+        "feature": "off_turnovers_s2d_minus_opp",
+        "direction": "positive",
+        "magnitude": 0.5261638833596302,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLLRRR",
+        "direction": "negative",
+        "magnitude": 0.2777777777777778,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.1354658285246902,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "positive",
+        "magnitude": 0.11687579885460767,
+        "source": "bt"
+      },
+      {
+        "feature": "yards allowed",
+        "direction": "positive",
+        "magnitude": 0.000013991061491736943,
+        "source": "ann"
+      },
+      {
+        "feature": "qb_qbr",
+        "direction": "negative",
+        "magnitude": 0.00001229871317584771,
+        "source": "ann"
+      }
+    ],
+    "actual": 0,
+    "forecast_hybrid_v2": 0.6847752762346201
+  },
+  {
+    "game_id": "2023-W21-SF-DET",
+    "home_team": "SF",
+    "away_team": "DET",
+    "season": 2023,
+    "week": 21,
+    "forecast": 0.462,
+    "probs": {
+      "logistic": 0.459,
+      "tree": 0.182,
+      "bt": 0.033,
+      "ann": 0.505,
+      "blended": 0.462
+    },
+    "blend_weights": {
+      "logistic": 0.85,
+      "tree": 0.1,
+      "bt": 0,
+      "ann": 0.05
+    },
+    "calibration": {
+      "pre": 0.433,
+      "post": 0.462
+    },
+    "ci": {
+      "bt90": [
+        0.033,
+        0.033
+      ]
+    },
+    "natural_language": "SF vs DET: logistic 45.853%, tree 18.182%, BT 3.306%, ANN 50.473%, blended 46.193%. Key differentials: Turnovers edge +18.92 (favorable); Penalty yards edge +9.39 (needs attention); Total yards edge +3.27 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 0.9825673429502121,
+        "source": "logit"
+      },
+      {
+        "feature": "off_turnovers_s2d_minus_opp",
+        "direction": "positive",
+        "magnitude": 0.6359110838828667,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "positive",
+        "magnitude": 0.5085212669258664,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RRRRL",
+        "direction": "negative",
+        "magnitude": 0.3181818181818182,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.020217625621512934,
+        "source": "bt"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "negative",
+        "magnitude": 0.01687432873887726,
+        "source": "bt"
+      },
+      {
+        "feature": "yards allowed",
+        "direction": "positive",
+        "magnitude": 0.000013883322716716212,
+        "source": "ann"
+      },
+      {
+        "feature": "RB rush share (exp)",
+        "direction": "negative",
+        "magnitude": 0.000012354786479269006,
+        "source": "ann"
+      }
+    ],
+    "actual": 1,
+    "forecast_hybrid_v2": 0.6863057162724516
+  }
+]

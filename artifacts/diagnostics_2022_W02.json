@@ -1,0 +1,123 @@
+{
+  "season": 2022,
+  "week": 2,
+  "metrics": {
+    "logistic": {
+      "logloss": 0.48833323999746686,
+      "brier": 0.1712787421134111,
+      "auc": 0.9074074074074074,
+      "accuracy": 0.7333333333333333
+    },
+    "tree": {
+      "logloss": 0.6998796559558876,
+      "brier": 0.2533240997229917,
+      "auc": 0.3888888888888889,
+      "accuracy": 0.4
+    },
+    "bt": {
+      "logloss": 1.2483331363205197,
+      "brier": 0.4267441672018081,
+      "auc": 0.24074074074074073,
+      "accuracy": 0.4666666666666667
+    },
+    "ann": {
+      "logloss": 0.6931661987904156,
+      "brier": 0.2500095090604729,
+      "auc": 0.37037037037037035,
+      "accuracy": 0.4
+    },
+    "ensemble": {
+      "logloss": 0.47009328077370627,
+      "brier": 0.16202393478194166,
+      "auc": 0.9074074074074074,
+      "accuracy": 0.7333333333333333
+    }
+  },
+  "blend_weights": {
+    "logistic": 0.9006622516556292,
+    "tree": 0,
+    "bt": 0,
+    "ann": 0.09933774834437072
+  },
+  "calibration_beta": 0.21506073920214508,
+  "calibration_bins": [
+    {
+      "bin": 0,
+      "lower": 0,
+      "upper": 0.1,
+      "p_mean": 0.06933661908507645,
+      "y_rate": 0,
+      "n": 6
+    },
+    {
+      "bin": 1,
+      "lower": 0.1,
+      "upper": 0.2,
+      "p_mean": 0.12985033097687812,
+      "y_rate": 0.5,
+      "n": 2
+    },
+    {
+      "bin": 3,
+      "lower": 0.3,
+      "upper": 0.4,
+      "p_mean": 0.3148794907881355,
+      "y_rate": 1,
+      "n": 1
+    },
+    {
+      "bin": 6,
+      "lower": 0.6,
+      "upper": 0.7,
+      "p_mean": 0.6178500563939539,
+      "y_rate": 0,
+      "n": 1
+    },
+    {
+      "bin": 7,
+      "lower": 0.7,
+      "upper": 0.8,
+      "p_mean": 0.7699559869564012,
+      "y_rate": 1,
+      "n": 1
+    },
+    {
+      "bin": 8,
+      "lower": 0.8,
+      "upper": 0.9,
+      "p_mean": 0.8609944711014241,
+      "y_rate": 0,
+      "n": 1
+    },
+    {
+      "bin": 9,
+      "lower": 0.9,
+      "upper": 1,
+      "p_mean": 0.9201999536725648,
+      "y_rate": 1,
+      "n": 3
+    }
+  ],
+  "n_train_rows": 15,
+  "weeks_seen": 1,
+  "training_weeks": [
+    1
+  ],
+  "ann_details": {
+    "committee_size": 5,
+    "seeds": [
+      4,
+      2,
+      5,
+      3,
+      1
+    ]
+  },
+  "oof_variance": {
+    "ann": {
+      "mean": 0.49830300011839757,
+      "var": 0.0000024771188580145346
+    }
+  },
+  "error_notes": "No standout feature-level errors detected for the latest completed week."
+}

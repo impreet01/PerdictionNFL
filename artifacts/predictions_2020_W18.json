@@ -1,0 +1,506 @@
+[
+  {
+    "game_id": "2020-W18-BUF-IND",
+    "home_team": "BUF",
+    "away_team": "IND",
+    "season": 2020,
+    "week": 18,
+    "forecast": 0.941,
+    "probs": {
+      "logistic": 0.931,
+      "tree": 0.958,
+      "bt": 0.999,
+      "ann": 0.5,
+      "blended": 0.941
+    },
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.941,
+      "post": 0.941
+    },
+    "ci": {
+      "bt90": [
+        0.999,
+        0.999
+      ]
+    },
+    "natural_language": "BUF vs IND: logistic 93.091%, tree 95.833%, BT 99.92%, ANN 49.997%, blended 94.116%. Key differentials: Turnovers edge +25.06 (favorable); Total yards edge +20.44 (favorable); Penalty yards edge +2.63 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 0.9404019791102828,
+        "source": "logit"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 0.895835185769343,
+        "source": "logit"
+      },
+      {
+        "feature": "offensive EPA/play (3wk)",
+        "direction": "positive",
+        "magnitude": 0.831312077390122,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf L",
+        "direction": "positive",
+        "magnitude": 0.45833333333333337,
+        "source": "tree"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.14867103987132624,
+        "source": "bt"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.07528671420412517,
+        "source": "bt"
+      },
+      {
+        "feature": "RB rush share (exp)",
+        "direction": "negative",
+        "magnitude": 0.000013401508017973706,
+        "source": "ann"
+      },
+      {
+        "feature": "qb_qbr",
+        "direction": "negative",
+        "magnitude": 0.000010847177292705766,
+        "source": "ann"
+      }
+    ],
+    "actual": 1,
+    "forecast_hybrid_v2": 0.7125102857903064
+  },
+  {
+    "game_id": "2020-W18-SEA-LA",
+    "home_team": "SEA",
+    "away_team": "LA",
+    "season": 2020,
+    "week": 18,
+    "forecast": 0.321,
+    "probs": {
+      "logistic": 0.386,
+      "tree": 0.195,
+      "bt": 0.532,
+      "ann": 0.5,
+      "blended": 0.321
+    },
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.319,
+      "post": 0.321
+    },
+    "ci": {
+      "bt90": [
+        0.529,
+        0.568
+      ]
+    },
+    "natural_language": "SEA vs LA: logistic 38.552%, tree 19.481%, BT 53.162%, ANN 49.993%, blended 32.133%. Key differentials: Turnovers deficit 69.44 (needs attention); Total yards edge +0.94 (favorable); Penalty yards edge +0.44 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "diff_pass_times_sacked",
+        "direction": "negative",
+        "magnitude": 0.9577647000271466,
+        "source": "logit"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 0.895835185769343,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 0.7428977421421511,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RRRRLR",
+        "direction": "negative",
+        "magnitude": 0.3051948051948052,
+        "source": "tree"
+      },
+      {
+        "feature": "turnover differential",
+        "direction": "positive",
+        "magnitude": 0.04531013023060678,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.01275917785089164,
+        "source": "bt"
+      },
+      {
+        "feature": "RB rush share (exp)",
+        "direction": "negative",
+        "magnitude": 0.000013274009290902512,
+        "source": "ann"
+      },
+      {
+        "feature": "qb_qbr",
+        "direction": "negative",
+        "magnitude": 0.000011164500281549084,
+        "source": "ann"
+      }
+    ],
+    "actual": 0,
+    "forecast_hybrid_v2": 0.5517498430067445
+  },
+  {
+    "game_id": "2020-W18-WAS-TB",
+    "home_team": "WAS",
+    "away_team": "TB",
+    "season": 2020,
+    "week": 18,
+    "forecast": 0.275,
+    "probs": {
+      "logistic": 0.273,
+      "tree": 0.273,
+      "bt": 1,
+      "ann": 0.5,
+      "blended": 0.275
+    },
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.273,
+      "post": 0.275
+    },
+    "ci": {
+      "bt90": [
+        1,
+        1
+      ]
+    },
+    "natural_language": "WAS vs TB: logistic 27.327%, tree 27.273%, BT 100%, ANN 49.997%, blended 27.542%. Key differentials: Turnovers edge +244.63 (favorable); Total yards deficit 55.50 (needs attention); Penalty yards deficit 1.13 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "off_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 0.9474049987605411,
+        "source": "logit"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 0.49471495333530885,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 0.4601187837901264,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RRLR",
+        "direction": "negative",
+        "magnitude": 0.2272727272727273,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "negative",
+        "magnitude": 0.2260110260133976,
+        "source": "bt"
+      },
+      {
+        "feature": "turnover differential",
+        "direction": "negative",
+        "magnitude": 0.17299238686515644,
+        "source": "bt"
+      },
+      {
+        "feature": "RB rush share (exp)",
+        "direction": "negative",
+        "magnitude": 0.000013295128554640104,
+        "source": "ann"
+      },
+      {
+        "feature": "qb_qbr",
+        "direction": "negative",
+        "magnitude": 0.000011197506701633625,
+        "source": "ann"
+      }
+    ],
+    "actual": 0,
+    "forecast_hybrid_v2": 0.5388758522161143
+  },
+  {
+    "game_id": "2020-W18-TEN-BAL",
+    "home_team": "TEN",
+    "away_team": "BAL",
+    "season": 2020,
+    "week": 18,
+    "forecast": 0.918,
+    "probs": {
+      "logistic": 0.966,
+      "tree": 0.828,
+      "bt": 0.606,
+      "ann": 0.5,
+      "blended": 0.918
+    },
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.918,
+      "post": 0.918
+    },
+    "ci": {
+      "bt90": [
+        0.606,
+        0.606
+      ]
+    },
+    "natural_language": "TEN vs BAL: logistic 96.606%, tree 82.759%, BT 60.606%, ANN 49.999%, blended 91.848%. Key differentials: Turnovers deficit 267.56 (needs attention); Total yards edge +32.88 (favorable); Penalty yards deficit 11.13 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 1.09639530198636,
+        "source": "logit"
+      },
+      {
+        "feature": "diff_pass_times_sacked",
+        "direction": "positive",
+        "magnitude": 0.7977069873541464,
+        "source": "logit"
+      },
+      {
+        "feature": "off_rush_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.71278737201242,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RRLLRR",
+        "direction": "positive",
+        "magnitude": 0.3275862068965517,
+        "source": "tree"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.2624276180889285,
+        "source": "bt"
+      },
+      {
+        "feature": "turnover differential",
+        "direction": "positive",
+        "magnitude": 0.1830253499706206,
+        "source": "bt"
+      },
+      {
+        "feature": "RB rush share (exp)",
+        "direction": "negative",
+        "magnitude": 0.000012782602269293128,
+        "source": "ann"
+      },
+      {
+        "feature": "qb_qbr",
+        "direction": "negative",
+        "magnitude": 0.00001099669885362447,
+        "source": "ann"
+      }
+    ],
+    "actual": 0,
+    "forecast_hybrid_v2": 0.7071629003944988
+  },
+  {
+    "game_id": "2020-W18-NO-CHI",
+    "home_team": "NO",
+    "away_team": "CHI",
+    "season": 2020,
+    "week": 18,
+    "forecast": 0.936,
+    "probs": {
+      "logistic": 0.994,
+      "tree": 0.828,
+      "bt": 0.002,
+      "ann": 0.5,
+      "blended": 0.936
+    },
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.936,
+      "post": 0.936
+    },
+    "ci": {
+      "bt90": [
+        0.002,
+        0.002
+      ]
+    },
+    "natural_language": "NO vs CHI: logistic 99.382%, tree 82.759%, BT 0.158%, ANN 50.001%, blended 93.634%. Key differentials: Turnovers deficit 482.38 (needs attention); Total yards edge +39.88 (favorable); Penalty yards edge +14.25 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 1.497515534420394,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 0.7465391679210196,
+        "source": "logit"
+      },
+      {
+        "feature": "offensive EPA/play (3wk)",
+        "direction": "positive",
+        "magnitude": 0.685892704272314,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RRLLRR",
+        "direction": "positive",
+        "magnitude": 0.3275862068965517,
+        "source": "tree"
+      },
+      {
+        "feature": "turnover differential",
+        "direction": "positive",
+        "magnitude": 0.3323399273354242,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "positive",
+        "magnitude": 0.19867043615391347,
+        "source": "bt"
+      },
+      {
+        "feature": "RB rush share (exp)",
+        "direction": "negative",
+        "magnitude": 0.000013188588483589253,
+        "source": "ann"
+      },
+      {
+        "feature": "qb_qbr",
+        "direction": "negative",
+        "magnitude": 0.000010942858616778037,
+        "source": "ann"
+      }
+    ],
+    "actual": 1,
+    "forecast_hybrid_v2": 0.7113527739046751
+  },
+  {
+    "game_id": "2020-W18-PIT-CLE",
+    "home_team": "PIT",
+    "away_team": "CLE",
+    "season": 2020,
+    "week": 18,
+    "forecast": 0.136,
+    "probs": {
+      "logistic": 0.102,
+      "tree": 0.195,
+      "bt": 0,
+      "ann": 0.5,
+      "blended": 0.136
+    },
+    "blend_weights": {
+      "logistic": 0.65,
+      "tree": 0.35,
+      "bt": 0,
+      "ann": 0
+    },
+    "calibration": {
+      "pre": 0.135,
+      "post": 0.136
+    },
+    "ci": {
+      "bt90": [
+        0,
+        0
+      ]
+    },
+    "natural_language": "PIT vs CLE: logistic 10.231%, tree 19.481%, BT 0.04%, ANN 49.995%, blended 13.606%. Key differentials: Turnovers edge +181.69 (favorable); Total yards deficit 37.19 (needs attention); Penalty yards deficit 11.19 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 1.2969554182033771,
+        "source": "logit"
+      },
+      {
+        "feature": "off_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 0.808800136635505,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 0.7333287489608684,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RRRRLR",
+        "direction": "negative",
+        "magnitude": 0.3051948051948052,
+        "source": "tree"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.38353905664794236,
+        "source": "bt"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "negative",
+        "magnitude": 0.15335239401032422,
+        "source": "bt"
+      },
+      {
+        "feature": "RB rush share (exp)",
+        "direction": "negative",
+        "magnitude": 0.000013153406344898438,
+        "source": "ann"
+      },
+      {
+        "feature": "qb_qbr",
+        "direction": "negative",
+        "magnitude": 0.00001134130604669806,
+        "source": "ann"
+      }
+    ],
+    "actual": 0,
+    "forecast_hybrid_v2": 0.49972823015252504
+  }
+]

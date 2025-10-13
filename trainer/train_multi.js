@@ -592,9 +592,17 @@ const isRegularSeason = (value) => {
 const scheduleGameId = (season, week, home, away) =>
   `${season}-W${String(week).padStart(2, "0")}-${home}-${away}`;
 
+const parseScore = (value) => {
+  if (value == null) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  const num = Number(str);
+  return Number.isFinite(num) ? num : null;
+};
+
 const scheduleScores = (game) => {
-  const hs = Number(game.home_score ?? game.home_points ?? game.home_pts);
-  const as = Number(game.away_score ?? game.away_points ?? game.away_pts);
+  const hs = parseScore(game.home_score ?? game.home_points ?? game.home_pts);
+  const as = parseScore(game.away_score ?? game.away_points ?? game.away_pts);
   if (!Number.isFinite(hs) || !Number.isFinite(as)) return null;
   return { hs, as };
 };

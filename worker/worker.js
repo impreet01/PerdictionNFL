@@ -7,7 +7,7 @@ const REPO_NAME = "PerdictionNFL";
 const BRANCH = "main";
 
 const RAW_BASE = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/${BRANCH}/artifacts`;
-const GH_API_LIST = `https://api.github.com/repos/${REPO_USER}/${REPO_NAME}/contents/artifacts?ref=${BRANCH}`;
+const GH_TREE_API = `https://api.github.com/repos/${REPO_USER}/${REPO_NAME}/git/trees/${BRANCH}?recursive=1`;
 const CACHE_TTL = 900;
 const GH_HEADERS = { "User-Agent": "cf-worker" };
 
@@ -52,15 +52,32 @@ const coerceInt = (value) => {
 };
 
 async function listArtifacts() {
-  const resp = await fetch(GH_API_LIST, { headers: GH_HEADERS });
+  const resp = await fetch(GH_TREE_API, { headers: GH_HEADERS });
   if (!resp.ok) {
     throw new HttpError(resp.status || 502, `GitHub API list failed: ${resp.status}`);
   }
+
+  let body;
   try {
-    return await resp.json();
+    body = await resp.json();
   } catch (err) {
     throw new HttpError(502, "Failed to parse GitHub listing");
   }
+
+  if (!body || typeof body !== "object" || !Array.isArray(body.tree)) {
+    throw new HttpError(502, "Unexpected GitHub tree response");
+  }
+
+  if (body.truncated) {
+    throw new HttpError(502, "GitHub tree listing truncated; cannot load artifacts");
+  }
+
+  return body.tree
+    .filter((item) => item?.type === "blob" && item?.path?.startsWith("artifacts/"))
+    .map((item) => ({
+      type: "file",
+      name: item.path.slice("artifacts/".length)
+    }));
 }
 
 function parseWeekFiles(listing, prefix) {

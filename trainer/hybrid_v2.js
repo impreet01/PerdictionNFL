@@ -295,8 +295,6 @@ export function runHybridV2(season, week, options = {}) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const season = Number.parseInt(process.env.SEASON ?? new Date().getFullYear(), 10);
-  const week = Number.parseInt(process.env.WEEK ?? "1", 10);
   let state = loadTrainingState();
   const bootstrapRequired = shouldRunHistoricalBootstrap(state, BOOTSTRAP_KEYS.HYBRID);
 
@@ -313,5 +311,52 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     saveTrainingState(state);
   }
 
-  runHybridV2(season, week, { state });
+  const discovered = discoverSeasonWeekPairs();
+  if (!discovered.length) {
+    throw new Error("Hybrid calibration requires model and prediction artifacts");
+  }
+
+  const envSeason = Number.parseInt(process.env.SEASON ?? "", 10);
+  const targetEntry = Number.isFinite(envSeason)
+    ? discovered.find((entry) => entry.season === envSeason)
+    : discovered[discovered.length - 1];
+
+  if (!targetEntry) {
+    throw new Error(
+      Number.isFinite(envSeason)
+        ? `No artifacts available for requested season ${envSeason}`
+        : "Unable to determine target season for hybrid calibration"
+    );
+  }
+
+  const availableWeeks = targetEntry.weeks;
+  if (!availableWeeks.length) {
+    throw new Error(`No calibrated weeks discovered for season ${targetEntry.season}`);
+  }
+
+  const envWeek = Number.parseInt(process.env.WEEK ?? "", 10);
+  const lastHybridRun = state?.latest_runs?.[BOOTSTRAP_KEYS.HYBRID];
+  let targetWeek = Number.isFinite(envWeek) ? envWeek : null;
+
+  if (!Number.isFinite(targetWeek)) {
+    if (lastHybridRun?.season === targetEntry.season) {
+      const previousWeek = Number.parseInt(lastHybridRun.week ?? "", 10);
+      if (Number.isFinite(previousWeek)) {
+        const desiredWeek = previousWeek + 1;
+        const candidate = availableWeeks.find((wk) => wk >= desiredWeek);
+        targetWeek = candidate ?? availableWeeks[availableWeeks.length - 1];
+      }
+    }
+  }
+
+  if (!Number.isFinite(targetWeek)) {
+    targetWeek = availableWeeks[availableWeeks.length - 1];
+  }
+
+  if (!availableWeeks.includes(targetWeek)) {
+    const candidate = availableWeeks.find((wk) => wk >= targetWeek);
+    targetWeek = candidate ?? availableWeeks[availableWeeks.length - 1];
+  }
+
+  runHybridV2(targetEntry.season, targetWeek, { state });
 }

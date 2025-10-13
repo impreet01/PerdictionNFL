@@ -1584,6 +1584,7 @@ async function main() {
 
   const processedSeasons = [];
   let latestTargetResult = null;
+  const lastModelRun = state?.latest_runs?.[BOOTSTRAP_KEYS.MODEL];
 
   for (const resolvedSeason of seasonsInScope) {
     const sharedData = await loadSeasonData(resolvedSeason);
@@ -1604,10 +1605,21 @@ async function main() {
       ? Math.min(Math.max(1, Math.floor(weekEnv)), maxAvailableWeek)
       : maxAvailableWeek;
 
+    let startWeek = seasonWeeks[0];
+    if (!allowHistoricalRewrite && lastModelRun?.season === resolvedSeason) {
+      const priorWeek = Number.parseInt(lastModelRun?.week ?? "", 10);
+      if (Number.isFinite(priorWeek)) {
+        const desiredWeek = Math.max(1, Math.min(finalWeek, priorWeek + 1));
+        const idx = seasonWeeks.findIndex((wk) => wk >= desiredWeek);
+        startWeek = idx === -1 ? finalWeek : seasonWeeks[idx];
+      }
+    }
+
     let latestSeasonResult = null;
     const processedWeeks = [];
 
     for (const wk of seasonWeeks) {
+      if (wk < startWeek) continue;
       if (wk > finalWeek) break;
       const result = await runTraining({ season: resolvedSeason, week: wk, data: sharedData });
       const hasArtifacts = weekArtifactsExist(resolvedSeason, wk);

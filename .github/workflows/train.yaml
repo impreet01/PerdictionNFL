@@ -145,8 +145,9 @@ jobs:
             echo "No artifact changes to commit."
             exit 0
           fi
-          git commit -m "weekly model + predictions (S=$SEASON, W=$WEEK)" || true
-          git pull --rebase || true
+          git status --short || true
+          git commit -m "weekly model + predictions (S=$SEASON, W=$WEEK)"
+          git pull --rebase --autostash || true
           git push
           echo "no_changes=false" >> $GITHUB_OUTPUT
 

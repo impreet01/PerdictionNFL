@@ -34,7 +34,7 @@
       "home_team": "NYG",
       "away_team": "PHI",
       "pick": "NYG",
-      "blended": 0.64,
+      "blended": 0.936,
       "support_score": -1.5,
       "factors": [
         {
@@ -95,7 +95,7 @@
       "home_team": "NYJ",
       "away_team": "DEN",
       "pick": "DEN",
-      "blended": 0.144,
+      "blended": 0.043,
       "support_score": 1.5,
       "factors": [
         {
@@ -162,7 +162,7 @@
       "home_team": "BAL",
       "away_team": "LA",
       "pick": "LA",
-      "blended": 0.328,
+      "blended": 0.043,
       "support_score": 1.5,
       "factors": [
         {
@@ -229,7 +229,7 @@
       "home_team": "CAR",
       "away_team": "DAL",
       "pick": "CAR",
-      "blended": 0.563,
+      "blended": 0.883,
       "support_score": -1.5,
       "factors": [
         {
@@ -296,7 +296,7 @@
       "home_team": "IND",
       "away_team": "ARI",
       "pick": "IND",
-      "blended": 0.592,
+      "blended": 0.912,
       "support_score": 2,
       "factors": [
         {
@@ -357,7 +357,7 @@
       "home_team": "JAX",
       "away_team": "SEA",
       "pick": "JAX",
-      "blended": 0.743,
+      "blended": 0.697,
       "support_score": -1.5,
       "factors": [
         {
@@ -424,7 +424,7 @@
       "home_team": "MIA",
       "away_team": "LAC",
       "pick": "LAC",
-      "blended": 0.31,
+      "blended": 0.056,
       "support_score": -1.5,
       "factors": [
         {
@@ -490,15 +490,15 @@
       "game_id": "2025-W06-NO-NE",
       "home_team": "NO",
       "away_team": "NE",
-      "pick": "NO",
-      "blended": 0.557,
-      "support_score": -1.5,
+      "pick": "NE",
+      "blended": 0.091,
+      "support_score": 2,
       "factors": [
         {
           "name": "qb_ypa",
-          "vote": -1,
+          "vote": 1,
           "weight": 1.5,
-          "reason": "ΔYPA -3.19 last 3"
+          "reason": "ΔYPA +3.19 last 3"
         },
         {
           "name": "qb_sack",
@@ -514,9 +514,9 @@
         },
         {
           "name": "venue",
-          "vote": 0,
+          "vote": 1,
           "weight": 0.5,
-          "reason": "Dome neutral"
+          "reason": "Dome + better YPA"
         }
       ],
       "context": {
@@ -552,7 +552,7 @@
       "home_team": "PIT",
       "away_team": "CLE",
       "pick": "PIT",
-      "blended": 0.842,
+      "blended": 0.857,
       "support_score": 1.5,
       "factors": [
         {
@@ -619,7 +619,7 @@
       "home_team": "LV",
       "away_team": "TEN",
       "pick": "TEN",
-      "blended": 0.344,
+      "blended": 0.062,
       "support_score": -1.5,
       "factors": [
         {
@@ -686,7 +686,7 @@
       "home_team": "GB",
       "away_team": "CIN",
       "pick": "GB",
-      "blended": 0.877,
+      "blended": 0.941,
       "support_score": 1.5,
       "factors": [
         {
@@ -753,7 +753,7 @@
       "home_team": "TB",
       "away_team": "SF",
       "pick": "TB",
-      "blended": 0.577,
+      "blended": 0.929,
       "support_score": 1.5,
       "factors": [
         {
@@ -820,7 +820,7 @@
       "home_team": "KC",
       "away_team": "DET",
       "pick": "KC",
-      "blended": 0.534,
+      "blended": 0.82,
       "support_score": 0,
       "factors": [
         {
@@ -887,7 +887,7 @@
       "home_team": "ATL",
       "away_team": "BUF",
       "pick": "ATL",
-      "blended": 0.875,
+      "blended": 0.958,
       "support_score": 0,
       "factors": [
         {
@@ -918,7 +918,8 @@
       "context": {
         "venue": {
           "is_dome": true,
-          "is_outdoor": false
+          "is_outdoor": false,
+          "surface": "fieldturf"
         },
         "injuries": {
           "home_counts": {
@@ -946,15 +947,15 @@
       "game_id": "2025-W06-WAS-CHI",
       "home_team": "WAS",
       "away_team": "CHI",
-      "pick": "WAS",
-      "blended": 0.547,
-      "support_score": -1.5,
+      "pick": "CHI",
+      "blended": 0.069,
+      "support_score": 1.5,
       "factors": [
         {
           "name": "qb_ypa",
-          "vote": -1,
+          "vote": 1,
           "weight": 1.5,
-          "reason": "ΔYPA -0.76 last 3"
+          "reason": "ΔYPA +0.76 last 3"
         },
         {
           "name": "qb_sack",
@@ -973,12 +974,19 @@
           "vote": 0,
           "weight": 0.5,
           "reason": "Outdoor neutral"
+        },
+        {
+          "name": "surface",
+          "vote": 0,
+          "weight": 0.25,
+          "reason": "Grass neutral"
         }
       ],
       "context": {
         "venue": {
           "is_dome": false,
-          "is_outdoor": true
+          "is_outdoor": true,
+          "surface": "grass"
         },
         "injuries": {
           "home_counts": {

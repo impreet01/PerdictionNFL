@@ -3,10 +3,10 @@
   "week": 6,
   "metrics": {
     "logistic": {
-      "logloss": 0.7171643402294143,
-      "brier": 0.24047191198642218,
-      "auc": 0.7264021887824897,
-      "accuracy": 0.6883116883116883
+      "logloss": 0.27875367086149644,
+      "brier": 0.09091237316631567,
+      "auc": 0.9500683994528044,
+      "accuracy": 0.8571428571428571
     },
     "tree": {
       "logloss": 0.5047894902934299,
@@ -27,83 +27,99 @@
       "accuracy": 0.5584415584415584
     },
     "ensemble": {
-      "logloss": 0.4826765173208451,
-      "brier": 0.15604984795390464,
-      "auc": 0.8529411764705882,
-      "accuracy": 0.7792207792207793
+      "logloss": 0.2827332816971366,
+      "brier": 0.08788981358274772,
+      "auc": 0.9562243502051984,
+      "accuracy": 0.8571428571428571
     }
   },
   "blend_weights": {
-    "logistic": 0.35,
-    "tree": 0.65,
+    "logistic": 0.9000000000000002,
+    "tree": 0.05,
     "bt": 0,
-    "ann": 0
+    "ann": 0.04999999999999975
   },
-  "calibration_beta": -0.10018906946919404,
+  "calibration_beta": -0.195733282902814,
   "calibration_bins": [
+    {
+      "bin": 0,
+      "lower": 0,
+      "upper": 0.1,
+      "p_mean": 0.056498096503949304,
+      "y_rate": 0,
+      "n": 20
+    },
     {
       "bin": 1,
       "lower": 0.1,
       "upper": 0.2,
-      "p_mean": 0.16115648467938043,
+      "p_mean": 0.12178171401310461,
       "y_rate": 0,
-      "n": 7
+      "n": 4
     },
     {
       "bin": 2,
       "lower": 0.2,
       "upper": 0.3,
-      "p_mean": 0.2531402336044062,
-      "y_rate": 0.25,
-      "n": 8
+      "p_mean": 0.2696261623808117,
+      "y_rate": 1,
+      "n": 2
     },
     {
       "bin": 3,
       "lower": 0.3,
       "upper": 0.4,
-      "p_mean": 0.35491296993261584,
-      "y_rate": 0.4,
-      "n": 5
+      "p_mean": 0.3516123167374459,
+      "y_rate": 0.5,
+      "n": 6
     },
     {
       "bin": 4,
       "lower": 0.4,
       "upper": 0.5,
-      "p_mean": 0.4352756863517509,
-      "y_rate": 0.2727272727272727,
-      "n": 11
+      "p_mean": 0.4203204674978874,
+      "y_rate": 0,
+      "n": 1
     },
     {
       "bin": 5,
       "lower": 0.5,
       "upper": 0.6,
-      "p_mean": 0.5504132280310756,
-      "y_rate": 0.5333333333333333,
-      "n": 15
+      "p_mean": 0.5405738587615805,
+      "y_rate": 0.5,
+      "n": 2
     },
     {
       "bin": 6,
       "lower": 0.6,
       "upper": 0.7,
-      "p_mean": 0.66730416224031,
-      "y_rate": 0.6,
-      "n": 5
+      "p_mean": 0.6157334549676978,
+      "y_rate": 0.3333333333333333,
+      "n": 3
     },
     {
       "bin": 7,
       "lower": 0.7,
       "upper": 0.8,
-      "p_mean": 0.764798295280773,
+      "p_mean": 0.7957165698465221,
       "y_rate": 1,
-      "n": 7
+      "n": 2
     },
     {
       "bin": 8,
       "lower": 0.8,
       "upper": 0.9,
-      "p_mean": 0.8598883134323082,
-      "y_rate": 0.9473684210526315,
-      "n": 19
+      "p_mean": 0.8635704582782272,
+      "y_rate": 0.7692307692307693,
+      "n": 13
+    },
+    {
+      "bin": 9,
+      "lower": 0.9,
+      "upper": 1,
+      "p_mean": 0.9403111392270059,
+      "y_rate": 1,
+      "n": 24
     }
   ],
   "n_train_rows": 77,
@@ -131,5 +147,5 @@
       "var": 1.533027428102471e-8
     }
   },
-  "error_notes": "Top features associated with errors this week were elo_pre, wins_s2d, def_turnovers_s2d_minus_opp."
+  "error_notes": "No standout feature-level errors detected for the latest completed week."
 }

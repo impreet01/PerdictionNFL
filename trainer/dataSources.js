@@ -1058,6 +1058,76 @@ async function loadRotowireWeatherArtifacts(season) {
 }
 
 // ---------- canonical loaders (exact paths) ----------
+function coerceScore(value) {
+  if (value == null) return Number.NaN;
+  const text = String(value).trim();
+  if (text === '' || text.toUpperCase() === 'NA') return Number.NaN;
+  const num = Number(text);
+  return Number.isFinite(num) ? num : Number.NaN;
+}
+
+function scheduleHasFinalScore(row) {
+  const hs = coerceScore(row.home_score ?? row.home_points ?? row.home_pts);
+  const as = coerceScore(row.away_score ?? row.away_points ?? row.away_pts);
+  return Number.isFinite(hs) && Number.isFinite(as);
+}
+
+function maxWeekWithScores(rows) {
+  let max = 0;
+  for (const row of rows || []) {
+    if (!scheduleHasFinalScore(row)) continue;
+    const wk = toInt(row.week);
+    if (wk != null) max = Math.max(max, wk);
+  }
+  return max;
+}
+
+function resolveExpectedCompletedWeek() {
+  const envWeek = toInt(process.env.WEEK);
+  if (envWeek != null && envWeek > 0) return Math.max(0, envWeek - 1);
+  const configWeek = toInt(DATA_CONFIG?.week);
+  if (configWeek != null && configWeek > 0) return Math.max(0, configWeek - 1);
+  return null;
+}
+
+function shouldUseDynamicSchedule(candidate, expectedCompletedWeek) {
+  if (!candidate || !Array.isArray(candidate.rows)) return true;
+  if (!candidate.rows.length) return true;
+  if (!candidate.sourceType || !candidate.sourceType.startsWith('manifest')) return false;
+  if (!Number.isFinite(expectedCompletedWeek) || expectedCompletedWeek <= 0) return false;
+  return (candidate.maxWeekWithScores ?? 0) < expectedCompletedWeek;
+}
+
+function describeSourceType(candidate) {
+  if (!candidate?.sourceType) return '';
+  if (candidate.sourceType.startsWith('manifest')) return ' (manifest)';
+  if (candidate.sourceType === 'static') return ' (live)';
+  return ` (${candidate.sourceType})`;
+}
+
+async function fetchScheduleCandidate(url, seasonHint, sourceType) {
+  const { rows, source, checksum } = await fetchCsvFlexible(url);
+  sanityCheckRows('schedule', rows);
+  let effectiveSeason = seasonHint;
+  if (effectiveSeason == null) {
+    for (const row of rows) {
+      const rowSeason = toInt(row.season);
+      if (rowSeason != null && (effectiveSeason == null || rowSeason > effectiveSeason)) {
+        effectiveSeason = rowSeason;
+      }
+    }
+  }
+  const filteredRows = effectiveSeason == null ? rows : rows.filter((r) => toInt(r.season) === effectiveSeason);
+  return {
+    rows: filteredRows,
+    source,
+    sourceType,
+    checksum,
+    effectiveSeason,
+    maxWeekWithScores: maxWeekWithScores(filteredRows)
+  };
+}
+
 export async function loadSchedules(season){
   const y = toInt(season);
   const resolved = await resolveDatasetUrl('schedules', y, REL.schedules);
@@ -1065,25 +1135,62 @@ export async function loadSchedules(season){
   const targetSeason = y ?? resolvedSeason;
   const cacheKey = targetSeason ?? ALL_SCHEDULES_KEY;
   return cached(caches.schedules, cacheKey, async()=>{
-    const targetUrl = resolved?.url ?? REL.schedules(targetSeason ?? y);
-    const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
-    sanityCheckRows('schedule', rows);
-    let effectiveSeason = targetSeason;
-    if (effectiveSeason == null) {
-      for (const row of rows) {
-        const rowSeason = toInt(row.season);
-        if (rowSeason != null && (effectiveSeason == null || rowSeason > effectiveSeason)) {
-          effectiveSeason = rowSeason;
+    const expectedCompletedWeek = resolveExpectedCompletedWeek();
+
+    let candidate = null;
+    if (resolved?.url) {
+      candidate = await fetchScheduleCandidate(
+        resolved.url,
+        targetSeason ?? resolvedSeason,
+        resolved.source || 'manifest'
+      );
+    }
+
+    const needsLiveFallback = shouldUseDynamicSchedule(candidate, expectedCompletedWeek);
+    if (!candidate || needsLiveFallback) {
+      if (candidate) {
+        const manifestMax = candidate.maxWeekWithScores ?? 0;
+        if (!candidate.rows.length) {
+          console.warn(
+            `[loadSchedules] Manifest schedule for season ${targetSeason ?? y} contained no rows – falling back to live feed.`
+          );
+        } else if (needsLiveFallback) {
+          if (Number.isFinite(expectedCompletedWeek)) {
+            console.warn(
+              `[loadSchedules] Manifest schedule for season ${targetSeason ?? y} is stale (scores through week ${manifestMax}); ` +
+                `expected completion >= week ${expectedCompletedWeek}. Falling back to live feed.`
+            );
+          } else {
+            console.warn(
+              `[loadSchedules] Manifest schedule for season ${targetSeason ?? y} appears stale – falling back to live feed.`
+            );
+          }
         }
       }
+
+      const liveCandidate = await fetchScheduleCandidate(
+        REL.schedules(targetSeason ?? y),
+        targetSeason ?? y,
+        'static'
+      );
+      if (liveCandidate.rows.length) {
+        candidate = liveCandidate;
+      }
     }
-    const filteredRows = effectiveSeason == null ? rows : rows.filter((r)=>toInt(r.season) === effectiveSeason);
+
+    if (!candidate) {
+      throw new Error('[loadSchedules] Unable to resolve schedules dataset');
+    }
+
+    const filteredRows = candidate.rows;
+    const effectiveSeason = candidate.effectiveSeason;
     if (effectiveSeason != null && cacheKey === ALL_SCHEDULES_KEY) {
       caches.schedules.set(effectiveSeason, filteredRows);
     }
+
     console.log(
-      `[loadSchedules] OK ${source} rows=${filteredRows.length} checksum=${checksum.slice(0, 12)}` +
-      (effectiveSeason != null ? ` season=${effectiveSeason}` : '')
+      `[loadSchedules] OK ${candidate.source}${describeSourceType(candidate)} rows=${filteredRows.length} checksum=${candidate.checksum.slice(0, 12)}` +
+        (effectiveSeason != null ? ` season=${effectiveSeason}` : '')
     );
     return filteredRows;
   });

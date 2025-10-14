@@ -594,7 +594,35 @@ const makeGameId = (row) =>
 const normalizeTeamCode = (value) => {
   if (!value) return null;
   const str = String(value).trim().toUpperCase();
-  return str || null;
+  if (str.length < 2) return null;
+  return /^[A-Z]{2,4}$/.test(str) ? str : null;
+};
+
+const parseGameIdTeams = (gameId) => {
+  if (!gameId) return { home: null, away: null };
+  const parts = String(gameId).split("-");
+  if (parts.length >= 4) {
+    return { home: parts[2], away: parts[3] };
+  }
+  return { home: null, away: null };
+};
+
+const resolveTeamCode = (primary, fallback, gameId, role) => {
+  const normalizedPrimary = normalizeTeamCode(primary);
+  if (normalizedPrimary) return normalizedPrimary;
+
+  const normalizedFallback = normalizeTeamCode(fallback);
+  if (normalizedFallback) {
+    if (primary != null && String(primary).trim() !== "" && String(primary).trim().toUpperCase() !== normalizedFallback) {
+      console.warn(
+        `[train] Normalized ${role} team code for ${gameId} from "${String(primary).trim()}" to "${normalizedFallback}".`
+      );
+    }
+    return normalizedFallback;
+  }
+
+  console.warn(`[train] Unable to resolve ${role} team code for ${gameId}; defaulting to "UNK".`);
+  return "UNK";
 };
 
 const isRegularSeason = (value) => {
@@ -1019,10 +1047,14 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       annGrad: contribAnn
     });
 
+    const { home: gidHome, away: gidAway } = parseGameIdTeams(btRow.game_id);
+    const homeTeam = resolveTeamCode(row.team, gidHome, btRow.game_id, "home");
+    const awayTeam = resolveTeamCode(row.opponent, gidAway, btRow.game_id, "away");
+
     predictions.push({
       game_id: btRow.game_id,
-      home_team: row.team,
-      away_team: row.opponent,
+      home_team: homeTeam,
+      away_team: awayTeam,
       season: row.season,
       week: row.week,
       forecast: round3(blended),
@@ -1047,7 +1079,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
         bt90: btInfo.ci90?.map((v) => round3(v)) ?? [0.25, 0.75]
       },
       natural_language: buildNarrative(
-        { home_team: row.team, away_team: row.opponent },
+        { home_team: homeTeam, away_team: awayTeam },
         probs,
         btRow.features,
         row,

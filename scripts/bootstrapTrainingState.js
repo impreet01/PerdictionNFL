@@ -1,5 +1,13 @@
 import fs from "fs";
-import { CURRENT_BOOTSTRAP_REVISION } from "../trainer/trainingState.js";
+import path from "path";
+import {
+  BOOTSTRAP_KEYS,
+  CURRENT_BOOTSTRAP_REVISION,
+  loadTrainingState,
+  markBootstrapCompleted,
+  recordLatestRun,
+  saveTrainingState
+} from "../trainer/trainingState.js";
 import {
   ensureTrainingStateCurrent,
   getArtifactsDir,

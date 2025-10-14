@@ -19,10 +19,11 @@ GitHub Action) and relies on the cached state stored in
    `REBUILD_HISTORICAL`, `REGENERATE_HISTORICAL`, `REGEN_HISTORICAL`, and
    `FORCE_HISTORICAL_BOOTSTRAP`. Leave them unset during routine automation so
    cached bootstraps remain valid.
-4. **CI guardrails** – the scheduled GitHub Action fails fast if
-   `artifacts/training_state.json` is missing or any historical override flag is
-   detected. Restore the cached file or clear the flag before retrying so the
-   run does not replay 2020–2025 unnecessarily.
+4. **CI guardrails** – the scheduled GitHub Action now attempts to synthesise a
+   missing `artifacts/training_state.json` via `npm run bootstrap:state` before
+   it fails. Restore the cached file, run the bootstrap helper locally, or clear
+   any historical override flag before retrying so the run does not replay
+   2020–2025 unnecessarily.
 5. **Season/week overrides** – only supply `SEASON` and `WEEK` when you need to
    pin a specific target. Omitting them allows the workflow to resume from the
    cached checkpoint automatically.

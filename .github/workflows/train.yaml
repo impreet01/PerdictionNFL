@@ -46,10 +46,13 @@ jobs:
             echo "Found existing package-lock.json"
           fi
 
+      - name: Bootstrap training state (if missing)
+        run: npm run bootstrap:state
+
       - name: Verify cached training state
         run: |
           if [ ! -f artifacts/training_state.json ]; then
-            echo "::error::artifacts/training_state.json is missing. Restore the cached bootstrap before running the trainer to avoid replaying every season."
+            echo "::error::artifacts/training_state.json is missing. Use npm run bootstrap:state or restore the cached bootstrap before running the trainer to avoid replaying every season."
             exit 1
           fi
 

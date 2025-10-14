@@ -46,12 +46,13 @@ The script replays the playbook captured in
 [`docs/training-workflow.md`](docs/training-workflow.md): it optionally refreshes
 Rotowire snapshots, confirms the cached bootstrap revision, runs the ensemble
 trainer, and triggers `trainer/hybrid_v2.js` for the next outstanding week based
-on `artifacts/training_state.json`. Use `--skip-fetch`, `--fetch-only`, or
-`--dry-run` flags to tailor behaviour for local versus CI runs. It defaults to
-`npm run train:multi`, but you can target the legacy single-week trainer by
-passing `--trainer=train`. The direct `npm run train` and `npm run train:multi`
-scripts continue to work independently when you don't need the extra guardrails
-from the workflow helper.
+on `artifacts/training_state.json`. If that file is missing you can rebuild it
+from committed artifacts with `npm run bootstrap:state`. Use `--skip-fetch`,
+`--fetch-only`, or `--dry-run` flags to tailor behaviour for local versus CI
+runs. It defaults to `npm run train:multi`, but you can target the legacy
+single-week trainer by passing `--trainer=train`. The direct `npm run train` and
+`npm run train:multi` scripts continue to work independently when you don't need
+the extra guardrails from the workflow helper.
 
 GitHub Actions can automate Step 3 on a schedule; copy `.github/workflows/train.yml`, set secrets if required, and enable Actions in your fork.
 

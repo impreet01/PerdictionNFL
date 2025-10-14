@@ -73,9 +73,27 @@ function discoverHybridSeasons(entries, predictionsSet) {
   return map;
 }
 
+function resolveHybridLogPath() {
+  const candidates = [
+    ["hybrid_v2", "performance_log.csv"],
+    ["hybrid", "performance_log.csv"],
+    ["reports", "hybrid_v2", "performance_log.csv"],
+    ["reports", "hybrid", "performance_log.csv"]
+  ];
+
+  for (const segments of candidates) {
+    const candidate = path.join(ARTIFACTS_DIR, ...segments);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function discoverHybridLatestFromLog() {
-  const logPath = path.join(ARTIFACTS_DIR, "hybrid_v2", "performance_log.csv");
-  if (!fs.existsSync(logPath)) return null;
+  const logPath = resolveHybridLogPath();
+  if (!logPath) return null;
   const rows = fs.readFileSync(logPath, "utf8").trim().split(/\r?\n/);
   if (rows.length <= 1) return null;
   let latest = null;

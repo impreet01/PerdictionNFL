@@ -14,6 +14,7 @@ import LogisticRegression from "ml-logistic-regression";
 import { DecisionTreeClassifier as CART } from "ml-cart";
 import { Matrix } from "ml-matrix";
 import { resolveSeasonList } from "./databases.js";
+import { loadLogisticWarmStart } from "./modelWarmStart.js";
 import {
   loadTrainingState,
   shouldRunHistoricalBootstrap,
@@ -184,13 +185,36 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
   const neg = train.length - pos;
   console.log(`Train size: ${train.length} (wins=${pos}, losses=${neg})`);
 
+  const warmStart = loadLogisticWarmStart({ season: TARGET_SEASON, week: TARGET_WEEK, features: FEATS });
+  if (warmStart?.meta) {
+    const { season: srcSeason, week: srcWeek, matchedFeatures, totalFeatures } = warmStart.meta;
+    const paddedWeek = String(srcWeek).padStart(2, "0");
+    console.log(
+      `[train] Warm-starting logistic weights from season ${srcSeason} week ${paddedWeek} (${matchedFeatures}/${totalFeatures} features aligned).`
+    );
+  }
+
   const { X: XL_raw, y: yL_raw } = Xy(train);
   const XL = new Matrix(XL_raw);
   const yL = Matrix.columnVector(yL_raw);
   const logit = new LogisticRegression({ numSteps: 2500, learningRate: 5e-3 });
   logit.train(XL, yL);
 
-  const tunedWeights = applyOnlineLearning(toArray1D(logit.theta || logit.weights), train, 2, 1.5e-3);
+  const rawWeights = toArray1D(logit.theta || logit.weights);
+  const baseWeights = FEATS.map((_, idx) => Number(rawWeights[idx]) || 0);
+  const blendedWeights = warmStart && Array.isArray(warmStart.w)
+    ? FEATS.map((_, idx) => {
+        const current = baseWeights[idx] || 0;
+        const prior = Number(warmStart.w[idx]) || 0;
+        return (current + prior) / 2;
+      })
+    : baseWeights;
+  const tunedWeights = applyOnlineLearning(
+    blendedWeights,
+    train,
+    warmStart ? 4 : 2,
+    warmStart ? 1e-3 : 1.5e-3
+  );
   if (Array.isArray(tunedWeights) && tunedWeights.length === FEATS.length) {
     const tunedMatrix = Matrix.columnVector(tunedWeights);
     logit.theta = tunedMatrix;

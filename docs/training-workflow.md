@@ -115,3 +115,6 @@ calibrator persist progress after each successful step, so always reload
    exports if downstream consumers monitor calibration drift.
 3. Document any bootstrap revision changes or recovery procedures in your
    changelog so future operators understand why a rebuild occurred.
+4. Keep the latest `model_*.json` artifacts committed. The trainer now warm
+   starts each logistic pass from the most recent prior week (including the
+   previous season) so season-to-season learnings carry forward automatically.

@@ -38,6 +38,7 @@ import {
   CURRENT_BOOTSTRAP_REVISION
 } from "./trainingState.js";
 import { ensureTrainingStateCurrent } from "./bootstrapState.js";
+import { loadLogisticWarmStart } from "./modelWarmStart.js";
 
 const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 
@@ -147,13 +148,24 @@ const sigmoid = (z) => 1 / (1 + Math.exp(-z));
 function trainLogisticGD(
   X,
   y,
-  { steps = 3000, lr = 5e-3, l2 = 2e-4, featureLength } = {}
+  { steps = 3000, lr = 5e-3, l2 = 2e-4, featureLength, init } = {}
 ) {
   const n = X.length;
   const observedDim = X[0]?.length || 0;
   const dim = Number.isInteger(featureLength) && featureLength > 0 ? featureLength : observedDim;
   let w = new Array(dim).fill(0);
   let b = 0;
+  if (init && Array.isArray(init.w)) {
+    for (let j = 0; j < dim; j++) {
+      const val = Number(init.w[j]);
+      w[j] = Number.isFinite(val) ? val : 0;
+    }
+  }
+  const initBias = init?.b ?? init?.bias;
+  const initBiasNum = Number(initBias);
+  if (Number.isFinite(initBiasNum)) {
+    b = initBiasNum;
+  }
   if (!n || !observedDim || !dim) return { w, b, neutral: true };
   for (let t = 0; t < steps; t++) {
     let gb = 0;
@@ -745,6 +757,15 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   // Determine the final FEATS list (union of base + discovered diff_*):
   const FEATS_ENR = expandFeats(FEATS_BASE, featureRows);
 
+  const warmStart = loadLogisticWarmStart({ season: resolvedSeason, week: resolvedWeek, features: FEATS_ENR });
+  if (warmStart?.meta) {
+    const { season: srcSeason, week: srcWeek, matchedFeatures, totalFeatures } = warmStart.meta;
+    const paddedWeek = String(srcWeek).padStart(2, "0");
+    console.log(
+      `[train] Warm-starting logistic regression from season ${srcSeason} week ${paddedWeek} (${matchedFeatures}/${totalFeatures} features aligned).`
+    );
+  }
+
   const btTrainRowsRaw = btRows.filter(
     (r) => r.season === resolvedSeason && r.week < resolvedWeek && (r.label_win === 0 || r.label_win === 1)
   );
@@ -810,7 +831,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
         steps: 2500,
         lr: 4e-3,
         l2: 2e-4,
-        featureLength: FEATS_ENR.length
+        featureLength: FEATS_ENR.length,
+        init: warmStart ? { w: warmStart.w, b: warmStart.b } : undefined
       });
       const params = chooseTreeParams(XtrS.length);
       const cart = new CART({ maxDepth: params.depth, minNumSamples: params.minSamples, gainFunction: "gini" });
@@ -917,7 +939,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     steps: 3500,
     lr: 4e-3,
     l2: 2e-4,
-    featureLength: FEATS_ENR.length
+    featureLength: FEATS_ENR.length,
+    init: warmStart ? { w: warmStart.w, b: warmStart.b } : undefined
   });
   const treeParams = chooseTreeParams(trainStd.length);
   const cartFull = new CART({ maxDepth: treeParams.depth, minNumSamples: treeParams.minSamples, gainFunction: "gini" });

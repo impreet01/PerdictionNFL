@@ -115,13 +115,31 @@ function discoverHybridLatestFromLog() {
   return latest;
 }
 
+function hasCurrentRevision(state, key) {
+  if (!state?.bootstraps || typeof state.bootstraps !== "object") return false;
+  const record = state.bootstraps[key];
+  if (!record) return key !== BOOTSTRAP_KEYS.MODEL;
+  return record.revision === CURRENT_BOOTSTRAP_REVISION;
+}
+
 function main() {
   ensureArtifactsDir();
 
+  let state = null;
   if (fs.existsSync(STATE_PATH)) {
-    console.log(`[bootstrap] training_state.json already present at ${STATE_PATH}; skipping.`);
-    return;
+    state = loadTrainingState();
+    const modelUpToDate = hasCurrentRevision(state, BOOTSTRAP_KEYS.MODEL);
+    const hybridUpToDate = hasCurrentRevision(state, BOOTSTRAP_KEYS.HYBRID);
+    if (modelUpToDate && hybridUpToDate) {
+      console.log(
+        `[bootstrap] training_state.json already present at ${STATE_PATH} (revision ${CURRENT_BOOTSTRAP_REVISION}); skipping.`
+      );
+      return;
+    }
+    console.log("[bootstrap] Existing training_state.json has outdated bootstrap metadata; refreshing.");
   }
+
+  state = state ?? loadTrainingState();
 
   const entries = fs.readdirSync(ARTIFACTS_DIR);
   const predictionPattern = /^predictions_(\d{4})_W(\d{2})\.json$/;
@@ -135,8 +153,6 @@ function main() {
   }
 
   const hybridMap = discoverHybridSeasons(entries, predictionsSet);
-
-  const state = loadTrainingState();
 
   const modelSeasons = serialiseSeasonMap(modelMap);
   markBootstrapCompleted(state, BOOTSTRAP_KEYS.MODEL, { seasons: modelSeasons, bootstrap_source: "artifact-scan" });

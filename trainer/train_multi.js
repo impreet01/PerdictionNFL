@@ -37,6 +37,7 @@ import {
   BOOTSTRAP_KEYS,
   CURRENT_BOOTSTRAP_REVISION
 } from "./trainingState.js";
+import { ensureTrainingStateCurrent } from "./bootstrapState.js";
 
 const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 
@@ -1568,6 +1569,17 @@ async function main() {
   if (!Number.isFinite(weekEnv) || weekEnv < 1) weekEnv = 1;
 
   let state = loadTrainingState();
+  const refreshResult = ensureTrainingStateCurrent({ state, silent: true });
+  state = refreshResult.state;
+  if (refreshResult.refreshed) {
+    console.log(
+      `[train] Refreshed cached training_state metadata from artifacts (revision ${CURRENT_BOOTSTRAP_REVISION}).`
+    );
+  } else if (refreshResult.error) {
+    console.warn(
+      `[train] Unable to refresh cached training_state metadata from artifacts (${refreshResult.error.message ?? refreshResult.error}). Proceeding with trainer bootstrap.`
+    );
+  }
   const lastModelRun = state?.latest_runs?.[BOOTSTRAP_KEYS.MODEL];
   const historicalOverride = shouldRewriteHistorical();
   const bootstrapRequired = shouldRunHistoricalBootstrap(state, BOOTSTRAP_KEYS.MODEL);

@@ -1,14 +1,16 @@
 import fs from "fs";
-import { CURRENT_BOOTSTRAP_REVISION } from "../trainer/trainingState.js";
+import path from "path";
 import {
-  ensureTrainingStateCurrent,
-  getArtifactsDir,
-  getTrainingStatePath,
-  isTrainingStateCurrent
-} from "../trainer/bootstrapState.js";
+  loadTrainingState,
+  saveTrainingState,
+  markBootstrapCompleted,
+  recordLatestRun,
+  BOOTSTRAP_KEYS,
+  CURRENT_BOOTSTRAP_REVISION
+} from "./trainingState.js";
 
-const ARTIFACTS_DIR = getArtifactsDir();
-const STATE_PATH = getTrainingStatePath();
+const ARTIFACTS_DIR = path.resolve("artifacts");
+const STATE_PATH = path.join(ARTIFACTS_DIR, "training_state.json");
 
 function ensureArtifactsDir() {
   if (!fs.existsSync(ARTIFACTS_DIR)) {
@@ -120,25 +122,39 @@ function hasCurrentRevision(state, key) {
   return record.revision === CURRENT_BOOTSTRAP_REVISION;
 }
 
-function main() {
-  ensureArtifactsDir();
+function applyBootstrapMetadata(state, { modelSeasons, hybridSeasons }) {
+  markBootstrapCompleted(state, BOOTSTRAP_KEYS.MODEL, {
+    seasons: modelSeasons,
+    bootstrap_source: "artifact-scan"
+  });
 
-  let state = null;
-  if (fs.existsSync(STATE_PATH)) {
-    state = loadTrainingState();
-    const modelUpToDate = hasCurrentRevision(state, BOOTSTRAP_KEYS.MODEL);
-    const hybridUpToDate = hasCurrentRevision(state, BOOTSTRAP_KEYS.HYBRID);
-    if (modelUpToDate && hybridUpToDate) {
-      console.log(
-        `[bootstrap] training_state.json already present at ${STATE_PATH} (revision ${CURRENT_BOOTSTRAP_REVISION}); skipping.`
-      );
-      return;
-    }
-    console.log("[bootstrap] Existing training_state.json has outdated bootstrap metadata; refreshing.");
+  const latestModel = selectLatestRun(modelSeasons);
+  if (latestModel) {
+    recordLatestRun(state, BOOTSTRAP_KEYS.MODEL, latestModel);
   }
 
-  state = state ?? loadTrainingState();
+  if (hybridSeasons.length) {
+    markBootstrapCompleted(state, BOOTSTRAP_KEYS.HYBRID, {
+      seasons: hybridSeasons,
+      bootstrap_source: "artifact-scan"
+    });
+  }
 
+  const hybridLatestFromLog = discoverHybridLatestFromLog();
+  const hybridLatest = hybridLatestFromLog || selectLatestRun(hybridSeasons);
+  if (hybridLatest) {
+    recordLatestRun(state, BOOTSTRAP_KEYS.HYBRID, hybridLatest);
+  }
+}
+
+export function isTrainingStateCurrent(state) {
+  const modelUpToDate = hasCurrentRevision(state, BOOTSTRAP_KEYS.MODEL);
+  const hybridUpToDate = hasCurrentRevision(state, BOOTSTRAP_KEYS.HYBRID);
+  return modelUpToDate && hybridUpToDate;
+}
+
+export function refreshTrainingStateFromArtifacts(existingState = null) {
+  ensureArtifactsDir();
   const entries = fs.readdirSync(ARTIFACTS_DIR);
   const predictionPattern = /^predictions_(\d{4})_W(\d{2})\.json$/;
   const predictionsSet = new Set(entries.filter((entry) => predictionPattern.test(entry)));
@@ -152,36 +168,38 @@ function main() {
 
   const hybridMap = discoverHybridSeasons(entries, predictionsSet);
 
+  const state = existingState ?? loadTrainingState();
+
   const modelSeasons = serialiseSeasonMap(modelMap);
-  markBootstrapCompleted(state, BOOTSTRAP_KEYS.MODEL, { seasons: modelSeasons, bootstrap_source: "artifact-scan" });
-
-  const latestModel = selectLatestRun(modelSeasons);
-  if (latestModel) {
-    recordLatestRun(state, BOOTSTRAP_KEYS.MODEL, latestModel);
-  }
-
   const hybridSeasons = serialiseSeasonMap(hybridMap);
-  if (hybridSeasons.length) {
-    markBootstrapCompleted(state, BOOTSTRAP_KEYS.HYBRID, { seasons: hybridSeasons, bootstrap_source: "artifact-scan" });
-  }
 
-  const hybridLatestFromLog = discoverHybridLatestFromLog();
-  const hybridLatest = hybridLatestFromLog || selectLatestRun(hybridSeasons);
-  if (hybridLatest) {
-    recordLatestRun(state, BOOTSTRAP_KEYS.HYBRID, hybridLatest);
-  }
+  applyBootstrapMetadata(state, { modelSeasons, hybridSeasons });
 
   saveTrainingState(state);
-  console.log(
-    `[bootstrap] Synthesised training_state.json (revision ${CURRENT_BOOTSTRAP_REVISION}) from existing artifacts.`
-  );
+  return { state, modelSeasons, hybridSeasons };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  try {
-    main();
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : err);
-    process.exit(1);
+export function ensureTrainingStateCurrent({ state = null, silent = false } = {}) {
+  const baseState = state ?? loadTrainingState();
+  if (isTrainingStateCurrent(baseState)) {
+    return { state: baseState, refreshed: false };
   }
+
+  try {
+    const result = refreshTrainingStateFromArtifacts(baseState);
+    return { state: result.state, refreshed: true };
+  } catch (err) {
+    if (silent) {
+      return { state: baseState, refreshed: false, error: err };
+    }
+    throw err;
+  }
+}
+
+export function getArtifactsDir() {
+  return ARTIFACTS_DIR;
+}
+
+export function getTrainingStatePath() {
+  return STATE_PATH;
 }

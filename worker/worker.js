@@ -128,6 +128,27 @@ async function fetchJsonFile(file) {
   }
 }
 
+async function fetchResolvedJson(resolved) {
+  const candidates = Array.isArray(resolved?.candidates) && resolved.candidates.length
+    ? resolved.candidates
+    : [resolved.file];
+  let lastNotFoundError = null;
+  for (const candidate of candidates) {
+    try {
+      const result = await fetchJsonFile(candidate);
+      resolved.file = candidate;
+      return result;
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 404) {
+        lastNotFoundError = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastNotFoundError || new HttpError(404, "artifact not found");
+}
+
 function preferHybridPredictionFile(listing, season, week, fallback) {
   if (!Array.isArray(listing)) {
     return fallback;
@@ -138,11 +159,51 @@ function preferHybridPredictionFile(listing, season, week, fallback) {
   return match ? hybridName : fallback;
 }
 
+function buildWeekFilename(prefix, season, week) {
+  const paddedWeek = String(week).padStart(2, "0");
+  return `${prefix}_${season}_W${paddedWeek}.json`;
+}
+
+function buildWeekCandidates(prefix, season, week) {
+  const baseFile = buildWeekFilename(prefix, season, week);
+  if (prefix === "predictions") {
+    const paddedWeek = String(week).padStart(2, "0");
+    const hybridFile = `predictions_${season}_W${paddedWeek}_hybrid_v2.json`;
+    return [hybridFile, baseFile];
+  }
+  return [baseFile];
+}
+
 async function resolveSeasonWeek(prefix, seasonParam, weekParam, listing) {
   const seasonInput = toInt(seasonParam, "season");
   const weekInput = toInt(weekParam, "week");
-  const data = listing || (await listArtifacts());
-  const parsed = parseWeekFiles(data, prefix);
+  let data = listing;
+  let listingError = null;
+  if (!data) {
+    try {
+      data = await listArtifacts();
+    } catch (err) {
+      listingError = err;
+    }
+  }
+
+  if (!Array.isArray(data)) {
+    if (listingError && seasonInput != null && weekInput != null && listingError.status === 403) {
+      return {
+        season: seasonInput,
+        week: weekInput,
+        file: buildWeekFilename(prefix, seasonInput, weekInput),
+        candidates: buildWeekCandidates(prefix, seasonInput, weekInput),
+        listing: null
+      };
+    }
+    if (listingError) {
+      throw listingError;
+    }
+  }
+
+  const dataListing = Array.isArray(data) ? data : [];
+  const parsed = parseWeekFiles(dataListing, prefix);
   if (!parsed.length) {
     throw new HttpError(404, `no ${prefix} artifacts found`);
   }
@@ -164,9 +225,9 @@ async function resolveSeasonWeek(prefix, seasonParam, weekParam, listing) {
   }
   let file = exact.name;
   if (prefix === "predictions") {
-    file = preferHybridPredictionFile(data, season, week, file);
+    file = preferHybridPredictionFile(dataListing, season, week, file);
   }
-  return { season, week, file, listing: data };
+  return { season, week, file, candidates: [file], listing: dataListing };
 }
 
 async function resolveSeasonFile(prefix, seasonParam, listing) {
@@ -194,7 +255,7 @@ async function respondWithArtifact(prefix, url, options = {}) {
     url.searchParams.get("week"),
     options.listing
   );
-  const { data, etag, lastModified } = await fetchJsonFile(resolved.file);
+  const { data, etag, lastModified } = await fetchResolvedJson(resolved);
   return json(
     { season: resolved.season, week: resolved.week, data },
     200,
@@ -293,7 +354,7 @@ async function respondWithInjuries(url) {
     url.searchParams.get("season"),
     url.searchParams.get("week")
   );
-  const { data, etag, lastModified } = await fetchJsonFile(resolved.file);
+  const { data, etag, lastModified } = await fetchResolvedJson(resolved);
   const source = Array.isArray(data) ? data : [];
 
   const filters = {};
@@ -353,7 +414,7 @@ async function respondWithContext(url) {
     url.searchParams.get("season"),
     url.searchParams.get("week")
   );
-  const { data, etag, lastModified } = await fetchJsonFile(resolved.file);
+  const { data, etag, lastModified } = await fetchResolvedJson(resolved);
   const source = Array.isArray(data) ? data : [];
 
   const filters = {};

@@ -34,7 +34,8 @@ import {
   shouldRunHistoricalBootstrap,
   markBootstrapCompleted,
   recordLatestRun,
-  BOOTSTRAP_KEYS
+  BOOTSTRAP_KEYS,
+  CURRENT_BOOTSTRAP_REVISION
 } from "./trainingState.js";
 
 const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
@@ -1567,8 +1568,10 @@ async function main() {
   if (!Number.isFinite(weekEnv) || weekEnv < 1) weekEnv = 1;
 
   let state = loadTrainingState();
+  const lastModelRun = state?.latest_runs?.[BOOTSTRAP_KEYS.MODEL];
+  const historicalOverride = shouldRewriteHistorical();
   const bootstrapRequired = shouldRunHistoricalBootstrap(state, BOOTSTRAP_KEYS.MODEL);
-  const allowHistoricalRewrite = shouldRewriteHistorical() || bootstrapRequired;
+  const allowHistoricalRewrite = historicalOverride || bootstrapRequired;
 
   let seasonsInScope = [targetSeason];
   if (bootstrapRequired || allowHistoricalRewrite) {
@@ -1582,9 +1585,31 @@ async function main() {
     });
   }
 
+  if (bootstrapRequired) {
+    console.log(
+      `[train] Historical bootstrap required (expected revision ${CURRENT_BOOTSTRAP_REVISION}). Replaying seasons: ${seasonsInScope.join(", ")}`
+    );
+  } else if (historicalOverride) {
+    console.log(
+      `[train] Historical rewrite requested via override flag. Processing seasons: ${seasonsInScope.join(", ")}`
+    );
+  } else {
+    const resumeWeek = Number.isFinite(Number(lastModelRun?.week))
+      ? Number(lastModelRun.week) + 1
+      : 1;
+    if (lastModelRun?.season) {
+      console.log(
+        `[train] Cached bootstrap ${CURRENT_BOOTSTRAP_REVISION} detected. Resuming from season ${lastModelRun.season} week ${resumeWeek}.`
+      );
+    } else {
+      console.log(
+        `[train] Cached bootstrap ${CURRENT_BOOTSTRAP_REVISION} detected. No prior run recorded; training target season ${targetSeason}.`
+      );
+    }
+  }
+
   const processedSeasons = [];
   let latestTargetResult = null;
-  const lastModelRun = state?.latest_runs?.[BOOTSTRAP_KEYS.MODEL];
 
   for (const resolvedSeason of seasonsInScope) {
     const sharedData = await loadSeasonData(resolvedSeason);

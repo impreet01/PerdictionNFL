@@ -19,7 +19,11 @@ GitHub Action) and relies on the cached state stored in
    `REBUILD_HISTORICAL`, `REGENERATE_HISTORICAL`, `REGEN_HISTORICAL`, and
    `FORCE_HISTORICAL_BOOTSTRAP`. Leave them unset during routine automation so
    cached bootstraps remain valid.
-4. **Season/week overrides** – only supply `SEASON` and `WEEK` when you need to
+4. **CI guardrails** – the scheduled GitHub Action fails fast if
+   `artifacts/training_state.json` is missing or any historical override flag is
+   detected. Restore the cached file or clear the flag before retrying so the
+   run does not replay 2020–2025 unnecessarily.
+5. **Season/week overrides** – only supply `SEASON` and `WEEK` when you need to
    pin a specific target. Omitting them allows the workflow to resume from the
    cached checkpoint automatically.
 
@@ -59,6 +63,10 @@ Before triggering the trainer:
    `CURRENT_BOOTSTRAP_REVISION` in `trainer/trainingState.js`, schedule a manual
    workflow run with `FORCE_HISTORICAL_BOOTSTRAP=true` and monitor completion
    before re-enabling your cron job.
+5. **Check the bootstrap banner** – the trainer now prints an explicit message
+   indicating whether it detected the cached bootstrap or is replaying
+   historical seasons. Seeing the "historical bootstrap required" banner for a
+   routine run means the cache or revision changed and needs attention.
 
 ## 4. Pseudocode reference
 

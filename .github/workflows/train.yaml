@@ -46,6 +46,35 @@ jobs:
             echo "Found existing package-lock.json"
           fi
 
+      - name: Verify cached training state
+        run: |
+          if [ ! -f artifacts/training_state.json ]; then
+            echo "::error::artifacts/training_state.json is missing. Restore the cached bootstrap before running the trainer to avoid replaying every season."
+            exit 1
+          fi
+
+      - name: Guard against historical override flags
+        run: |
+          flags=(
+            REWRITE_HISTORICAL
+            OVERWRITE_HISTORICAL
+            REBUILD_HISTORICAL
+            REGENERATE_HISTORICAL
+            REGEN_HISTORICAL
+            FORCE_HISTORICAL_BOOTSTRAP
+          )
+          tripped=()
+          for flag in "${flags[@]}"; do
+            value="${!flag}"
+            if [ -n "${value}" ]; then
+              tripped+=("${flag}")
+            fi
+          done
+          if [ "${#tripped[@]}" -gt 0 ]; then
+            echo "::error::Historical override flags detected: ${tripped[*]}. Unset them for routine runs so cached bootstraps remain valid."
+            exit 1
+          fi
+
       - name: Install deps
         run: |
           npm ci || npm install --no-audit --no-fund

@@ -54,6 +54,39 @@ function selectLatestRun(serialised) {
   }, null);
 }
 
+function parseLatestRunCandidate(run) {
+  if (!run || typeof run !== "object") return null;
+  const season = Number.parseInt(run.season ?? run.season_id ?? run.year, 10);
+  const week = Number.parseInt(run.week ?? run.week_id, 10);
+  if (!Number.isFinite(season) || !Number.isFinite(week)) return null;
+  return { season, week };
+}
+
+function selectLatestFromBootstrap(state, key) {
+  const seasons = state?.bootstraps?.[key]?.seasons;
+  if (!Array.isArray(seasons) || seasons.length === 0) return null;
+  return selectLatestRun(
+    seasons
+      .filter((entry) => entry && typeof entry === "object" && Array.isArray(entry.weeks) && entry.weeks.length)
+      .map((entry) => ({
+        season: Number.parseInt(entry.season, 10),
+        weeks: entry.weeks.map((wk) => Number.parseInt(wk, 10)).filter((wk) => Number.isFinite(wk)).sort((a, b) => a - b)
+      }))
+      .filter((entry) => Number.isFinite(entry.season) && entry.weeks.length)
+  );
+}
+
+function areLatestRunsAligned(state) {
+  const keys = [BOOTSTRAP_KEYS.MODEL, BOOTSTRAP_KEYS.HYBRID];
+  return keys.every((key) => {
+    const expected = selectLatestFromBootstrap(state, key);
+    if (!expected) return true;
+    const recorded = parseLatestRunCandidate(state?.latest_runs?.[key]);
+    if (!recorded) return false;
+    return recorded.season === expected.season && recorded.week === expected.week;
+  });
+}
+
 function discoverHybridSeasons(entries, predictionsSet) {
   const pattern = /^model_(\d{4})_W(\d{2})\.json$/;
   const map = new Map();
@@ -181,7 +214,10 @@ export function refreshTrainingStateFromArtifacts(existingState = null) {
 
 export function ensureTrainingStateCurrent({ state = null, silent = false } = {}) {
   const baseState = state ?? loadTrainingState();
-  if (isTrainingStateCurrent(baseState)) {
+  const bootstrapCurrent = isTrainingStateCurrent(baseState);
+  const latestAligned = bootstrapCurrent && areLatestRunsAligned(baseState);
+
+  if (bootstrapCurrent && latestAligned) {
     return { state: baseState, refreshed: false };
   }
 

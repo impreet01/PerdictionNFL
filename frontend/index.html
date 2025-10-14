@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NFL Prediction Dashboard</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero__content">
+        <h1>Perdiction NFL Ensemble Dashboard</h1>
+        <p>
+          This project leverages only open data from the
+          <a href="https://nflverse.nflverse.com/" target="_blank" rel="noopener">nflverse</a>
+          community to forecast outcomes. Five complementary models &mdash; logistic
+          regression, decision tree, Bradley&ndash;Terry, artificial neural network,
+          and the Hybrid v2 ensemble &mdash; are blended together, calibrated, and
+          monitored every week to deliver transparent probabilities and
+          storytelling around each matchup.
+        </p>
+      </div>
+    </header>
+
+    <main>
+      <section class="controls" aria-label="Filters">
+        <div class="control-group">
+          <label for="season-select">Season</label>
+          <select id="season-select" aria-label="Select NFL season"></select>
+        </div>
+        <div class="control-group">
+          <label for="week-select">Week</label>
+          <select id="week-select" aria-label="Select NFL week"></select>
+        </div>
+        <div class="control-group">
+          <label for="metric-select">Metric</label>
+          <select id="metric-select" aria-label="Select evaluation metric">
+            <option value="accuracy">Accuracy</option>
+            <option value="auc">Area Under the Curve (AUC)</option>
+            <option value="brier">Brier Score</option>
+            <option value="logloss">Log Loss</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="status" aria-live="polite">
+        <p id="status-message">Loading available seasons&hellip;</p>
+      </section>
+
+      <section class="search" aria-label="Team filter">
+        <label for="team-filter">Filter matchups by team abbreviation</label>
+        <input
+          type="search"
+          id="team-filter"
+          placeholder="e.g. KC or NE"
+          aria-controls="predictions-table"
+        />
+      </section>
+
+      <section class="table-section">
+        <h2>Weekly Predictions</h2>
+        <div class="table-wrapper">
+          <table id="predictions-table">
+            <thead>
+              <tr>
+                <th scope="col">Matchup</th>
+                <th scope="col">Hybrid v2 (Ensemble)</th>
+                <th scope="col">Logistic Regression</th>
+                <th scope="col">Decision Tree</th>
+                <th scope="col">Bradley&ndash;Terry</th>
+                <th scope="col">ANN</th>
+                <th scope="col">Details</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="table-empty" class="empty-state" hidden>
+          Predictions are not yet available for the selected season and week.
+        </p>
+      </section>
+
+      <section class="charts">
+        <article class="chart-card">
+          <h2>Week-Level Model Comparison</h2>
+          <canvas id="week-chart" aria-label="Bar chart showing model metrics"></canvas>
+          <p id="week-chart-message" class="chart-message"></p>
+        </article>
+        <article class="chart-card">
+          <h2>Season Trajectory</h2>
+          <canvas id="trend-chart" aria-label="Line chart showing model performance by week"></canvas>
+          <p id="trend-chart-message" class="chart-message"></p>
+        </article>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Built for transparency and reproducibility. Data courtesy of the
+        nflverse community, forecasts blended from multiple open models, and
+        explanations augmented with contextual factors such as injuries,
+        weather, and market signals where available.
+      </p>
+    </footer>
+  </body>
+</html>

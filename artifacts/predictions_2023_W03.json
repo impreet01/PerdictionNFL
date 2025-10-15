@@ -5,13 +5,13 @@
     "away_team": "PHI",
     "season": 2023,
     "week": 3,
-    "forecast": 0.5,
+    "forecast": 0.524,
     "probs": {
       "logistic": 0.991,
       "tree": 0.5,
       "bt": 0.5,
-      "ann": 0.5,
-      "blended": 0.5
+      "ann": 0.534,
+      "blended": 0.524
     },
     "blend_weights": {
       "logistic": 0,
@@ -20,8 +20,8 @@
       "ann": 1
     },
     "calibration": {
-      "pre": 0.5,
-      "post": 0.5
+      "pre": 0.534,
+      "post": 0.524
     },
     "ci": {
       "bt90": [
@@ -29,7 +29,7 @@
         0.5
       ]
     },
-    "natural_language": "NE vs PHI: logistic 99.098%, tree 50%, BT 50%, ANN 50.044%, blended 50.035%. Key differentials: Total yards edge +12.00 (favorable); Possession time edge +12.00 (favorable); Penalty yards edge +6.00 (needs attention). Trend watch: Red-zone TD rate is higher than league average by 4.1% (favorable).",
+    "natural_language": "NE vs PHI: logistic 99.098%, tree 50%, BT 50%, ANN 53.41%, blended 52.436%. Key differentials: Total yards edge +12.00 (favorable); Possession time edge +12.00 (favorable); Penalty yards edge +6.00 (needs attention). Trend watch: Red-zone TD rate is higher than league average by 4.1% (favorable).",
     "top_drivers": [
       {
         "feature": "red-zone TD rate",
@@ -68,15 +68,15 @@
         "source": "bt"
       },
       {
-        "feature": "offensive success rate (S2D)",
+        "feature": "def_yds_against_5g",
         "direction": "negative",
-        "magnitude": 0.000010545161302243013,
+        "magnitude": 0.001435275996456198,
         "source": "ann"
       },
       {
         "feature": "3rd-down rate vs opp",
         "direction": "negative",
-        "magnitude": 0.000010410600462049507,
+        "magnitude": 0.0013775678964048964,
         "source": "ann"
       }
     ],
@@ -88,13 +88,13 @@
     "away_team": "KC",
     "season": 2023,
     "week": 3,
-    "forecast": 0.5,
+    "forecast": 0.472,
     "probs": {
       "logistic": 0.031,
       "tree": 0.5,
       "bt": 0.5,
-      "ann": 0.5,
-      "blended": 0.5
+      "ann": 0.482,
+      "blended": 0.472
     },
     "blend_weights": {
       "logistic": 0,
@@ -103,8 +103,8 @@
       "ann": 1
     },
     "calibration": {
-      "pre": 0.5,
-      "post": 0.5
+      "pre": 0.482,
+      "post": 0.472
     },
     "ci": {
       "bt90": [
@@ -112,7 +112,7 @@
         0.5
       ]
     },
-    "natural_language": "BUF vs KC: logistic 3.136%, tree 50%, BT 50%, ANN 49.998%, blended 49.989%. Key differentials: Turnovers even ±0.00 (balanced); R-ratio even ±0.00 (balanced); Penalty yards even ±0.00 (balanced).",
+    "natural_language": "BUF vs KC: logistic 3.136%, tree 50%, BT 50%, ANN 48.196%, blended 47.221%. Key differentials: Turnovers even ±0.00 (balanced); R-ratio even ±0.00 (balanced); Penalty yards even ±0.00 (balanced).",
     "top_drivers": [
       {
         "feature": "defensive EPA/play allowed (exp)",
@@ -151,15 +151,15 @@
         "source": "bt"
       },
       {
-        "feature": "offensive turnovers",
+        "feature": "net_yds_3g",
         "direction": "positive",
-        "magnitude": 0.000015734240663994466,
+        "magnitude": 0.00298489524736913,
         "source": "ann"
       },
       {
-        "feature": "TE target share (5wk)",
+        "feature": "off_turnovers_s2d_minus_opp",
         "direction": "negative",
-        "magnitude": 0.00001460632453055748,
+        "magnitude": 0.002981554599550036,
         "source": "ann"
       }
     ],

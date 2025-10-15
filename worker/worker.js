@@ -747,6 +747,7 @@ export default {
     }
     enforceRateLimit(req, env);
     try {
+      enforceRateLimit(req, env);
       const url = new URL(req.url);
       const path = url.pathname.replace(/\/+$/, "") || "/";
       if (path === "/") {

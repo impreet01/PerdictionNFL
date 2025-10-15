@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 
 const ARTIFACTS_DIR = path.resolve("artifacts");
@@ -9,10 +9,12 @@ function toFiniteNumber(value, fallback = 0) {
   return Number.isFinite(num) ? num : fallback;
 }
 
-function listModelArtifacts() {
+async function listModelArtifacts() {
   try {
-    return fs
-      .readdirSync(ARTIFACTS_DIR)
+    const entries = await fs.readdir(ARTIFACTS_DIR, { withFileTypes: true });
+    return entries
+      .filter((dirent) => dirent.isFile())
+      .map((dirent) => dirent.name)
       .map((name) => {
         const match = name.match(MODEL_REGEX);
         if (!match) return null;
@@ -34,9 +36,9 @@ function listModelArtifacts() {
   }
 }
 
-function findLatestBefore(season, week) {
+async function findLatestBefore(season, week) {
   if (!Number.isFinite(season) || !Number.isFinite(week)) return null;
-  const entries = listModelArtifacts();
+  const entries = await listModelArtifacts();
   let latest = null;
   for (const entry of entries) {
     if (entry.season > season) break;
@@ -76,15 +78,15 @@ function mapWeightsToFeatures(weights = [], fromFeatures = [], toFeatures = []) 
   return { weights: mapped, matched };
 }
 
-export function loadLogisticWarmStart({ season, week, features } = {}) {
+export async function loadLogisticWarmStart({ season, week, features } = {}) {
   const targetSeason = Number(season);
   const targetWeek = Number(week);
   if (!Number.isFinite(targetSeason) || !Number.isFinite(targetWeek)) return null;
-  const latest = findLatestBefore(targetSeason, targetWeek);
+  const latest = await findLatestBefore(targetSeason, targetWeek);
   if (!latest) return null;
   let parsed;
   try {
-    const raw = fs.readFileSync(latest.path, "utf8");
+    const raw = await fs.readFile(latest.path, "utf8");
     parsed = JSON.parse(raw);
   } catch (err) {
     console.warn(`[modelWarmStart] Unable to load ${latest.name}: ${err?.message || err}`);

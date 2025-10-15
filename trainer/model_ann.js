@@ -4,6 +4,10 @@
 const sigmoid = (z) => 1 / (1 + Math.exp(-z));
 const tanh = (z) => Math.tanh(z);
 const dtanh = (z) => 1 - Math.tanh(z) ** 2;
+const toFinite = (value, fallback = 0) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
 
 function makeLCG(seed) {
   let state = seed >>> 0;
@@ -64,12 +68,12 @@ function initNetwork(inputDim, architecture, rng) {
   const biases = [];
   let prev = inputDim;
   for (const size of arch) {
-    const scale = 0.25 / Math.sqrt(Math.max(1, prev));
+    const scale = Math.sqrt(2 / Math.max(1, prev + size));
     weights.push(initMatrix(size, prev, rng, scale));
     biases.push(initVector(size));
     prev = size;
   }
-  const outScale = 0.25 / Math.sqrt(Math.max(1, prev));
+  const outScale = Math.sqrt(1 / Math.max(1, prev));
   weights.push(initMatrix(1, prev, rng, outScale));
   biases.push(initVector(1));
   return { weights, biases };
@@ -188,7 +192,15 @@ function selectVals(arr, idx) {
 function trainSingleNetwork(
   X,
   y,
-  { seed = 1, maxEpochs = 200, lr = 1e-3, patience = 10, architecture = [64, 32, 16] }
+  {
+    seed = 1,
+    maxEpochs = 200,
+    lr = 1e-3,
+    patience = 10,
+    architecture = [64, 32, 16],
+    batchSize = 64,
+    l2 = 1e-4
+  }
 ) {
   const rng = makeLCG(seed);
   const splitRng = makeLCG((seed ^ 0xa5a5a5a5) >>> 0);
@@ -215,38 +227,49 @@ function trainSingleNetwork(
   let badRounds = 0;
   let epochs = 0;
 
+  const batch = Math.max(1, Math.min(batchSize, Xtrain.length));
   for (let epoch = 0; epoch < maxEpochs; epoch++) {
     epochs = epoch + 1;
-    const grads = {
-      gradW: net.weights.map((W) => zeroLike(W)),
-      gradB: net.biases.map((b) => initVector(b.length))
-    };
-    for (let i = 0; i < Xtrain.length; i++) {
-      const cache = forward(net, Xtrain[i]);
-      const g = backward(net, cache, ytrain[i]);
+    const indices = Array.from({ length: Xtrain.length }, (_, i) => i);
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    for (let start = 0; start < indices.length; start += batch) {
+      const end = Math.min(indices.length, start + batch);
+      const grads = {
+        gradW: net.weights.map((W) => zeroLike(W)),
+        gradB: net.biases.map((b) => initVector(b.length))
+      };
+      for (let idx = start; idx < end; idx++) {
+        const rowIdx = indices[idx];
+        const cache = forward(net, Xtrain[rowIdx]);
+        const g = backward(net, cache, ytrain[rowIdx]);
+        for (let l = 0; l < grads.gradW.length; l++) {
+          for (let r = 0; r < grads.gradW[l].length; r++) {
+            for (let c = 0; c < grads.gradW[l][r].length; c++) {
+              grads.gradW[l][r][c] += g.gradW[l][r][c];
+            }
+          }
+          for (let r = 0; r < grads.gradB[l].length; r++) {
+            grads.gradB[l][r] += g.gradB[l][r];
+          }
+        }
+      }
+      const denom = Math.max(1, end - start);
       for (let l = 0; l < grads.gradW.length; l++) {
         for (let r = 0; r < grads.gradW[l].length; r++) {
           for (let c = 0; c < grads.gradW[l][r].length; c++) {
-            grads.gradW[l][r][c] += g.gradW[l][r][c];
+            const penalty = l2 * net.weights[l][r][c];
+            grads.gradW[l][r][c] = grads.gradW[l][r][c] / denom + penalty;
           }
         }
         for (let r = 0; r < grads.gradB[l].length; r++) {
-          grads.gradB[l][r] += g.gradB[l][r];
+          grads.gradB[l][r] /= denom;
         }
       }
+      updateNetwork(net, grads, lr);
     }
-    const denom = Math.max(1, Xtrain.length);
-    for (let l = 0; l < grads.gradW.length; l++) {
-      for (let r = 0; r < grads.gradW[l].length; r++) {
-        for (let c = 0; c < grads.gradW[l][r].length; c++) {
-          grads.gradW[l][r][c] /= denom;
-        }
-      }
-      for (let r = 0; r < grads.gradB[l].length; r++) {
-        grads.gradB[l][r] /= denom;
-      }
-    }
-    updateNetwork(net, grads, lr);
 
     let valLoss = 0;
     for (let i = 0; i < Xval.length; i++) {
@@ -278,7 +301,9 @@ export function trainANNCommittee(
     timeLimitMs = 70000,
     architecture,
     committeeSize: committeeSizeOption,
-    committees: committeesOption
+    committees: committeesOption,
+    batchSize,
+    l2
   } = {}
 ) {
   if (!X?.length) {
@@ -293,7 +318,7 @@ export function trainANNCommittee(
   const committeeCount = Math.max(1, Math.round(committeesOption ?? Math.min(3, maxCommitteesDefault)));
   for (let i = 0; i < maxSeeds; i++) {
     const seed = i + 1;
-    const result = trainSingleNetwork(X, y, { seed, maxEpochs, lr, patience, architecture: arch });
+    const result = trainSingleNetwork(X, y, { seed, maxEpochs, lr, patience, architecture: arch, batchSize, l2 });
     results.push({ ...result, seed });
     const lossMsg = Number.isFinite(result.bestLoss) ? result.bestLoss.toFixed(4) : 'inf';
     console.log(`[ANN] seed=${seed} valLoss=${lossMsg}`);
@@ -355,7 +380,7 @@ export function predictANNCommittee(model, X) {
 
 function gradientInput(network, x) {
   const cache = forward(network, x);
-  const weights = network.weights;
+  const { weights } = network;
   const lastIdx = weights.length - 1;
   const deltaOut = cache.out * (1 - cache.out);
   if (weights.length === 1) {
@@ -366,25 +391,24 @@ function gradientInput(network, x) {
     downstream[j] = deltaOut * weights[lastIdx][0][j];
   }
   for (let layer = lastIdx - 1; layer >= 0; layer--) {
-    const z = cache.zs[layer];
-    const current = new Array(weights[layer].length).fill(0);
-    for (let j = 0; j < weights[layer].length; j++) {
-      current[j] = downstream[j] * dtanh(z[j]);
+    const z = cache.zs[layer] || [];
+    const neurons = weights[layer].length;
+    const current = new Array(neurons).fill(0);
+    for (let j = 0; j < neurons; j++) {
+      const activation = z[j] ?? 0;
+      const downVal = downstream[j] ?? 0;
+      current[j] = downVal * dtanh(activation);
+    }
+    const prevSize = weights[layer][0]?.length ?? x.length;
+    const newDownstream = new Array(prevSize).fill(0);
+    for (let j = 0; j < neurons; j++) {
+      const row = weights[layer][j];
+      for (let k = 0; k < prevSize; k++) {
+        newDownstream[k] += current[j] * toFinite(row?.[k], 0);
+      }
     }
     if (layer === 0) {
-      const gradIn = new Array(x.length).fill(0);
-      for (let j = 0; j < weights[layer].length; j++) {
-        for (let k = 0; k < weights[layer][j].length; k++) {
-          gradIn[k] += current[j] * weights[layer][j][k];
-        }
-      }
-      return gradIn;
-    }
-    const newDownstream = new Array(weights[layer][0].length).fill(0);
-    for (let j = 0; j < weights[layer].length; j++) {
-      for (let k = 0; k < weights[layer][j].length; k++) {
-        newDownstream[k] += current[j] * weights[layer][j][k];
-      }
+      return newDownstream.map((v) => toFinite(v, 0));
     }
     downstream = newDownstream;
   }

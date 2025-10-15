@@ -14,7 +14,7 @@ const PREDICTION_PREFIX = "predictions";
 const MODEL_PREFIX = "model";
 const OUTCOME_PREFIX = "outcomes";
 const DIAGNOSTIC_PREFIX = "diagnostics";
-const CALIBRATION_WINDOW = 2;
+const CALIBRATION_WINDOW = Number(process.env.HYBRID_CAL_WINDOW ?? 2);
 
 const sigmoid = (z) => 1 / (1 + Math.exp(-z));
 
@@ -44,10 +44,11 @@ function loadJsonIfExists(fileName) {
 }
 
 function normaliseWeights(source) {
-  if (!source || typeof source !== "object") {
-    return null;
-  }
   const keys = ["logistic", "tree", "bt", "ann"];
+  if (!source || typeof source !== "object") {
+    const uniform = 1 / keys.length;
+    return keys.reduce((acc, key) => ({ ...acc, [key]: uniform }), {});
+  }
   const weights = {};
   let total = 0;
   for (const key of keys) {
@@ -60,7 +61,8 @@ function normaliseWeights(source) {
     }
   }
   if (total <= 0) {
-    return null;
+    const uniform = 1 / keys.length;
+    return keys.reduce((acc, key) => ({ ...acc, [key]: uniform }), {});
   }
   for (const key of keys) {
     weights[key] = weights[key] / total;

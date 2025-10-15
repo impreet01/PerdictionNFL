@@ -2,14 +2,65 @@
 // Cloudflare Worker serving predictions, context, explain scorecards, models,
 // diagnostics, metrics, outcomes, and history endpoints backed by GitHub artifacts.
 
-const REPO_USER = "impreet01";
-const REPO_NAME = "PerdictionNFL";
-const BRANCH = "main";
+const DEFAULT_REPO_USER = "impreet01";
+const DEFAULT_REPO_NAME = "PerdictionNFL";
+const DEFAULT_BRANCH = "main";
+const DEFAULT_CACHE_TTL = 900;
 
-const RAW_BASE = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/${BRANCH}/artifacts`;
-const GH_TREE_API = `https://api.github.com/repos/${REPO_USER}/${REPO_NAME}/git/trees/${BRANCH}?recursive=1`;
-const CACHE_TTL = 900;
+const runtimeConfig = {
+  repoUser: DEFAULT_REPO_USER,
+  repoName: DEFAULT_REPO_NAME,
+  branch: DEFAULT_BRANCH,
+  cacheTtl: DEFAULT_CACHE_TTL
+};
+
+function resolveConfig() {
+  const { repoUser, repoName, branch, cacheTtl } = runtimeConfig;
+  return {
+    repoUser,
+    repoName,
+    branch,
+    cacheTtl,
+    rawBase: `https://raw.githubusercontent.com/${repoUser}/${repoName}/${branch}/artifacts`,
+    treeApi: `https://api.github.com/repos/${repoUser}/${repoName}/git/trees/${branch}?recursive=1`
+  };
+}
+
+function applyRuntimeConfig(env = {}) {
+  if (env.REPO_USER) runtimeConfig.repoUser = env.REPO_USER;
+  if (env.REPO_NAME) runtimeConfig.repoName = env.REPO_NAME;
+  if (env.REPO_BRANCH || env.BRANCH) runtimeConfig.branch = env.REPO_BRANCH || env.BRANCH;
+  const ttl = Number(env.CACHE_TTL);
+  if (Number.isFinite(ttl) && ttl > 0) runtimeConfig.cacheTtl = ttl;
+}
+
+const CACHE_TTL = () => resolveConfig().cacheTtl;
 const GH_HEADERS = { "User-Agent": "cf-worker" };
+
+const RATE_BUCKETS = new Map();
+const RATE_LIMIT_DEFAULT = 120;
+
+function enforceRateLimit(request, env = {}) {
+  const limit = Number(env.RATE_LIMIT_PER_MINUTE ?? RATE_LIMIT_DEFAULT);
+  if (!Number.isFinite(limit) || limit <= 0) return;
+  const windowMs = 60_000;
+  const now = Date.now();
+  const key =
+    request.headers.get("cf-connecting-ip") ||
+    request.headers.get("x-forwarded-for") ||
+    request.headers.get("x-real-ip") ||
+    "global";
+  const bucket = RATE_BUCKETS.get(key) || { count: 0, resetAt: now + windowMs };
+  if (now > bucket.resetAt) {
+    bucket.count = 0;
+    bucket.resetAt = now + windowMs;
+  }
+  bucket.count += 1;
+  RATE_BUCKETS.set(key, bucket);
+  if (bucket.count > limit) {
+    throw new HttpError(429, "rate limit exceeded");
+  }
+}
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -19,9 +70,10 @@ class HttpError extends Error {
 }
 
 function baseHeaders(status = 200, extra = {}) {
+  const { cacheTtl } = resolveConfig();
   return {
     "content-type": "application/json; charset=utf-8",
-    "cache-control": status === 200 ? `public, max-age=${CACHE_TTL}` : "no-store",
+    "cache-control": status === 200 ? `public, max-age=${cacheTtl}` : "no-store",
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,OPTIONS",
     "access-control-allow-headers": "*",
@@ -52,7 +104,8 @@ const coerceInt = (value) => {
 };
 
 async function listArtifacts() {
-  const resp = await fetch(GH_TREE_API, { headers: GH_HEADERS });
+  const { treeApi } = resolveConfig();
+  const resp = await fetch(treeApi, { headers: GH_HEADERS });
   if (!resp.ok) {
     throw new HttpError(resp.status || 502, `GitHub API list failed: ${resp.status}`);
   }
@@ -107,8 +160,9 @@ function parseSeasonFiles(listing, prefix) {
 }
 
 async function fetchJsonFile(file) {
-  const url = `${RAW_BASE}/${file}`;
-  const resp = await fetch(url, { cf: { cacheEverything: true, cacheTtl: CACHE_TTL } });
+  const { rawBase, cacheTtl } = resolveConfig();
+  const url = `${rawBase}/${file}`;
+  const resp = await fetch(url, { cf: { cacheEverything: true, cacheTtl } });
   if (!resp.ok) {
     if (resp.status === 404) {
       throw new HttpError(404, `artifact not found: ${file}`);
@@ -686,10 +740,12 @@ function corsPreflight() {
 }
 
 export default {
-  async fetch(req) {
+  async fetch(req, env) {
+    applyRuntimeConfig(env);
     if (req.method === "OPTIONS") {
       return corsPreflight();
     }
+    enforceRateLimit(req, env);
     try {
       const url = new URL(req.url);
       const path = url.pathname.replace(/\/+$/, "") || "/";

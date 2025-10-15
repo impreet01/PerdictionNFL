@@ -93,6 +93,10 @@ async function main() {
     const ann = actualRows.map((p) => p.probs.ann);
     const blend = actualRows.map((p) => p.probs.blended);
     const labels = actualRows.map((p) => p.actual);
+    const aligned = [logistic, tree, bt, ann, blend];
+    if (aligned.some((arr) => arr.length !== labels.length)) {
+      throw new Error(`Probability/label length mismatch for week ${week}`);
+    }
     results.push({
       week,
       losses: {

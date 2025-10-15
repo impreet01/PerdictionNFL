@@ -3,11 +3,22 @@
 
 import { BT_FEATURES } from "./featureBuild_bt.js";
 
-const toFiniteNumber = (value, fallback = 0.5) => {
+/**
+ * Clamp a value to a finite floating point number.
+ * @param {unknown} value
+ * @param {number} [fallback=0]
+ * @returns {number}
+ */
+export const toFiniteNumber = (value, fallback = 0) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
 };
 
+/**
+ * Clamp a probability to the [0, 1] interval and ensure it is finite.
+ * @param {unknown} value
+ * @returns {number}
+ */
 const safeProb = (value) => {
   const num = toFiniteNumber(value, 0.5);
   if (!Number.isFinite(num)) return 0.5;
@@ -45,10 +56,20 @@ const applyScaler = (X, scaler) => {
   return X.map((row) => row.map((v, j) => (v - mu[j]) / (sd[j] || 1)));
 };
 
+const DEFAULT_GD_STEPS = Number(process.env.BT_GD_STEPS ?? 2000);
+const DEFAULT_GD_LR = Number(process.env.BT_GD_LR ?? 5e-3);
+const DEFAULT_GD_L2 = Number(process.env.BT_GD_L2 ?? 1e-4);
+
 function trainLogisticGD(
   X,
   y,
-  { steps = 2000, lr = 5e-3, l2 = 1e-4, featureLength } = {}
+  {
+    steps = DEFAULT_GD_STEPS,
+    lr = DEFAULT_GD_LR,
+    l2 = DEFAULT_GD_L2,
+    featureLength,
+    batchSize = Number(process.env.BT_GD_BATCH ?? 128)
+  } = {}
 ) {
   const n = X.length;
   const observedDim = X[0]?.length || 0;
@@ -56,39 +77,43 @@ function trainLogisticGD(
   let w = new Array(dim).fill(0);
   let b = 0;
   if (!n || !observedDim || !dim) return { w, b, neutral: true };
+  const effectiveBatch = Math.max(1, Math.min(n, Math.round(batchSize)));
+  const batchesPerEpoch = Math.ceil(n / effectiveBatch);
   for (let t = 0; t < steps; t++) {
-    let gb = 0;
-    const gw = new Array(dim).fill(0);
-    for (let i = 0; i < n; i++) {
-      const row = X[i] || [];
-      let z = b;
-      for (let j = 0; j < dim; j++) {
-        const weight = w[j];
-        const feature = Number(row[j] ?? 0);
-        if (!Number.isFinite(weight) || !Number.isFinite(feature)) continue;
-        z += weight * feature;
+    for (let batchIdx = 0; batchIdx < batchesPerEpoch; batchIdx++) {
+      const start = batchIdx * effectiveBatch;
+      const end = Math.min(n, start + effectiveBatch);
+      let gb = 0;
+      const gw = new Array(dim).fill(0);
+      for (let i = start; i < end; i++) {
+        const row = X[i] || [];
+        let z = b;
+        for (let j = 0; j < dim; j++) {
+          const weight = toFiniteNumber(w[j]);
+          const feature = toFiniteNumber(row[j]);
+          z += weight * feature;
+        }
+        if (!Number.isFinite(z)) continue;
+        const p = sigmoid(z);
+        const err = p - y[i];
+        gb += err;
+        for (let j = 0; j < dim; j++) {
+          const feature = toFiniteNumber(row[j]);
+          gw[j] += err * feature;
+        }
       }
-      if (!Number.isFinite(z)) continue;
-      const p = sigmoid(z);
-      const err = p - y[i];
-      gb += err;
+      const denom = Math.max(1, end - start);
+      gb = Number.isFinite(gb) ? gb / denom : 0;
       for (let j = 0; j < dim; j++) {
-        const feature = Number(row[j] ?? 0);
-        if (!Number.isFinite(feature)) continue;
-        gw[j] += err * feature;
+        const grad = Number.isFinite(gw[j]) ? gw[j] / denom + l2 * toFiniteNumber(w[j]) : l2 * toFiniteNumber(w[j]);
+        gw[j] = Number.isFinite(grad) ? grad : 0;
       }
-    }
-    gb /= Math.max(1, n);
-    if (!Number.isFinite(gb)) gb = 0;
-    for (let j = 0; j < dim; j++) {
-      const grad = gw[j] / Math.max(1, n) + l2 * w[j];
-      gw[j] = Number.isFinite(grad) ? grad : 0;
-    }
-    b -= lr * gb;
-    if (!Number.isFinite(b)) b = 0;
-    for (let j = 0; j < dim; j++) {
-      w[j] -= lr * gw[j];
-      if (!Number.isFinite(w[j])) w[j] = 0;
+      b -= lr * gb;
+      if (!Number.isFinite(b)) b = 0;
+      for (let j = 0; j < dim; j++) {
+        w[j] -= lr * gw[j];
+        if (!Number.isFinite(w[j])) w[j] = 0;
+      }
     }
   }
   return { w, b };
@@ -113,7 +138,8 @@ const predictLogit = (X, model = {}) => {
   });
 };
 
-const rowsToMatrix = (rows) => rows.map((r) => BT_FEATURES.map((k) => Number(r.features?.[k] ?? 0)));
+const rowsToMatrix = (rows) =>
+  rows.map((r) => BT_FEATURES.map((k) => toFiniteNumber(r.features?.[k], 0)));
 
 const num = (value, fallback = 0) => {
   const n = Number(value);
@@ -147,7 +173,7 @@ function normalizeActual(actual = {}) {
 
 export function trainBTModel(trainRows, { steps, lr, l2 } = {}) {
   const X = rowsToMatrix(trainRows);
-  const y = trainRows.map((r) => Number(r.label_win ?? 0));
+  const y = trainRows.map((r) => toFiniteNumber(r.label_win, 0));
   const scaler = fitScaler(X);
   const Xs = applyScaler(X, scaler);
   const model = trainLogisticGD(Xs, y, { steps, lr, l2, featureLength: BT_FEATURES.length });
@@ -307,6 +333,36 @@ function drawHistorySamples(entries, target, block, rng) {
   return sampleRecent(entries, block, rng);
 }
 
+function buildFeatureVector({
+  model,
+  baseFeatures,
+  homeAvg,
+  awayAvg,
+  row
+}) {
+  const featureKeys = Array.isArray(model?.features) && model.features.length ? model.features : BT_FEATURES;
+  return featureKeys.map((key) => {
+    if (key.startsWith("diff_")) {
+      const name = key.replace(/^diff_/, "");
+      const home = homeAvg && name in homeAvg ? toFiniteNumber(homeAvg[name], 0) : null;
+      const away = awayAvg && name in awayAvg ? toFiniteNumber(awayAvg[name], 0) : null;
+      if (home !== null && away !== null) {
+        return home - away;
+      }
+      return toFiniteNumber(baseFeatures[key], 0);
+    }
+    if (key.startsWith("home_")) {
+      const stat = key.replace(/^home_/, "");
+      return toFiniteNumber(homeAvg?.[stat], baseFeatures[key]);
+    }
+    if (key.startsWith("away_")) {
+      const stat = key.replace(/^away_/, "");
+      return toFiniteNumber(awayAvg?.[stat], baseFeatures[key]);
+    }
+    return toFiniteNumber(baseFeatures[key], 0);
+  });
+}
+
 export function predictBT({
   model,
   rows,
@@ -321,7 +377,9 @@ export function predictBT({
   const rng = defaultRng(seed);
   const preds = [];
   for (const row of rows) {
-    const base = BT_FEATURES.map((k) => Number(row.features?.[k] ?? 0));
+    const base = (Array.isArray(model.features) ? model.features : BT_FEATURES).map((k) =>
+      toFiniteNumber(row.features?.[k], 0)
+    );
     const standardizedBase = applyScaler([base], scaler)[0];
     const baseProb = safeProb(
       sigmoid(standardizedBase.reduce((s, v, idx) => s + v * coeffs[idx], 0) + model.b)
@@ -341,7 +399,7 @@ export function predictBT({
       week: Number(row.week)
     };
     const probs = [];
-    const iterations = Math.max(1, Math.round(bootstrap));
+    const iterations = Math.max(1, Math.min(600, Math.round(bootstrap)));
     for (let i = 0; i < iterations; i++) {
       const hSample = drawHistorySamples(hHist, homeTarget, block, rng);
       const aSample = drawHistorySamples(aHist, awayTarget, block, rng);
@@ -355,14 +413,13 @@ export function predictBT({
         probs.push(baseProb);
         continue;
       }
-      const featVec = [
-        Number(hAvg.total_yards ?? 0) - Number(aAvg.total_yards ?? 0),
-        Number(hAvg.penalty_yards ?? 0) - Number(aAvg.penalty_yards ?? 0),
-        Number(hAvg.turnovers ?? 0) - Number(aAvg.turnovers ?? 0),
-        Number(hAvg.possession_seconds ?? 0) - Number(aAvg.possession_seconds ?? 0),
-        Number(hAvg.r_ratio ?? 0) - Number(aAvg.r_ratio ?? 0),
-        Number(row.features?.diff_elo_pre ?? 0)
-      ];
+      const featVec = buildFeatureVector({
+        model,
+        baseFeatures: row.features || {},
+        homeAvg: hAvg,
+        awayAvg: aAvg,
+        row
+      });
       const std = applyScaler([featVec], scaler)[0];
       const prob = sigmoid(std.reduce((s, v, idx) => s + v * coeffs[idx], 0) + model.b);
       probs.push(safeProb(prob));

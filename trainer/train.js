@@ -185,7 +185,7 @@ function round3(x){ return Math.round(Number(x)*1000)/1000; }
   const neg = train.length - pos;
   console.log(`Train size: ${train.length} (wins=${pos}, losses=${neg})`);
 
-  const warmStart = loadLogisticWarmStart({ season: TARGET_SEASON, week: TARGET_WEEK, features: FEATS });
+  const warmStart = await loadLogisticWarmStart({ season: TARGET_SEASON, week: TARGET_WEEK, features: FEATS });
   if (warmStart?.meta) {
     const { season: srcSeason, week: srcWeek, matchedFeatures, totalFeatures } = warmStart.meta;
     const paddedWeek = String(srcWeek).padStart(2, "0");

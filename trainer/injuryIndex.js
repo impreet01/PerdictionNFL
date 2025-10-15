@@ -37,6 +37,10 @@ const classifyStatus = (statusRaw = "") => {
     status.includes("injured reserve") ||
     status.includes("injury reserve") ||
     status.includes("ir") ||
+    status.includes("designated to return") ||
+    status.includes("return designation") ||
+    status.includes("ir-r") ||
+    status.includes("activated reserve") ||
     status.includes("susp") ||
     status.includes("pup") ||
     status.includes("nfi") ||

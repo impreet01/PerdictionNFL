@@ -785,7 +785,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   // Determine the final FEATS list (union of base + discovered diff_*):
   const FEATS_ENR = expandFeats(FEATS_BASE, featureRows);
 
-  const warmStart = loadLogisticWarmStart({ season: resolvedSeason, week: resolvedWeek, features: FEATS_ENR });
+  const warmStart = await loadLogisticWarmStart({ season: resolvedSeason, week: resolvedWeek, features: FEATS_ENR });
   if (warmStart?.meta) {
     const { season: srcSeason, week: srcWeek, matchedFeatures, totalFeatures } = warmStart.meta;
     const paddedWeek = String(srcWeek).padStart(2, "0");

@@ -16,6 +16,8 @@ import {
   loadESPNQBR,
   loadOfficials,
   loadWeather,
+  loadNextGenStats,
+  loadParticipation,
   listDatasetSeasons
 } from "./dataSources.js";
 import { buildContextForWeek } from "./contextPack.js";
@@ -1580,6 +1582,34 @@ async function loadSeasonData(season) {
     snapCounts = [];
   }
 
+  let participation;
+  try {
+    participation = await loadParticipation(season);
+  } catch (err) {
+    participation = [];
+  }
+
+  let ngsPassing;
+  try {
+    ngsPassing = await loadNextGenStats(season, 'passing');
+  } catch (err) {
+    ngsPassing = [];
+  }
+
+  let ngsRushing;
+  try {
+    ngsRushing = await loadNextGenStats(season, 'rushing');
+  } catch (err) {
+    ngsRushing = [];
+  }
+
+  let ngsReceiving;
+  try {
+    ngsReceiving = await loadNextGenStats(season, 'receiving');
+  } catch (err) {
+    ngsReceiving = [];
+  }
+
   let pfrAdv;
   try {
     pfrAdv = await loadPFRAdvTeam(season);
@@ -1614,7 +1644,13 @@ async function loadSeasonData(season) {
     snapCounts,
     pfrAdv,
     qbr,
-    officials
+    officials,
+    participation,
+    nextGenStats: {
+      passing: ngsPassing,
+      rushing: ngsRushing,
+      receiving: ngsReceiving
+    }
   };
 }
 

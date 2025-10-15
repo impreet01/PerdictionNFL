@@ -28,7 +28,9 @@ const WEEKLY_SANITY_DATASETS = new Set([
   'playerWeekly',
   'rosterWeekly',
   'depthCharts',
-  'ftnCharts'
+  'ftnCharts',
+  'nextGenStats',
+  'participation'
 ]);
 
 const DEFAULT_RETRY = {
@@ -199,6 +201,42 @@ const DATASET_MANIFEST = {
       return null;
     }
   },
+  nextGenPassing: {
+    tag: 'nextgen_stats',
+    parser(asset) {
+      if (/ngs_(\d{4})_passing\.csv(\.gz)?$/i.test(asset.name)) {
+        return PATTERN(/ngs_(\d{4})_passing\.csv(\.gz)?$/)(asset);
+      }
+      return null;
+    }
+  },
+  nextGenRushing: {
+    tag: 'nextgen_stats',
+    parser(asset) {
+      if (/ngs_(\d{4})_rushing\.csv(\.gz)?$/i.test(asset.name)) {
+        return PATTERN(/ngs_(\d{4})_rushing\.csv(\.gz)?$/)(asset);
+      }
+      return null;
+    }
+  },
+  nextGenReceiving: {
+    tag: 'nextgen_stats',
+    parser(asset) {
+      if (/ngs_(\d{4})_receiving\.csv(\.gz)?$/i.test(asset.name)) {
+        return PATTERN(/ngs_(\d{4})_receiving\.csv(\.gz)?$/)(asset);
+      }
+      return null;
+    }
+  },
+  participation: {
+    tag: 'pbp_participation',
+    parser(asset) {
+      if (/pbp_participation_(\d{4})\.csv(\.gz)?$/i.test(asset.name)) {
+        return PATTERN(/pbp_participation_(\d{4})\.csv(\.gz)?$/)(asset);
+      }
+      return null;
+    }
+  },
   rosterWeekly: {
     tag: 'weekly_rosters',
     parser(asset) {
@@ -355,6 +393,10 @@ const REL = {
   pfrDef:     (y) => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_def_${y}.csv`,
   pfrPass:    (y) => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_pass_${y}.csv`,
   pfrRec:     (y) => `https://github.com/nflverse/nflverse-data/releases/download/pfr_advstats/advstats_week_rec_${y}.csv`,
+  nextGenPassing:   (y) => `https://github.com/nflverse/nflverse-data/releases/download/nextgen_stats/ngs_${y}_passing.csv.gz`,
+  nextGenRushing:   (y) => `https://github.com/nflverse/nflverse-data/releases/download/nextgen_stats/ngs_${y}_rushing.csv.gz`,
+  nextGenReceiving: (y) => `https://github.com/nflverse/nflverse-data/releases/download/nextgen_stats/ngs_${y}_receiving.csv.gz`,
+  participation:    (y) => `https://github.com/nflverse/nflverse-data/releases/download/pbp_participation/pbp_participation_${y}.csv`
 };
 
 // ---------- helpers/caches ----------
@@ -433,6 +475,9 @@ function mapPbpRow(raw, seasonFilter) {
   const epa = Number(raw.epa);
   if (Number.isFinite(epa)) out.epa = epa;
 
+  const airYards = Number(raw.air_yards ?? raw.air_yards_intended ?? raw.air_yards_thrown);
+  if (Number.isFinite(airYards)) out.air_yards = airYards;
+
   const success = normalizeSuccessFlag(raw.success);
   if (success != null) out.success = success;
 
@@ -496,7 +541,187 @@ export const caches = {
   injuries:    new Map(),
   markets:     new Map(),
   weather:     new Map(),
+  nextGenStats:new Map(), // key `${season}|${statType}`
+  participation:new Map(),
 };
+
+const DATA_INSPECTION_META = {
+  schedules: {
+    fields: [
+      'game_id: Unique schedule identifier from nflverse games feed (string).',
+      'home_team: Home team abbreviation, string code for franchise.',
+      'spread_line: Closing spread line when available, numeric in points.'
+    ],
+    availability: (season) => {
+      if (season == null) {
+        return 'Schedules available for all tracked seasons; manifest fallback keeps historical coverage.';
+      }
+      return `Schedules for ${season} served from nflverse games releases with live fallback when manifest lags.`;
+    }
+  },
+  qbr: {
+    fields: [
+      'qbr_total: ESPN Total QBR scaled 0-100 per game since 2006.',
+      'qb_plays: Plays included in Total QBR calculation, numeric count.'
+    ],
+    availability: () => 'ESPN Total QBR has coverage beginning in 2006; earlier seasons return empty results.'
+  },
+  officials: {
+    fields: [
+      'referee: Lead official name for the crew, string.',
+      'total_penalties: Combined accepted penalties flagged by crew, numeric if available.'
+    ],
+    availability: () => 'Officials data maintained since 2015 across regular and postseason games.'
+  },
+  snapCounts: {
+    fields: [
+      'offense_snaps: Offensive snaps played by the player, numeric.',
+      'special_teams_snaps: Special-teams snaps logged, numeric count.'
+    ],
+    availability: (season) => `Snap counts tracked by nflverse weekly releases; consistent coverage from 2012 onward (requested ${season}).`
+  },
+  teamWeekly: {
+    fields: [
+      'pass_yards: Team passing yards for the week, numeric aggregate.',
+      'rush_yards: Team rushing yards for the week, numeric aggregate.'
+    ],
+    availability: () => 'Team weekly stats cover regular and postseason performance for modern NFL seasons.'
+  },
+  teamGameAdvanced: {
+    fields: [
+      'off_pass_epa: Offensive pass EPA per play, numeric per game.',
+      'def_rush_success_rate: Defensive rush success rate allowed, numeric share.'
+    ],
+    availability: () => 'Team-game advanced stats derived from nflverse advanced releases for play-by-play era (1999+).'
+  },
+  playerWeekly: {
+    fields: [
+      'targets: Player targets for the week, numeric usage metric.',
+      'rush_attempts: Player rushing attempts per week, numeric volume.'
+    ],
+    availability: () => 'Player weekly usage spans play-by-play era with bye-week aware splits by position.'
+  },
+  rosterWeekly: {
+    fields: [
+      'status: Weekly roster status (active/inactive/IR), string.',
+      'position: Official roster position code, string.'
+    ],
+    availability: () => 'Weekly rosters updated throughout each season with full franchise coverage.'
+  },
+  depthCharts: {
+    fields: [
+      'depth_team: Team abbreviation for the depth entry, string.',
+      'depth_order: Numeric depth chart order (1=starter).'
+    ],
+    availability: () => 'Depth charts captured weekly from nflverse depth chart releases.'
+  },
+  ftnCharts: {
+    fields: [
+      'pressures: FTN charted pass-rush pressures, numeric.',
+      'defense_man_rate: Share of defensive snaps in man coverage, numeric.'
+    ],
+    availability: (season) => `FTN charting expands defensive detail for recent seasons (requested ${season}); earliest coverage circa 2020.`
+  },
+  pbp: {
+    fields: [
+      'epa: Expected Points Added, numeric efficiency from play.',
+      'air_yards: Pass distance in the air, numeric (tracking since 2006).'
+    ],
+    availability: (season) => {
+      if (season == null) {
+        return 'Full play-by-play spans from 1999 forward with postseason coverage; request-specific filtering applied.';
+      }
+      return `Play-by-play for ${season} sourced from nflverse pbp release with auto mirror + gunzip fallbacks.`;
+    }
+  },
+  pfrAdvTeamWeekly: {
+    fields: [
+      'rush_success_rate: Pro-Football-Reference rushing success rate, numeric.',
+      'pass_epa: PFR modeled passing EPA per play, numeric.'
+    ],
+    availability: () => 'PFR advanced team splits aggregated weekly dating to 2000-era advanced stat coverage.'
+  },
+  injuries: {
+    fields: [
+      'status: Player injury designation (out/questionable), string.',
+      'practice: Practice participation notes, string from Rotowire.'
+    ],
+    availability: (season) => `Rotowire injury reports refreshed daily; data persists for ${season} season snapshots.`
+  },
+  markets: {
+    fields: [
+      'spread_home: Consensus home spread line in points, numeric.',
+      'total: Consensus game total in points, numeric.'
+    ],
+    availability: () => 'Market artifacts generated weekly from Rotowire betting tables when fetched.'
+  },
+  weather: {
+    fields: [
+      'temperature: Forecast/observed temperature in Fahrenheit, numeric.',
+      'wind_mph: Reported wind speed in miles per hour, numeric.'
+    ],
+    availability: () => 'Weather artifacts captured weekly from Rotowire with stadium-specific forecasts.'
+  },
+  nextGenStats: {
+    fields: [
+      'avg_time_to_throw: Seconds from snap to pass attempt, numeric from tracking.',
+      'aggressiveness: Tight-window throw rate percentage, numeric.',
+      'expected_yac: Expected yards after catch for targeted receivers, numeric.'
+    ],
+    availability: (season, rows, ctx) => {
+      const type = ctx?.statType ? ctx.statType.toLowerCase() : 'tracking';
+      if (season != null && season < 2016) {
+        return `Next Gen Stats ${type} data begins in 2016; season ${season} will fallback to traditional stats.`;
+      }
+      return `Next Gen Stats ${type} tracking metrics available from 2016 onward (requested ${season}).`;
+    }
+  },
+  participation: {
+    fields: [
+      'offense_players: Offensive personnel on field (comma-separated), string.',
+      'defense_players: Defensive personnel grouping per play, string.'
+    ],
+    availability: (season) => {
+      if (season != null && season < 2016) {
+        return `Participation tracking starts in 2016; season ${season} will not return personnel splits.`;
+      }
+      return `Participation files supply offense/defense/special-teams personnel from 2016 onward (requested ${season}).`;
+    }
+  }
+};
+
+function inspectData(dataset, rows, context = {}) {
+  try {
+    const meta = DATA_INSPECTION_META[dataset] || {};
+    const availabilitySource = context.availability ?? meta.availability;
+    const availability = typeof availabilitySource === 'function'
+      ? availabilitySource(context.season ?? null, rows, context)
+      : availabilitySource;
+    const fieldMeanings = [];
+    if (Array.isArray(meta.fields)) fieldMeanings.push(...meta.fields);
+    if (Array.isArray(context.fields)) fieldMeanings.push(...context.fields);
+
+    if (Array.isArray(rows) && rows.length > 0) {
+      const sampleRow = rows[0];
+      const sampleKeys = Object.keys(sampleRow || {});
+      console.log(`[inspectData/${dataset}] sample columns=${sampleKeys.join(', ')}`);
+      console.table([sampleRow]);
+    } else if (!Array.isArray(rows) || rows.length === 0) {
+      console.warn(`[inspectData/${dataset}] dataset empty or unavailable`);
+    }
+
+    if (availability) {
+      console.log(`[inspectData/${dataset}] availability: ${availability}`);
+    }
+
+    for (const desc of fieldMeanings) {
+      console.log(`[inspectData/${dataset}] field: ${desc}`);
+    }
+  } catch (err) {
+    console.warn(`[inspectData/${dataset}] inspection failed: ${err?.message || err}`);
+  }
+  return rows;
+}
 
 function parseCacheLimit(value, fallback) {
   const num = Number(value);
@@ -518,9 +743,26 @@ function enforceCacheLimit(store, limit) {
 }
 
 async function cached(store, key, loader, options = {}) {
-  if (store.has(key)) return store.get(key);
+  if (store.has(key)) {
+    const cachedValue = store.get(key);
+    if (typeof options.inspect === 'function') {
+      try {
+        options.inspect(cachedValue, { cached: true, key });
+      } catch (err) {
+        console.warn(`[dataSources] inspect callback failed for cached key ${String(key)}: ${err?.message || err}`);
+      }
+    }
+    return cachedValue;
+  }
   const val = await loader();
   store.set(key, val);
+  if (typeof options.inspect === 'function') {
+    try {
+      options.inspect(val, { cached: false, key });
+    } catch (err) {
+      console.warn(`[dataSources] inspect callback failed for key ${String(key)}: ${err?.message || err}`);
+    }
+  }
   const { maxSize } = options;
   if (maxSize != null) {
     const limit = Number(maxSize);
@@ -1193,6 +1435,8 @@ export async function loadSchedules(season){
         (effectiveSeason != null ? ` season=${effectiveSeason}` : '')
     );
     return filteredRows;
+  }, {
+    inspect: (rows) => inspectData('schedules', rows, { season: targetSeason ?? resolvedSeason ?? null })
   });
 }
 export async function loadESPNQBR(){
@@ -1201,6 +1445,8 @@ export async function loadESPNQBR(){
     sanityCheckRows('qbr', rows);
     console.log(`[loadESPNQBR] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
+  }, {
+    inspect: (rows) => inspectData('qbr', rows, { season: null })
   });
 }
 export async function loadOfficials(){
@@ -1209,8 +1455,92 @@ export async function loadOfficials(){
     sanityCheckRows('officials', rows);
     console.log(`[loadOfficials] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
+  }, {
+    inspect: (rows) => inspectData('officials', rows, { season: null })
   });
 }
+const NEXT_GEN_TYPE_KEYS = new Map([
+  ['passing', 'nextGenPassing'],
+  ['rushing', 'nextGenRushing'],
+  ['receiving', 'nextGenReceiving']
+]);
+
+/**
+ * Loads Next Gen Stats tracking feed for the requested season/stat split. Headers include
+ * avg_time_to_throw (seconds from snap to release, numeric), aggressiveness (tight-window throw rate, percent),
+ * and expected_yac (modeled yards after catch, numeric). Coverage begins with the 2016 season.
+ *
+ * @param {number|string} season - Season to request (e.g., 2023).
+ * @param {'passing'|'rushing'|'receiving'} [statType='passing'] - Tracking split to fetch.
+ * @returns {Promise<object[]>} Parsed tracking rows for the requested split/season.
+ */
+export async function loadNextGenStats(season, statType = 'passing') {
+  const y = toInt(season);
+  if (y == null) throw new Error('loadNextGenStats season');
+  const normalizedType = String(statType ?? 'passing').toLowerCase();
+  const datasetKey = NEXT_GEN_TYPE_KEYS.get(normalizedType);
+  if (!datasetKey) {
+    throw new Error(`loadNextGenStats unsupported stat_type=${statType}`);
+  }
+  if (y < 2016) {
+    console.warn(`[loadNextGenStats] season ${y} precedes tracking availability; returning empty set for ${normalizedType}`);
+    return inspectData('nextGenStats', [], { season: y, statType: normalizedType });
+  }
+  return cached(caches.nextGenStats, `${y}|${normalizedType}`, async()=>{
+    const resolved = await resolveDatasetUrl(datasetKey, y, (seasonVal) => {
+      const relFactory = REL[datasetKey];
+      return typeof relFactory === 'function' ? relFactory(seasonVal) : null;
+    });
+    const fallbackFactory = REL[datasetKey];
+    const targetUrl = resolved?.url ?? (typeof fallbackFactory === 'function' ? fallbackFactory(y) : null);
+    if (!targetUrl) {
+      console.warn(`[loadNextGenStats] unable to resolve ${normalizedType} tracking for season ${y}`);
+      return [];
+    }
+    const { rows, source, checksum } = await fetchCsvFlexible(targetUrl);
+    sanityCheckRows('nextGenStats', rows);
+    const sourceLabel = resolved?.source || source;
+    console.log(
+      `[loadNextGenStats/${normalizedType}] OK ${sourceLabel} rows=${rows.length} checksum=${checksum.slice(0, 12)}`
+    );
+    return rows;
+  }, {
+    inspect: (rows) => inspectData('nextGenStats', rows, { season: y, statType: normalizedType })
+  });
+}
+
+/**
+ * Loads nflverse pbp_participation personnel tracking (offense/defense/special teams per play).
+ * Provides offense_players, defense_players, and special_teams_players columns describing on-field groupings.
+ * Data availability starts in 2016 with tracking-era charting.
+ *
+ * @param {number|string} season - Season year requested.
+ * @returns {Promise<object[]>} Parsed participation rows for the season.
+ */
+export async function loadParticipation(season) {
+  const y = toInt(season);
+  if (y == null) throw new Error('loadParticipation season');
+  if (y < 2016) {
+    console.warn(`[loadParticipation] season ${y} precedes personnel tracking availability; returning []`);
+    return inspectData('participation', [], { season: y });
+  }
+  return cached(caches.participation, y, async()=>{
+    const resolved = await resolveDatasetUrl('participation', y, REL.participation);
+    const targetUrl = resolved?.url ?? REL.participation(y);
+    if (!targetUrl) {
+      console.warn(`[loadParticipation] unable to resolve participation feed for season ${y}`);
+      return [];
+    }
+    const { rows, source, checksum } = await fetchCsvFlexible(targetUrl);
+    sanityCheckRows('participation', rows);
+    const label = resolved?.source || source;
+    console.log(`[loadParticipation] OK ${label} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
+    return rows;
+  }, {
+    inspect: (rows) => inspectData('participation', rows, { season: y })
+  });
+}
+
 export async function loadSnapCounts(season){
   const y = toInt(season); if(y==null) throw new Error('loadSnapCounts season');
   return cached(caches.snapCounts, y, async()=>{
@@ -1220,6 +1550,8 @@ export async function loadSnapCounts(season){
     sanityCheckRows('snapCounts', rows);
     console.log(`[loadSnapCounts] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
+  }, {
+    inspect: (rows) => inspectData('snapCounts', rows, { season: y })
   });
 }
 export async function loadTeamWeekly(season){
@@ -1231,6 +1563,8 @@ export async function loadTeamWeekly(season){
     sanityCheckRows('teamWeekly', rows);
     console.log(`[loadTeamWeekly] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
+  }, {
+    inspect: (rows) => inspectData('teamWeekly', rows, { season: y })
   });
 }
 // legacy alias in code -> keep signature
@@ -1246,6 +1580,8 @@ export async function loadPlayerWeekly(season){
     sanityCheckRows('playerWeekly', rows);
     console.log(`[loadPlayerWeekly] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
+  }, {
+    inspect: (rows) => inspectData('playerWeekly', rows, { season: y })
   });
 }
 export async function loadRostersWeekly(season){
@@ -1266,6 +1602,8 @@ export async function loadRostersWeekly(season){
       }
       throw err;
     }
+  }, {
+    inspect: (rows) => inspectData('rosterWeekly', rows, { season: y })
   });
 }
 export async function loadDepthCharts(season){
@@ -1277,6 +1615,8 @@ export async function loadDepthCharts(season){
     sanityCheckRows('depthCharts', rows);
     console.log(`[loadDepthCharts] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
+  }, {
+    inspect: (rows) => inspectData('depthCharts', rows, { season: y })
   });
 }
 export async function loadFTNCharts(season){
@@ -1288,6 +1628,8 @@ export async function loadFTNCharts(season){
     sanityCheckRows('ftnCharts', rows);
     console.log(`[loadFTNCharts] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
     return rows;
+  }, {
+    inspect: (rows) => inspectData('ftnCharts', rows, { season: y })
   });
 }
 export async function loadPBP(season){
@@ -1312,9 +1654,13 @@ export async function loadPBP(season){
   };
   if (PBP_CACHE_LIMIT === 0) {
     if (caches.pbp.size) caches.pbp.clear();
-    return loader();
+    const rows = await loader();
+    return inspectData('pbp', rows, { season: y });
   }
-  return cached(caches.pbp, y, loader, { maxSize: PBP_CACHE_LIMIT });
+  return cached(caches.pbp, y, loader, {
+    maxSize: PBP_CACHE_LIMIT,
+    inspect: (rows) => inspectData('pbp', rows, { season: y })
+  });
 }
 
 // ---------- PFR advanced weekly (merge rush/def/pass/rec) ----------
@@ -1370,6 +1716,11 @@ export async function loadPFRAdvTeamWeekly(season){
     );
     console.log(`[loadPFRAdvTeamWeekly] merged=${map.size}`);
     return map;
+  }, {
+    inspect: (map) => {
+      const rows = map && typeof map.values === 'function' ? Array.from(map.values()) : [];
+      inspectData('pfrAdvTeamWeekly', rows, { season: y });
+    }
   });
 }
 export async function loadPFRAdvTeamWeeklyArray(season){
@@ -1401,6 +1752,8 @@ export async function loadMarkets(season){
       console.warn(`[loadMarkets] Rotowire market artifacts load failed: ${err?.message || err}`);
       return [];
     }
+  }, {
+    inspect: (rows) => inspectData('markets', rows, { season: y })
   });
 }
 
@@ -1420,6 +1773,8 @@ export async function loadWeather(season){
       console.warn(`[loadWeather] Rotowire weather artifacts load failed: ${err?.message || err}`);
       return [];
     }
+  }, {
+    inspect: (rows) => inspectData('weather', rows, { season: y })
   });
 }
 
@@ -1439,5 +1794,7 @@ export async function loadInjuries(season){
       console.warn(`[loadInjuries] Rotowire artifacts load failed: ${err?.message || err}`);
       return [];
     }
+  }, {
+    inspect: (rows) => inspectData('injuries', rows, { season: y })
   });
 }

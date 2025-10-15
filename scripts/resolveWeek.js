@@ -13,9 +13,15 @@ function isReg(v) {
 function coerceScore(value) {
   if (value == null) return NaN;
   const text = String(value).trim();
-  if (text === "" || text.toUpperCase() === "NA") return NaN;
-  const num = Number(text);
-  return Number.isFinite(num) ? num : NaN;
+  if (text === "" || /^(NA|TBD|P|POSTPONED)$/i.test(text)) return NaN;
+  const direct = Number(text);
+  if (Number.isFinite(direct)) return direct;
+  const match = text.match(/-?\d+(?:\.\d+)?/);
+  if (match) {
+    const candidate = Number(match[0]);
+    return Number.isFinite(candidate) ? candidate : NaN;
+  }
+  return NaN;
 }
 
 function hasFinalScore(g) {

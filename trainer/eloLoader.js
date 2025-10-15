@@ -8,13 +8,20 @@ async function fetchText(url) {
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   return await res.text();
 }
-function parseCsvLoose(txt){
-  const lines = txt.trim().split(/\r?\n/); if(!lines.length) return [];
-  const h = lines[0].split(",");
-  return lines.slice(1).map(l=>{
-    const c=l.split(","); const o={};
-    for (let i=0;i<h.length;i++) o[h[i]]=c[i]??"";
-    return o;
+function parseCsvLoose(txt) {
+  const cleaned = txt.trim();
+  if (!cleaned) return [];
+  const lines = cleaned.split(/\r?\n/);
+  if (!lines.length) return [];
+  const delimiter = lines[0].includes(";") && !lines[0].includes(",") ? ";" : ",";
+  const headers = lines[0].split(delimiter).map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cells = line.split(delimiter);
+    const entry = {};
+    for (let i = 0; i < headers.length; i += 1) {
+      entry[headers[i]] = cells[i]?.trim() ?? "";
+    }
+    return entry;
   });
 }
 

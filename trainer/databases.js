@@ -28,6 +28,8 @@ import {
   loadFTNCharts as loadFTNChartsDS,
   loadPBP as loadPBPDS,
   loadPFRAdvTeamWeekly as loadPFRAdvTeamWeeklyDS,
+  loadNextGenStats as loadNextGenStatsDS,
+  loadParticipation as loadParticipationDS,
   listDatasetSeasons
 } from "./dataSources.js";
 
@@ -793,7 +795,11 @@ export async function buildSeasonDB(season) {
     depthRows,
     ftnRows,
     pbpRows,
-    pfrAdvMap
+    pfrAdvMap,
+    participationRows,
+    nextGenPassing,
+    nextGenRushing,
+    nextGenReceiving
   ] = await Promise.all([
     loadSchedulesDS(),
     loadESPNQBRDS(),
@@ -806,7 +812,11 @@ export async function buildSeasonDB(season) {
     loadDepthChartsDS(y),
     loadFTNChartsDS(y),
     loadPBPDS(y),
-    loadPFRAdvTeamWeeklyDS(y)
+    loadPFRAdvTeamWeeklyDS(y),
+    loadParticipationDS(y),
+    loadNextGenStatsDS(y, 'passing'),
+    loadNextGenStatsDS(y, 'rushing'),
+    loadNextGenStatsDS(y, 'receiving')
   ]);
 
   const schedules = schedulesAll.filter((r) => toInt(r.season ?? r.year) === y);
@@ -861,7 +871,13 @@ export async function buildSeasonDB(season) {
     officialsByGame,
     snaps: snapRows,
     pfrAdvWeekly: pfrAdvMap,
-    pbp: pbpRows
+    pbp: pbpRows,
+    participation: participationRows,
+    nextGenStats: {
+      passing: nextGenPassing,
+      rushing: nextGenRushing,
+      receiving: nextGenReceiving
+    }
   };
 }
 

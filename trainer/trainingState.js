@@ -12,7 +12,6 @@ export const BOOTSTRAP_KEYS = Object.freeze({
 const MODEL_PATTERN = /^model_(\d{4})_W(\d{1,2})\.json$/;
 
 const EMPTY_STATE = Object.freeze({ schema_version: 1, bootstraps: {}, latest_runs: {} });
-const DEFAULT_MIN_BOOTSTRAP_SEASON = 1999;
 
 function ensureArtifactsDir() {
   fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
@@ -184,46 +183,19 @@ export function recordLatestRun(state, key, details = {}) {
   const season = Number.parseInt(details.season ?? details.season_id, 10);
   const week = Number.parseInt(details.week ?? details.week_id, 10);
   const prevRecord = state.latest_runs[key];
-  const bySeason = {};
-
-  if (prevRecord?.by_season && typeof prevRecord.by_season === "object") {
-    for (const [seasonKey, weekValue] of Object.entries(prevRecord.by_season)) {
-      const parsedSeason = Number.parseInt(seasonKey, 10);
-      const parsedWeek = Number.parseInt(weekValue, 10);
-      if (!Number.isFinite(parsedSeason) || !Number.isFinite(parsedWeek)) continue;
-      bySeason[parsedSeason] = parsedWeek;
-    }
-  }
-
-  if (details?.by_season && typeof details.by_season === "object") {
-    for (const [seasonKey, weekValue] of Object.entries(details.by_season)) {
-      const parsedSeason = Number.parseInt(seasonKey, 10);
-      if (!Number.isFinite(parsedSeason)) continue;
-      const parsedWeek = Number.parseInt(weekValue, 10);
-      const prevWeek = Number.isFinite(bySeason[parsedSeason]) ? bySeason[parsedSeason] : null;
-      if (Number.isFinite(parsedWeek)) {
-        bySeason[parsedSeason] = Number.isFinite(prevWeek)
-          ? Math.max(prevWeek, parsedWeek)
-          : parsedWeek;
-      } else if (!Number.isFinite(prevWeek)) {
-        bySeason[parsedSeason] = parsedWeek;
-      }
-    }
-  }
+  const bySeason = prevRecord?.by_season && typeof prevRecord.by_season === "object"
+    ? { ...prevRecord.by_season }
+    : {};
 
   if (Number.isFinite(season) && Number.isFinite(week)) {
-    const prevWeek = Number.isFinite(bySeason[season]) ? bySeason[season] : null;
+    const prevWeek = Number.parseInt(bySeason[season], 10);
     bySeason[season] = Number.isFinite(prevWeek) ? Math.max(prevWeek, week) : week;
     next.season = season;
     next.week = week;
   }
 
   if (Object.keys(bySeason).length) {
-    next.by_season = Object.fromEntries(
-      Object.entries(bySeason)
-        .filter(([seasonKey, value]) => Number.isFinite(Number.parseInt(seasonKey, 10)) && Number.isFinite(value))
-        .map(([seasonKey, value]) => [Number.parseInt(seasonKey, 10), value])
-    );
+    next.by_season = bySeason;
   }
 
   next.timestamp = new Date().toISOString();

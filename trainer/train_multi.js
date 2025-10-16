@@ -1996,7 +1996,7 @@ async function main() {
     seasonsInScope = await resolveSeasonList({
       targetSeason,
       includeAll: true,
-      sinceSeason: allowHistoricalRewrite ? MIN_SEASON : MIN_TRAIN_SEASON,
+      sinceSeason: bootstrapRequired ? MIN_SEASON : MIN_TRAIN_SEASON,
       maxSeasons: Number.isFinite(MAX_TRAIN_SEASONS) ? MAX_TRAIN_SEASONS : null,
       availableSeasons: discoveredSeasons
     });

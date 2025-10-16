@@ -30,18 +30,18 @@ function hasFinalScore(g) {
   return Number.isFinite(hs) && Number.isFinite(as);
 }
 
-async function main() {
-  const SEASON = Number(process.env.SEASON || new Date().getFullYear());
-  const schedules = await loadSchedules(SEASON);
+export async function resolveCurrentWeek({ season } = {}) {
+  const targetSeason = Number(season ?? process.env.SEASON ?? new Date().getFullYear());
+  if (!Number.isFinite(targetSeason)) return null;
+  const schedules = await loadSchedules(targetSeason);
 
   const reg = schedules.filter(
-    (g) => Number(g.season) === SEASON && isReg(g.season_type)
+    (g) => Number(g.season) === targetSeason && isReg(g.season_type)
   );
 
   const weeks = [...new Set(reg.map((g) => Number(g.week)).filter(Number.isFinite))].sort((a, b) => a - b);
   const maxSchedWeek = weeks.length ? weeks[weeks.length - 1] : 18;
 
-  // compute last full week (all games have final scores)
   let lastFull = 0;
   for (const w of weeks) {
     const games = reg.filter((g) => Number(g.week) === w);
@@ -49,12 +49,23 @@ async function main() {
     if (allFinal) lastFull = w; else break;
   }
 
-  let WEEK = Math.max(2, Math.min(maxSchedWeek, lastFull + 1));
-  console.log(`Resolved WEEK=${WEEK}`);
+  const resolvedWeek = Math.max(2, Math.min(maxSchedWeek, lastFull + 1));
+  return resolvedWeek;
 }
 
-main().catch((err) => {
-  // Be tolerant; let the workflow continue even if resolution fails
-  console.warn(`resolveWeek failed: ${err?.message || err}`);
-  console.log("Resolved WEEK=");
-});
+async function main() {
+  const resolved = await resolveCurrentWeek({});
+  if (Number.isFinite(resolved)) {
+    console.log(`Resolved WEEK=${resolved}`);
+  } else {
+    console.log("Resolved WEEK=");
+  }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    // Be tolerant; let the workflow continue even if resolution fails
+    console.warn(`resolveWeek failed: ${err?.message || err}`);
+    console.log("Resolved WEEK=");
+  });
+}

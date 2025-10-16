@@ -1,6 +1,8 @@
 // trainer/contextPack.js
 // Builds per-game context for a given week with rolling form, QB trends, injuries, venue, and market.
 
+import fs from "node:fs";
+import path from "node:path";
 import {
   loadSchedules,
   loadTeamWeekly,
@@ -11,8 +13,42 @@ import {
   loadWeather
 } from "./dataSources.js";
 import { loadElo } from "./eloLoader.js";
-import { buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
+import { resolveCurrentWeek } from "../scripts/resolveWeek.js";
+import { validateArtifact } from "./schemaValidator.js";
+import { ZERO_SNAPSHOT, buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
 import { normalizeTeam } from "./teamNormalizer.js";
+
+const ARTIFACTS_DIR = path.resolve("artifacts");
+const INJURY_DATA_MIN_SEASON = 2009;
+
+const NEUTRAL_WEATHER_TEMPLATE = Object.freeze({
+  summary: "Neutral historical conditions",
+  details: null,
+  notes: null,
+  temperature_f: 70,
+  precipitation_chance: 0,
+  wind_mph: 0,
+  impact_score: 0,
+  kickoff_display: null,
+  location: null,
+  forecast_provider: "neutral",
+  forecast_links: [],
+  icon: null,
+  fetched_at: null,
+  is_dome: null
+});
+
+const NEUTRAL_MARKET_TEMPLATE = Object.freeze({
+  spread: 0,
+  spread_home: 0,
+  spread_away: 0,
+  moneyline_home: 100,
+  moneyline_away: 100,
+  moneyline_draw: null,
+  total: null,
+  source: "neutral",
+  fetched_at: null
+});
 
 const normTeam = (value) => {
   const norm = normalizeTeam(value);
@@ -21,6 +57,107 @@ const normTeam = (value) => {
   const s = String(value).trim().toUpperCase();
   return s || null;
 };
+
+const envFlag = (name) => {
+  const value = process.env[name];
+  if (value == null) return false;
+  return /^(1|true|yes|on)$/i.test(String(value).trim());
+};
+
+function ensureArtifactsDir() {
+  fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+}
+
+function neutralWeatherContext() {
+  return {
+    ...NEUTRAL_WEATHER_TEMPLATE,
+    forecast_links: [],
+    fetched_at: null
+  };
+}
+
+function neutralMarketContext({ season, week, home, away }) {
+  return {
+    ...NEUTRAL_MARKET_TEMPLATE,
+    season,
+    week,
+    home_team: home,
+    away_team: away
+  };
+}
+
+function neutralInjurySnapshot() {
+  return {
+    ...ZERO_SNAPSHOT,
+    players_out: [],
+    player_positions: {},
+    player_status: {}
+  };
+}
+
+function filterSeasonWeek(rows, season, week) {
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((row) => {
+    if (!row || typeof row !== "object") return false;
+    if (Number(row.season) !== season) return false;
+    const candidates = [row.week, row.week_number, row.game_week, row.week_id];
+    for (const candidate of candidates) {
+      const wk = Number(candidate);
+      if (Number.isFinite(wk)) {
+        return wk === week;
+      }
+    }
+    return true;
+  });
+}
+
+function validateSnapshot(kind, payload, schemaName) {
+  try {
+    validateArtifact(schemaName, payload);
+    return true;
+  } catch (err) {
+    console.warn(`[contextPack] ${kind} snapshot validation skipped: ${err?.message || err}`);
+    return false;
+  }
+}
+
+function writeCurrentSnapshot(kind, payload) {
+  ensureArtifactsDir();
+  const file = path.join(ARTIFACTS_DIR, `current_${kind}.json`);
+  fs.writeFileSync(file, JSON.stringify(payload, null, 2));
+}
+
+function appendHistoricalSnapshot(kind, payload) {
+  ensureArtifactsDir();
+  const file = path.join(ARTIFACTS_DIR, `historical_${kind}.json`);
+  let existing = [];
+  try {
+    const raw = fs.readFileSync(file, "utf8");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) existing = parsed;
+  } catch (err) {
+    if (err?.code !== "ENOENT") {
+      console.warn(`[contextPack] Unable to read ${file}: ${err?.message || err}`);
+    }
+  }
+  existing.push(payload);
+  fs.writeFileSync(file, JSON.stringify(existing, null, 2));
+}
+
+function persistSnapshot(kind, rows, season, week, schemaName) {
+  const payload = {
+    season,
+    week,
+    generated_at: new Date().toISOString(),
+    data: Array.isArray(rows) ? rows : []
+  };
+  if (!validateSnapshot(kind, payload, schemaName)) return;
+  const serialised = JSON.parse(JSON.stringify(payload));
+  writeCurrentSnapshot(kind, serialised);
+  if (envFlag("HISTORICAL_APPEND")) {
+    appendHistoricalSnapshot(kind, serialised);
+  }
+}
 
 function toNum(v, def = null) {
   if (v === undefined || v === null || v === "") return def;
@@ -270,6 +407,27 @@ export async function buildContextForWeek(season, week) {
   try { marketRows = await loadMarkets(y); } catch (err) { console.warn("market load failed", err?.message ?? err); }
   try { weatherRows = await loadWeather(y); } catch (err) { console.warn("weather load failed", err?.message ?? err); }
 
+  let currentWeekResolved = null;
+  try {
+    currentWeekResolved = await resolveCurrentWeek({ season: y });
+  } catch (err) {
+    console.warn(`[contextPack] unable to resolve current week: ${err?.message || err}`);
+  }
+
+  const isHistoricalWeek = Number.isFinite(currentWeekResolved) && w < currentWeekResolved;
+  const injuriesAvailable = !isHistoricalWeek && y >= INJURY_DATA_MIN_SEASON;
+  if (!injuriesAvailable) injuries = [];
+  const shouldPersistCurrent = !Number.isFinite(currentWeekResolved) || w >= currentWeekResolved;
+
+  if (shouldPersistCurrent) {
+    const injurySnapshot = filterSeasonWeek(injuries, y, w);
+    const weatherSnapshot = filterSeasonWeek(weatherRows, y, w);
+    const marketSnapshot = filterSeasonWeek(marketRows, y, w);
+    persistSnapshot("injuries", injurySnapshot, y, w, "injury_pull");
+    persistSnapshot("weather", weatherSnapshot, y, w, "weather_pull");
+    persistSnapshot("markets", marketSnapshot, y, w, "market_pull");
+  }
+
   const games = schedules.filter((g) => Number(g.season) === y && Number(g.week) === w);
   if (!games.length) return [];
 
@@ -285,11 +443,15 @@ export async function buildContextForWeek(season, week) {
   }
 
   const qbHistory = buildQBRHistory(qbrRows, y);
-  const injuryMap = buildInjuryMap(injuries, y, w);
-  const injuryIndex = buildTeamInjuryIndex(injuries, y);
+  const injuryMapRaw = buildInjuryMap(injuries, y, w);
+  const injuryIndexRaw = buildTeamInjuryIndex(injuries, y);
+  const injuryMap = injuriesAvailable ? injuryMapRaw : new Map();
+  const injuryIndex = injuriesAvailable ? injuryIndexRaw : new Map();
   const eloMap = buildEloMap(eloRows, y, w);
-  const marketMap = buildMarketMap(marketRows, y, w);
-  const weatherMap = buildWeatherMap(weatherRows, y, w);
+  const marketMapRaw = buildMarketMap(marketRows, y, w);
+  const weatherMapRaw = buildWeatherMap(weatherRows, y, w);
+  const marketMap = isHistoricalWeek ? new Map() : marketMapRaw;
+  const weatherMap = isHistoricalWeek ? new Map() : weatherMapRaw;
 
   for (const [team, rows] of byTeam.entries()) {
     rows.sort((a, b) => a._week - b._week);
@@ -363,13 +525,41 @@ export async function buildContextForWeek(season, week) {
     const qbrAway = latestQBR(qbHistory.get(away) || [], w);
 
     const eloInfo = eloMap.get(gid) || null;
-    const marketInfo = marketMap.get(gid) || null;
-    const weatherInfo = weatherMap.get(gid) || null;
+    let marketInfo;
+    if (isHistoricalWeek) {
+      marketInfo = neutralMarketContext({ season: y, week: w, home, away });
+    } else {
+      marketInfo = marketMap.get(gid) || null;
+      if (!marketInfo && eloInfo && Number.isFinite(eloInfo.spread_home)) {
+        marketInfo = {
+          spread: eloInfo.spread_home,
+          spread_home: eloInfo.spread_home,
+          spread_away: Number.isFinite(eloInfo.spread_home) ? -eloInfo.spread_home : null,
+          source: "elo",
+          fetched_at: null,
+          season: y,
+          week: w,
+          home_team: home,
+          away_team: away
+        };
+      }
+    }
 
-    const injuryHome = getTeamInjurySnapshot(injuryIndex, y, w, home);
-    const injuryAway = getTeamInjurySnapshot(injuryIndex, y, w, away);
-    const injuryHomePrev = getTeamInjurySnapshot(injuryIndex, y, w - 1, home);
-    const injuryAwayPrev = getTeamInjurySnapshot(injuryIndex, y, w - 1, away);
+    const weatherEntry = weatherMap.get(gid) || null;
+    const weatherInfo = weatherEntry || (isHistoricalWeek ? neutralWeatherContext() : null);
+
+    const injuryHome = injuriesAvailable
+      ? getTeamInjurySnapshot(injuryIndex, y, w, home)
+      : neutralInjurySnapshot();
+    const injuryAway = injuriesAvailable
+      ? getTeamInjurySnapshot(injuryIndex, y, w, away)
+      : neutralInjurySnapshot();
+    const injuryHomePrev = injuriesAvailable
+      ? getTeamInjurySnapshot(injuryIndex, y, w - 1, home)
+      : neutralInjurySnapshot();
+    const injuryAwayPrev = injuriesAvailable
+      ? getTeamInjurySnapshot(injuryIndex, y, w - 1, away)
+      : neutralInjurySnapshot();
 
     out.push({
       game_id: gid,
@@ -442,16 +632,7 @@ export async function buildContextForWeek(season, week) {
           surface: surfaceRaw || null
         },
         elo: eloInfo,
-        market: marketInfo
-          ?? (eloInfo && Number.isFinite(eloInfo.spread_home)
-            ? {
-                spread: eloInfo.spread_home,
-                spread_home: eloInfo.spread_home,
-                spread_away: Number.isFinite(eloInfo.spread_home) ? -eloInfo.spread_home : null,
-                source: 'elo',
-                fetched_at: null
-              }
-            : null),
+        market: marketInfo,
         weather: weatherInfo
       }
     });

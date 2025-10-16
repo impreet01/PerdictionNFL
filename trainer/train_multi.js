@@ -47,8 +47,10 @@ const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
 
-const DEFAULT_MIN_TRAIN_SEASON = 2020;
+const DEFAULT_MIN_TRAIN_SEASON = 1999;
 const DEFAULT_MAX_TRAIN_SEASONS = Number.POSITIVE_INFINITY;
+const INJURY_DATA_MIN_SEASON = 2009;
+const NEXTGEN_DATA_MIN_SEASON = 2016;
 
 const envMinSeason = Number(process.env.MIN_TRAIN_SEASON);
 const MIN_TRAIN_SEASON = Number.isFinite(envMinSeason) ? envMinSeason : DEFAULT_MIN_TRAIN_SEASON;
@@ -676,7 +678,13 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   let resolvedWeek = Number(week ?? process.env.WEEK ?? 6);
   if (!Number.isFinite(resolvedWeek)) resolvedWeek = 6;
 
-  const skipSeasonDB = Boolean(options.skipSeasonDB);
+  const availability = data.availability && typeof data.availability === "object"
+    ? data.availability
+    : {};
+  const defaultSkipSeasonDB =
+    resolvedSeason < NEXTGEN_DATA_MIN_SEASON || availability.nextGen === false;
+  const skipSeasonDB =
+    options.skipSeasonDB != null ? Boolean(options.skipSeasonDB) : defaultSkipSeasonDB;
   const DB = skipSeasonDB ? null : await buildSeasonDB(resolvedSeason);
 
   const schedules = data.schedules ?? (await loadSchedules(resolvedSeason));
@@ -740,9 +748,13 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     }
   }
 
+  const injuriesEnabled =
+    availability.injuries !== false && resolvedSeason >= INJURY_DATA_MIN_SEASON;
   let injuryRows;
   if (data.injuries !== undefined) {
-    injuryRows = data.injuries;
+    injuryRows = injuriesEnabled ? data.injuries : [];
+  } else if (!injuriesEnabled) {
+    injuryRows = [];
   } else {
     try {
       injuryRows = await loadInjuries(resolvedSeason);
@@ -1540,6 +1552,11 @@ async function loadSeasonData(season) {
     prevTeamWeekly = [];
   }
 
+  const availability = {
+    injuries: season >= INJURY_DATA_MIN_SEASON,
+    nextGen: season >= NEXTGEN_DATA_MIN_SEASON
+  };
+
   let pbp;
   try {
     pbp = await loadPBP(season);
@@ -1568,11 +1585,14 @@ async function loadSeasonData(season) {
     depthCharts = [];
   }
 
-  let injuries;
-  try {
-    injuries = await loadInjuries(season);
-  } catch (err) {
-    injuries = [];
+  let injuries = [];
+  if (availability.injuries) {
+    try {
+      injuries = await loadInjuries(season);
+    } catch (err) {
+      injuries = [];
+      availability.injuries = false;
+    }
   }
 
   let snapCounts;
@@ -1589,25 +1609,30 @@ async function loadSeasonData(season) {
     participation = [];
   }
 
-  let ngsPassing;
-  try {
-    ngsPassing = await loadNextGenStats(season, 'passing');
-  } catch (err) {
-    ngsPassing = [];
-  }
+  let ngsPassing = [];
+  let ngsRushing = [];
+  let ngsReceiving = [];
+  if (availability.nextGen) {
+    try {
+      ngsPassing = await loadNextGenStats(season, "passing");
+    } catch (err) {
+      ngsPassing = [];
+      availability.nextGen = false;
+    }
 
-  let ngsRushing;
-  try {
-    ngsRushing = await loadNextGenStats(season, 'rushing');
-  } catch (err) {
-    ngsRushing = [];
-  }
+    try {
+      ngsRushing = await loadNextGenStats(season, "rushing");
+    } catch (err) {
+      ngsRushing = [];
+      availability.nextGen = false;
+    }
 
-  let ngsReceiving;
-  try {
-    ngsReceiving = await loadNextGenStats(season, 'receiving');
-  } catch (err) {
-    ngsReceiving = [];
+    try {
+      ngsReceiving = await loadNextGenStats(season, "receiving");
+    } catch (err) {
+      ngsReceiving = [];
+      availability.nextGen = false;
+    }
   }
 
   let pfrAdv;
@@ -1650,7 +1675,8 @@ async function loadSeasonData(season) {
       passing: ngsPassing,
       rushing: ngsRushing,
       receiving: ngsReceiving
-    }
+    },
+    availability
   };
 }
 

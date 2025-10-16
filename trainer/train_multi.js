@@ -153,7 +153,9 @@ function logDataCoverage(season) {
 }
 
 const envMinSeason = Number(process.env.MIN_TRAIN_SEASON);
-const MIN_TRAIN_SEASON = Number.isFinite(envMinSeason) ? envMinSeason : DEFAULT_MIN_TRAIN_SEASON;
+const MIN_TRAIN_SEASON = Number.isFinite(envMinSeason)
+  ? Math.min(envMinSeason, DEFAULT_MIN_TRAIN_SEASON)
+  : DEFAULT_MIN_TRAIN_SEASON;
 
 const envMaxSeasons = Number(process.env.MAX_TRAIN_SEASONS);
 const MAX_TRAIN_SEASONS = Number.isFinite(envMaxSeasons) && envMaxSeasons > 0
@@ -1988,7 +1990,7 @@ async function main() {
     seasonsInScope = await resolveSeasonList({
       targetSeason,
       includeAll: true,
-      sinceSeason: MIN_TRAIN_SEASON,
+      sinceSeason: bootstrapRequired ? MIN_SEASON : MIN_TRAIN_SEASON,
       maxSeasons: Number.isFinite(MAX_TRAIN_SEASONS) ? MAX_TRAIN_SEASONS : null,
       availableSeasons: discoveredSeasons
     });

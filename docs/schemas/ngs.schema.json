@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Next Gen Stats rows",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "season": { "type": ["integer", "null"] },
+      "team": { "type": ["string", "null"] },
+      "stat_type": { "type": ["string", "null"] },
+      "avg_time_to_throw": { "type": "number", "minimum": 0 },
+      "aggressiveness": { "type": "number", "minimum": 0 },
+      "expected_yac": { "type": "number", "minimum": 0 },
+      "avg_air_yards": { "type": "number" }
+    },
+    "additionalProperties": true
+  }
+}

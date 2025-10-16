@@ -12,6 +12,15 @@ import {
 } from "./dataSources.js";
 import { loadElo } from "./eloLoader.js";
 import { buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
+import { normalizeTeam } from "./teamNormalizer.js";
+
+const normTeam = (value) => {
+  const norm = normalizeTeam(value);
+  if (norm) return norm;
+  if (value == null) return null;
+  const s = String(value).trim().toUpperCase();
+  return s || null;
+};
 
 function toNum(v, def = null) {
   if (v === undefined || v === null || v === "") return def;
@@ -78,7 +87,7 @@ function buildInjuryMap(rows, season, week) {
     if (Number(r.season) !== season) continue;
     const wk = Number(r.week);
     if (Number.isFinite(wk) && wk > week) continue;
-    const team = String(r.team || r.team_abbr || "").toUpperCase();
+    const team = normTeam(r.team ?? r.team_abbr ?? r.team_code);
     if (!team) continue;
     const status = String(r.status || r.injury_status || "").toLowerCase();
     const player = r.player || r.player_name || r.gsis_id || "unknown";
@@ -99,8 +108,8 @@ function buildEloMap(rows, season, week) {
     if (Number(r.season) !== season) continue;
     const wk = Number(r.week);
     if (!Number.isFinite(wk) || wk !== week) continue;
-    const home = String(r.home_team || r.home || "").toUpperCase();
-    const away = String(r.away_team || r.away || "").toUpperCase();
+    const home = normTeam(r.home_team ?? r.home ?? r.home_team_abbr);
+    const away = normTeam(r.away_team ?? r.away ?? r.away_team_abbr);
     if (!home || !away) continue;
     const key = gameKey(season, wk, home, away);
     const homeE = toNum(r.elo_home ?? r.home_elo ?? r.elo_pre_home ?? r.elo_home_pre);
@@ -131,8 +140,8 @@ function buildMarketMap(rows, season, week) {
     if (Number(r.season) !== season) continue;
     const wk = Number(r.week);
     if (Number.isFinite(week) && Number.isFinite(wk) && wk !== week) continue;
-    const home = String(r.home_team || r.home || "").toUpperCase();
-    const away = String(r.away_team || r.away || "").toUpperCase();
+    const home = normTeam(r.home_team ?? r.home ?? r.home_team_abbr);
+    const away = normTeam(r.away_team ?? r.away ?? r.away_team_abbr);
     if (!home || !away) continue;
     const key = gameKey(season, Number.isFinite(wk) ? wk : week, home, away);
     const marketRaw = r.market || r.markets || null;
@@ -203,8 +212,8 @@ function buildWeatherMap(rows, season, week) {
     if (Number(r.season) !== season) continue;
     const wk = Number(r.week);
     if (Number.isFinite(week) && Number.isFinite(wk) && wk !== week) continue;
-    const home = String(r.home_team || r.home || "").toUpperCase();
-    const away = String(r.away_team || r.away || "").toUpperCase();
+    const home = normTeam(r.home_team ?? r.home ?? r.home_team_abbr);
+    const away = normTeam(r.away_team ?? r.away ?? r.away_team_abbr);
     if (!home || !away) continue;
     const key = gameKey(season, Number.isFinite(wk) ? wk : week, home, away);
     const shaped = shapeWeatherContext(r);
@@ -220,7 +229,7 @@ function buildQBRHistory(rows, season) {
     if (Number(r.season) !== season) continue;
     const wk = Number(r.week ?? r.game_week ?? r.week_number);
     if (!Number.isFinite(wk)) continue;
-    const team = String(r.team || r.team_abbr || r.recent_team || "").toUpperCase();
+    const team = normTeam(r.team ?? r.team_abbr ?? r.recent_team ?? r.posteam);
     if (!team) continue;
     const qbr = toNum(r.qbr_total ?? r.qbr ?? r.total_qbr ?? r.qbr_raw ?? r.espn_qbr ?? r.qbr_offense);
     if (!map.has(team)) map.set(team, []);
@@ -267,7 +276,7 @@ export async function buildContextForWeek(season, week) {
   const byTeam = new Map();
   for (const row of teamWeekly || []) {
     if (Number(row.season) !== y) continue;
-    const team = String(row.team ?? row.team_abbr ?? row.recent_team ?? row.posteam ?? "").toUpperCase();
+    const team = normTeam(row.team ?? row.team_abbr ?? row.recent_team ?? row.posteam);
     if (!team) continue;
     const wk = Number(row.week ?? row.game_week ?? row.week_number);
     if (!Number.isFinite(wk)) continue;
@@ -335,8 +344,8 @@ export async function buildContextForWeek(season, week) {
 
   const out = [];
   for (const g of games) {
-    const home = String(g.home_team || "").toUpperCase();
-    const away = String(g.away_team || "").toUpperCase();
+    const home = normTeam(g.home_team);
+    const away = normTeam(g.away_team);
     if (!home || !away) continue;
     const gid = gameKey(y, w, home, away);
 

@@ -4,6 +4,7 @@
 // Output one row per game (home-team perspective) with differential features.
 
 import { buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
+import { normalizeTeam } from "./teamNormalizer.js";
 
 const BT_FEATURES = [
   "diff_total_yards",
@@ -60,7 +61,9 @@ const isReg = (v) => {
 };
 
 const normTeam = (value) => {
-  if (!value) return null;
+  const norm = normalizeTeam(value);
+  if (norm) return norm;
+  if (value == null) return null;
   const s = String(value).trim().toUpperCase();
   return s || null;
 };

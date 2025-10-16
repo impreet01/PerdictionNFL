@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Play-by-play rows",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "season": { "type": ["integer", "null"] },
+      "week": { "type": ["integer", "null"] },
+      "game_id": { "type": ["string", "null"] },
+      "posteam": { "type": ["string", "null"] },
+      "defteam": { "type": ["string", "null"] },
+      "epa": { "type": "number" },
+      "success": { "type": "number", "minimum": 0, "maximum": 1 },
+      "yards_gained": { "type": "number" }
+    },
+    "additionalProperties": true
+  }
+}

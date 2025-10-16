@@ -9,7 +9,9 @@ export const BOOTSTRAP_KEYS = Object.freeze({
   HYBRID: "hybrid_v2"
 });
 
-const MODEL_PATTERN = /^model_(\d{4})_W(\d{2})\.json$/;
+const MODEL_PATTERN = /^model_(\d{4})_W(\d{1,2})\.json$/;
+
+const EMPTY_STATE = Object.freeze({ schema_version: 1, bootstraps: {}, latest_runs: {} });
 
 function ensureArtifactsDir() {
   fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
@@ -18,7 +20,8 @@ function ensureArtifactsDir() {
 export function loadTrainingState() {
   ensureArtifactsDir();
   if (!fs.existsSync(STATE_PATH)) {
-    return { schema_version: 1, bootstraps: {}, latest_runs: {} };
+    saveTrainingState({ ...EMPTY_STATE });
+    return { ...EMPTY_STATE };
   }
   try {
     const raw = fs.readFileSync(STATE_PATH, "utf8");
@@ -32,12 +35,14 @@ export function loadTrainingState() {
   } catch (err) {
     console.warn(`[trainingState] failed to read state (${err?.message || err}). Reinitialising.`);
   }
-  return { schema_version: 1, bootstraps: {}, latest_runs: {} };
+  saveTrainingState({ ...EMPTY_STATE });
+  return { ...EMPTY_STATE };
 }
 
 export function saveTrainingState(state) {
   ensureArtifactsDir();
-  fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
+  const payload = state && typeof state === "object" ? state : { ...EMPTY_STATE };
+  fs.writeFileSync(STATE_PATH, JSON.stringify(payload, null, 2));
 }
 
 export function envFlag(name) {
@@ -98,10 +103,28 @@ export function recordLatestRun(state, key, details = {}) {
   if (!state.latest_runs || typeof state.latest_runs !== "object") {
     state.latest_runs = {};
   }
-  state.latest_runs[key] = {
-    ...details,
-    timestamp: new Date().toISOString()
-  };
+
+  const next = { ...details };
+  const season = Number.parseInt(details.season ?? details.season_id, 10);
+  const week = Number.parseInt(details.week ?? details.week_id, 10);
+  const prevRecord = state.latest_runs[key];
+  const bySeason = prevRecord?.by_season && typeof prevRecord.by_season === "object"
+    ? { ...prevRecord.by_season }
+    : {};
+
+  if (Number.isFinite(season) && Number.isFinite(week)) {
+    const prevWeek = Number.parseInt(bySeason[season], 10);
+    bySeason[season] = Number.isFinite(prevWeek) ? Math.max(prevWeek, week) : week;
+    next.season = season;
+    next.week = week;
+  }
+
+  if (Object.keys(bySeason).length) {
+    next.by_season = bySeason;
+  }
+
+  next.timestamp = new Date().toISOString();
+  state.latest_runs[key] = next;
   return state;
 }
 

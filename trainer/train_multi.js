@@ -1966,6 +1966,9 @@ async function main() {
   const targetSeason = Number(process.env.SEASON ?? new Date().getFullYear());
   let weekEnv = Number(process.env.WEEK ?? 6);
   if (!Number.isFinite(weekEnv) || weekEnv < 1) weekEnv = 1;
+  const historicalUpperBound = Number.isFinite(targetSeason)
+    ? Math.max(targetSeason - 1, MIN_SEASON)
+    : null;
 
   let state = loadTrainingState();
   const refreshResult = ensureTrainingStateCurrent({ state, silent: true });
@@ -1981,7 +1984,10 @@ async function main() {
   }
   const lastModelRun = state?.latest_runs?.[BOOTSTRAP_KEYS.MODEL];
   const historicalOverride = shouldRewriteHistorical();
-  const bootstrapRequired = shouldRunHistoricalBootstrap(state, BOOTSTRAP_KEYS.MODEL);
+  const bootstrapRequired = shouldRunHistoricalBootstrap(state, BOOTSTRAP_KEYS.MODEL, {
+    minSeason: MIN_SEASON,
+    requiredThroughSeason: historicalUpperBound
+  });
   const allowHistoricalRewrite = historicalOverride || bootstrapRequired;
 
   let seasonsInScope = [targetSeason];
@@ -2028,6 +2034,7 @@ async function main() {
   }
 
   const processedSeasons = [];
+  const seasonWeekMax = new Map();
   let latestTargetResult = null;
 
   const loadLimiter = createLimiter(seasonsInScope.length > 10 ? 3 : 1);
@@ -2113,7 +2120,12 @@ async function main() {
     }
 
     if (processedWeeks.length) {
-      processedSeasons.push({ season: resolvedSeason, weeks: processedWeeks.slice().sort((a, b) => a - b) });
+      const sortedWeeks = processedWeeks.slice().sort((a, b) => a - b);
+      processedSeasons.push({ season: resolvedSeason, weeks: sortedWeeks });
+      const maxWeek = sortedWeeks[sortedWeeks.length - 1];
+      if (Number.isFinite(maxWeek)) {
+        seasonWeekMax.set(resolvedSeason, maxWeek);
+      }
     }
 
     if (latestSeasonResult) {
@@ -2130,17 +2142,19 @@ async function main() {
     });
   }
 
-  if (latestTargetResult) {
-    state = recordLatestRun(state, BOOTSTRAP_KEYS.MODEL, {
-      season: latestTargetResult.season,
-      week: latestTargetResult.week
-    });
-  } else {
-    state = recordLatestRun(state, BOOTSTRAP_KEYS.MODEL, {
-      season: targetSeason,
-      week: Math.max(1, Math.floor(weekEnv))
-    });
+  const runSummary = latestTargetResult
+    ? { season: latestTargetResult.season, week: latestTargetResult.week }
+    : { season: targetSeason, week: Math.max(1, Math.floor(weekEnv)) };
+
+  if (seasonWeekMax.size) {
+    runSummary.by_season = Object.fromEntries(
+      Array.from(seasonWeekMax.entries())
+        .filter(([season, week]) => Number.isFinite(season) && Number.isFinite(week))
+        .sort((a, b) => a[0] - b[0])
+    );
   }
+
+  state = recordLatestRun(state, BOOTSTRAP_KEYS.MODEL, runSummary);
 
   saveTrainingState(state);
 }

@@ -19,11 +19,11 @@ const ARTIFACTS_DIR = getArtifactsDir();
 const STATE_PATH = getTrainingStatePath();
 
 function ensureArtifactsDir() {
-  if (!fs.existsSync(ARTIFACTS_DIR)) {
-    throw new Error(
-      `[bootstrap] artifacts directory missing at ${ARTIFACTS_DIR}. Run the trainer once manually or restore artifacts before bootstrapping.`
-    );
+  if (fs.existsSync(ARTIFACTS_DIR)) {
+    return true;
   }
+  fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+  return false;
 }
 
 function buildSeasonWeekMap(entries, pattern) {
@@ -129,11 +129,33 @@ function hasCurrentRevision(state, key) {
 }
 
 function main() {
-  ensureArtifactsDir();
+  const artifactsAlreadyPresent = ensureArtifactsDir();
+  const stateExisted = fs.existsSync(STATE_PATH);
 
-  let state = null;
-  if (fs.existsSync(STATE_PATH)) {
-    state = loadTrainingState();
+  let state = loadTrainingState();
+
+  if (!artifactsAlreadyPresent) {
+    saveTrainingState(state);
+    console.warn(
+      `[bootstrap] artifacts directory missing at ${ARTIFACTS_DIR}. Created it automatically; run the trainer or restore artifacts before bootstrapping.`
+    );
+    return;
+  }
+
+  const entries = fs.readdirSync(ARTIFACTS_DIR);
+  const predictionPattern = /^predictions_(\d{4})_W(\d{2})\.json$/;
+  const predictionsSet = new Set(entries.filter((entry) => predictionPattern.test(entry)));
+
+  const modelMap = buildSeasonWeekMap(entries, predictionPattern);
+  if (modelMap.size === 0) {
+    saveTrainingState(state);
+    console.warn(
+      `[bootstrap] No prediction artifacts found in ${ARTIFACTS_DIR}. Restore artifacts before bootstrapping training state.`
+    );
+    return;
+  }
+
+  if (stateExisted) {
     const modelUpToDate = hasCurrentRevision(state, BOOTSTRAP_KEYS.MODEL);
     const hybridUpToDate = hasCurrentRevision(state, BOOTSTRAP_KEYS.HYBRID);
     if (modelUpToDate && hybridUpToDate) {
@@ -143,19 +165,6 @@ function main() {
       return;
     }
     console.log("[bootstrap] Existing training_state.json has outdated bootstrap metadata; refreshing.");
-  }
-
-  state = state ?? loadTrainingState();
-
-  const entries = fs.readdirSync(ARTIFACTS_DIR);
-  const predictionPattern = /^predictions_(\d{4})_W(\d{2})\.json$/;
-  const predictionsSet = new Set(entries.filter((entry) => predictionPattern.test(entry)));
-
-  const modelMap = buildSeasonWeekMap(entries, predictionPattern);
-  if (modelMap.size === 0) {
-    throw new Error(
-      `[bootstrap] No prediction artifacts found in ${ARTIFACTS_DIR}. Restore artifacts before bootstrapping training state.`
-    );
   }
 
   const hybridMap = discoverHybridSeasons(entries, predictionsSet);

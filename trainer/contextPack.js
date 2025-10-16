@@ -50,6 +50,20 @@ const NEUTRAL_MARKET_TEMPLATE = Object.freeze({
   fetched_at: null
 });
 
+const sigmoid = (z) => 1 / (1 + Math.exp(-z));
+
+function clampProb(value) {
+  if (!Number.isFinite(value)) return null;
+  return Math.min(Math.max(value, 0), 1);
+}
+
+function impliedMoneyline(line) {
+  const ml = Number(line);
+  if (!Number.isFinite(ml)) return null;
+  const value = 1 / (1 + Math.pow(10, -ml / 100));
+  return clampProb(value);
+}
+
 const normTeam = (value) => {
   const norm = normalizeTeam(value);
   if (norm) return norm;
@@ -77,13 +91,41 @@ function neutralWeatherContext() {
 }
 
 function neutralMarketContext({ season, week, home, away }) {
-  return {
+  return enrichMarketProbabilities({
     ...NEUTRAL_MARKET_TEMPLATE,
     season,
     week,
     home_team: home,
     away_team: away
-  };
+  });
+}
+
+function normaliseWeatherLocation(value) {
+  if (value == null) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  if (str.toLowerCase() === "in") return "Landover, MD";
+  return str;
+}
+
+function enrichMarketProbabilities(market) {
+  if (!market || typeof market !== "object") return market;
+  const enriched = { ...market };
+  if (Number.isFinite(enriched.spread_home)) {
+    const spreadProb = sigmoid(enriched.spread_home / 7);
+    enriched.implied_prob_spread_home = clampProb(spreadProb);
+    enriched.implied_prob_spread_away = clampProb(1 - spreadProb);
+  }
+  if (Number.isFinite(enriched.moneyline_home)) {
+    enriched.implied_prob_home = impliedMoneyline(enriched.moneyline_home);
+  }
+  if (Number.isFinite(enriched.moneyline_away)) {
+    enriched.implied_prob_away = impliedMoneyline(-enriched.moneyline_away);
+  }
+  if (Number.isFinite(enriched.moneyline_draw)) {
+    enriched.implied_prob_draw = impliedMoneyline(enriched.moneyline_draw);
+  }
+  return enriched;
 }
 
 function neutralInjurySnapshot() {
@@ -298,7 +340,7 @@ function buildMarketMap(rows, season, week) {
     market.week = Number.isFinite(wk) ? wk : week;
     if (!market.fetched_at) market.fetched_at = r.fetched_at ?? null;
     market.source = market.source ?? r.source ?? "rotowire";
-    map.set(key, market);
+    map.set(key, enrichMarketProbabilities(market));
   }
   return map;
 }
@@ -333,7 +375,7 @@ export function shapeWeatherContext(entry) {
     wind_mph: Number.isFinite(wind) ? wind : null,
     impact_score: Number.isFinite(impact) ? impact : null,
     kickoff_display: entry.kickoff_display ?? null,
-    location: entry.location ?? null,
+    location: normaliseWeatherLocation(entry.location ?? null),
     forecast_provider: entry.forecast_provider ?? null,
     forecast_links: cleanWeatherLinks(entry.forecast_links),
     icon: entry.icon ?? null,
@@ -543,6 +585,7 @@ export async function buildContextForWeek(season, week) {
           away_team: away
         };
       }
+      marketInfo = enrichMarketProbabilities(marketInfo);
     }
 
     const weatherEntry = weatherMap.get(gid) || null;

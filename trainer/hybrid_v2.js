@@ -68,6 +68,26 @@ function normaliseWeights(source) {
   return weights;
 }
 
+function enforceDiversity(weights, context) {
+  if (!weights) return weights;
+  const annVariance = Number(
+    context?.ensemble?.oof_variance?.ann?.var ?? context?.diagnostics?.oof_variance?.ann?.var
+  );
+  if (Number.isFinite(annVariance) && annVariance < 0.01) {
+    const original = Number(weights.ann ?? 0);
+    if (original > 0) {
+      const reduced = original * 0.6;
+      const delta = original - reduced;
+      weights.ann = reduced;
+      const redistribution = delta / 3;
+      weights.logistic = (weights.logistic ?? 0) + redistribution;
+      weights.tree = (weights.tree ?? 0) + redistribution;
+      weights.bt = (weights.bt ?? 0) + redistribution;
+    }
+  }
+  return normaliseWeights(weights);
+}
+
 function deriveBlendWeights({ season, week, model }) {
   const prevWeek = week - 1;
   if (prevWeek >= 1) {
@@ -75,13 +95,13 @@ function deriveBlendWeights({ season, week, model }) {
     const diagnostic = loadJsonIfExists(diagnosticName);
     const fromDiagnostics = normaliseWeights(diagnostic?.blend_weights);
     if (fromDiagnostics) {
-      return fromDiagnostics;
+      return enforceDiversity({ ...fromDiagnostics }, diagnostic);
     }
   }
 
   const fromModel = normaliseWeights(model?.ensemble?.blend_weights || model?.ensemble?.weights);
   if (fromModel) {
-    return fromModel;
+    return enforceDiversity({ ...fromModel }, model);
   }
 
   return { logistic: 0.25, tree: 0.25, bt: 0.25, ann: 0.25 };

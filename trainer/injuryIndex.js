@@ -17,9 +17,34 @@ export const ZERO_SNAPSHOT = Object.freeze({
   ol_questionable: 0,
   practice_dnp: 0,
   practice_limited: 0,
+  impact_score: 0,
   players_out: [],
   player_positions: {},
   player_status: {}
+});
+
+const POSITION_WEIGHTS = Object.freeze({
+  QB: -2,
+  RB: -0.7,
+  WR: -0.5,
+  TE: -0.45,
+  CB: -0.45,
+  S: -0.35,
+  EDGE: -0.5,
+  DE: -0.45,
+  DT: -0.45,
+  LB: -0.35,
+  DL: -0.4,
+  OL: -0.6,
+  LT: -0.6,
+  RT: -0.6,
+  LG: -0.6,
+  RG: -0.6,
+  C: -0.6,
+  OT: -0.6,
+  OG: -0.6,
+  K: -0.2,
+  P: -0.2
 });
 
 const normTeam = (value) => {
@@ -81,6 +106,7 @@ const cloneSnapshot = (snapshot = ZERO_SNAPSHOT) => ({
   ol_questionable: snapshot.ol_questionable || 0,
   practice_dnp: snapshot.practice_dnp || 0,
   practice_limited: snapshot.practice_limited || 0,
+  impact_score: snapshot.impact_score || 0,
   players_out: Array.isArray(snapshot.players_out) ? [...snapshot.players_out] : [],
   player_positions: snapshot.player_positions ? { ...snapshot.player_positions } : {},
   player_status: snapshot.player_status ? { ...snapshot.player_status } : {}
@@ -154,6 +180,9 @@ export function buildTeamInjuryIndex(rows = [], season) {
       snapshot.player_positions[playerKey] = pos || snapshot.player_positions[playerKey] || null;
       snapshot.player_status[playerKey] = bucket || snapshot.player_status[playerKey] || null;
     }
+    const baseWeight = POSITION_WEIGHTS[pos] ?? (isSkill ? -0.4 : isOl ? -0.5 : -0.25);
+    const statusWeight = bucket === "out" ? 1 : bucket === "doubtful" ? 0.6 : bucket ? 0.4 : 0;
+    if (statusWeight) snapshot.impact_score += baseWeight * statusWeight;
     if (bucket === "out") {
       if (isSkill) snapshot.skill_out += 1;
       if (isOl) snapshot.ol_out += 1;

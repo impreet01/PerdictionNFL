@@ -125,24 +125,28 @@ export function aucRoc(yTrue = [], probs = []) {
  */
 export function calibrationBins(yTrue = [], probs = [], bins = 10) {
   if (!Array.isArray(yTrue) || yTrue.length === 0) return [];
-  const usableBins = Math.max(1, Math.round(bins));
-  const records = Array.from({ length: usableBins }, (_, idx) => ({
+  const pairs = [];
+  for (let i = 0; i < yTrue.length; i++) {
+    const y = toFiniteNumber(yTrue[i]);
+    const p = toFiniteNumber(probs[i]);
+    if (y == null || p == null) continue;
+    pairs.push({ y, p: Math.min(Math.max(p, 0), 1) });
+  }
+  if (!pairs.length) return [];
+  const desiredBins = pairs.length > 100 ? Math.max(20, Math.round(bins)) : Math.max(1, Math.round(bins));
+  const records = Array.from({ length: desiredBins }, (_, idx) => ({
     bin: idx,
-    lower: idx / usableBins,
-    upper: (idx + 1) / usableBins,
+    lower: idx / desiredBins,
+    upper: (idx + 1) / desiredBins,
     sumP: 0,
     sumY: 0,
     n: 0
   }));
 
-  for (let i = 0; i < yTrue.length; i++) {
-    const y = toFiniteNumber(yTrue[i]);
-    const p = toFiniteNumber(probs[i]);
-    if (y == null || p == null) continue;
-    const clipped = Math.min(Math.max(p, 0), 1);
-    const idx = Math.min(usableBins - 1, Math.floor(clipped * usableBins));
+  for (const { y, p } of pairs) {
+    const idx = Math.min(desiredBins - 1, Math.floor(p * desiredBins));
     const rec = records[idx];
-    rec.sumP += clipped;
+    rec.sumP += p;
     rec.sumY += y;
     rec.n += 1;
   }

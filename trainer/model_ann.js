@@ -6,6 +6,8 @@ import modelParams from "../config/modelParams.json" with { type: "json" };
 const sigmoid = (z) => 1 / (1 + Math.exp(-z));
 const tanh = (z) => Math.tanh(z);
 const dtanh = (z) => 1 - Math.tanh(z) ** 2;
+const EPS = 1e-6;
+
 const toFinite = (value, fallback = 0) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
@@ -60,49 +62,133 @@ function zeroLike(mat) {
 function copyNetwork(network) {
   return {
     weights: network.weights.map((matrix) => matrix.map((row) => row.slice())),
-    biases: network.biases.map((b) => b.slice())
+    biases: network.biases.map((b) => b.slice()),
+    batchNorm: network.batchNorm?.map((bn) => ({
+      gamma: bn.gamma.slice(),
+      beta: bn.beta.slice(),
+      runningMean: bn.runningMean.slice(),
+      runningVar: bn.runningVar.slice(),
+      momentum: bn.momentum
+    })) ?? [],
+    dropoutRates: Array.isArray(network.dropoutRates)
+      ? network.dropoutRates.slice()
+      : network.dropoutRates
   };
 }
 
-function initNetwork(inputDim, architecture, rng) {
-  const arch = Array.isArray(architecture) && architecture.length ? architecture : [64, 32, 16];
+function initNetwork(inputDim, architecture, rng, dropoutRates = []) {
+  const arch = Array.isArray(architecture) && architecture.length ? architecture : [128, 64, 32];
   const weights = [];
   const biases = [];
+  const batchNorm = [];
   let prev = inputDim;
-  for (const size of arch) {
-    const scale = Math.sqrt(2 / Math.max(1, prev + size));
+  for (let layerIdx = 0; layerIdx < arch.length; layerIdx++) {
+    const size = arch[layerIdx];
+    const scale = 0.1 / Math.sqrt(Math.max(1, prev));
     weights.push(initMatrix(size, prev, rng, scale));
     biases.push(initVector(size));
+    batchNorm.push({
+      gamma: initVector(size, 1),
+      beta: initVector(size, 0),
+      runningMean: initVector(size, 0),
+      runningVar: initVector(size, 1),
+      momentum: 0.1
+    });
     prev = size;
   }
   const outScale = Math.sqrt(1 / Math.max(1, prev));
   weights.push(initMatrix(1, prev, rng, outScale));
   biases.push(initVector(1));
-  return { weights, biases };
+  return { weights, biases, batchNorm, dropoutRates };
 }
 
-function forward(network, x) {
+function applyBatchNorm(values, params, training) {
+  const normed = new Array(values.length);
+  const output = new Array(values.length);
+  for (let i = 0; i < values.length; i++) {
+    if (training) {
+      const mean = (1 - params.momentum) * params.runningMean[i] + params.momentum * values[i];
+      const centered = values[i] - mean;
+      const variance =
+        (1 - params.momentum) * params.runningVar[i] + params.momentum * Math.max(centered * centered, EPS);
+      params.runningMean[i] = mean;
+      params.runningVar[i] = Math.max(variance, EPS);
+    }
+    const meanEval = params.runningMean[i];
+    const invStd = 1 / Math.sqrt((params.runningVar[i] ?? 1) + EPS);
+    const normalized = (values[i] - meanEval) * invStd;
+    normed[i] = normalized;
+    output[i] = params.gamma[i] * normalized + params.beta[i];
+  }
+  return { output, normed };
+}
+
+function batchNormBackward(grad, cache, params) {
+  const gradInput = new Array(grad.length).fill(0);
+  const gradGamma = new Array(grad.length).fill(0);
+  const gradBeta = new Array(grad.length).fill(0);
+  for (let i = 0; i < grad.length; i++) {
+    gradGamma[i] += grad[i] * cache.normed[i];
+    gradBeta[i] += grad[i];
+    const invStd = 1 / Math.sqrt((params.runningVar[i] ?? 1) + EPS);
+    gradInput[i] = grad[i] * params.gamma[i] * invStd;
+  }
+  return { gradInput, gradGamma, gradBeta };
+}
+
+function resolveDropout(rate, idx, fallback) {
+  if (Array.isArray(rate)) {
+    if (Number.isFinite(rate[idx])) return rate[idx];
+    if (Number.isFinite(rate[0])) return rate[0];
+    return fallback;
+  }
+  return Number.isFinite(rate) ? rate : fallback;
+}
+
+function forward(network, x, { training = false } = {}) {
   const { weights, biases } = network;
   const activations = [x];
   const zs = [];
+  const bnCaches = [];
+  const dropoutMasks = [];
   let a = x;
   const lastIdx = weights.length - 1;
   for (let l = 0; l < lastIdx; l++) {
-    const z = addVec(matVec(weights[l], a), biases[l]);
+    const linear = addVec(matVec(weights[l], a), biases[l]);
+    let z = linear;
+    if (network.batchNorm?.[l]) {
+      const bnResult = applyBatchNorm(linear, network.batchNorm[l], training);
+      z = bnResult.output;
+      bnCaches.push({ normed: bnResult.normed });
+    } else {
+      bnCaches.push(null);
+    }
     zs.push(z);
     a = applyFunc(z, tanh);
+    const dropoutRate = resolveDropout(network.dropoutRates, l, 0);
+    if (training && Number.isFinite(dropoutRate) && dropoutRate > 0 && dropoutRate < 1) {
+      const keepProb = 1 - dropoutRate;
+      const mask = a.map(() => (Math.random() < keepProb ? 1 / keepProb : 0));
+      a = a.map((val, idx) => val * mask[idx]);
+      dropoutMasks.push(mask);
+    } else {
+      dropoutMasks.push(null);
+    }
     activations.push(a);
   }
   const outLinear = addVec(matVec(weights[lastIdx], a), biases[lastIdx]);
   const zOut = outLinear[0];
   const out = sigmoid(zOut);
-  return { activations, zs, zOut, out };
+  return { activations, zs, zOut, out, bnCaches, dropoutMasks };
 }
 
 function backward(network, cache, target) {
   const { weights, biases } = network;
   const gradW = weights.map((W) => zeroLike(W));
   const gradB = biases.map((b) => initVector(b.length));
+  const gradGamma = network.batchNorm?.map((bn) => initVector(bn.gamma.length)) ?? [];
+  const gradBeta = network.batchNorm?.map((bn) => initVector(bn.beta.length)) ?? [];
+
   const lastIdx = weights.length - 1;
   const deltaOut = cache.out - target;
   const lastActivation = cache.activations[lastIdx] || cache.activations.at(-1) || [];
@@ -120,40 +206,69 @@ function backward(network, cache, target) {
     const z = cache.zs[layer];
     const prevActivation = cache.activations[layer];
     const current = new Array(weights[layer].length).fill(0);
+    const dropoutMask = cache.dropoutMasks?.[layer];
     for (let j = 0; j < weights[layer].length; j++) {
-      const delta = downstream[j] * dtanh(z[j]);
+      let delta = downstream[j] * dtanh(z[j]);
+      if (dropoutMask && dropoutMask[j] === 0) delta = 0;
       gradB[layer][j] += delta;
       current[j] = delta;
+    }
+    let postBN = current;
+    if (cache.bnCaches?.[layer] && network.batchNorm?.[layer]) {
+      const bnGrads = batchNormBackward(current, cache.bnCaches[layer], network.batchNorm[layer]);
+      postBN = bnGrads.gradInput;
+      for (let j = 0; j < bnGrads.gradGamma.length; j++) {
+        gradGamma[layer][j] += bnGrads.gradGamma[j];
+        gradBeta[layer][j] += bnGrads.gradBeta[j];
+      }
+    }
+    for (let j = 0; j < weights[layer].length; j++) {
       for (let k = 0; k < weights[layer][j].length; k++) {
-        gradW[layer][j][k] += delta * prevActivation[k];
+        gradW[layer][j][k] += postBN[j] * prevActivation[k];
       }
     }
     const prevSize = weights[layer][0]?.length ?? prevActivation.length;
     const newDownstream = new Array(prevSize).fill(0);
     for (let j = 0; j < weights[layer].length; j++) {
       for (let k = 0; k < weights[layer][j].length; k++) {
-        newDownstream[k] += current[j] * weights[layer][j][k];
+        newDownstream[k] += postBN[j] * weights[layer][j][k];
       }
     }
     downstream = newDownstream;
   }
 
-  return { gradW, gradB };
+  return { gradW, gradB, gradGamma, gradBeta };
 }
 
-function updateNetwork(network, grads, lr) {
+function updateNetwork(network, grads, lr, l2 = 0) {
   for (let l = 0; l < network.weights.length; l++) {
     const W = network.weights[l];
     const gW = grads.gradW[l];
     for (let i = 0; i < W.length; i++) {
       for (let j = 0; j < W[i].length; j++) {
-        W[i][j] -= lr * gW[i][j];
+        const penalty = l2 ? l2 * W[i][j] : 0;
+        W[i][j] -= lr * (gW[i][j] + penalty);
       }
     }
     const b = network.biases[l];
     const gB = grads.gradB[l];
     for (let i = 0; i < b.length; i++) {
       b[i] -= lr * gB[i];
+    }
+    if (l < network.batchNorm.length) {
+      const bn = network.batchNorm[l];
+      const gGamma = grads.gradGamma?.[l];
+      const gBeta = grads.gradBeta?.[l];
+      if (gGamma) {
+        for (let i = 0; i < bn.gamma.length; i++) {
+          bn.gamma[i] -= lr * gGamma[i];
+        }
+      }
+      if (gBeta) {
+        for (let i = 0; i < bn.beta.length; i++) {
+          bn.beta[i] -= lr * gBeta[i];
+        }
+      }
     }
   }
 }
@@ -210,15 +325,17 @@ function trainSingleNetwork(
     maxEpochs = 200,
     lr = 1e-3,
     patience = 10,
-    architecture = [64, 32, 16],
+    architecture = [128, 64, 32],
     batchSize = modelParams?.ann?.batchSize ?? 32,
-    l2 = 1e-4
+    l2 = 1e-4,
+    dropout = modelParams?.ann?.dropout ?? 0.3
   }
 ) {
   const rng = makeLCG(seed);
   const splitRng = makeLCG((seed ^ 0xa5a5a5a5) >>> 0);
   const inputDim = ensureConsistentDimensions(X);
-  const net = initNetwork(inputDim, architecture, rng);
+  const dropoutArr = Array.isArray(dropout) ? dropout : [dropout];
+  const net = initNetwork(inputDim, architecture, rng, dropoutArr);
 
   if (X.length <= 1 || !inputDim) {
     return { network: net, epochs: 0, bestLoss: Infinity };
@@ -252,11 +369,13 @@ function trainSingleNetwork(
       const end = Math.min(indices.length, start + batch);
       const grads = {
         gradW: net.weights.map((W) => zeroLike(W)),
-        gradB: net.biases.map((b) => initVector(b.length))
+        gradB: net.biases.map((b) => initVector(b.length)),
+        gradGamma: net.batchNorm.map((bn) => initVector(bn.gamma.length)),
+        gradBeta: net.batchNorm.map((bn) => initVector(bn.beta.length))
       };
       for (let idx = start; idx < end; idx++) {
         const rowIdx = indices[idx];
-        const cache = forward(net, Xtrain[rowIdx]);
+        const cache = forward(net, Xtrain[rowIdx], { training: true });
         const g = backward(net, cache, ytrain[rowIdx]);
         for (let l = 0; l < grads.gradW.length; l++) {
           for (let r = 0; r < grads.gradW[l].length; r++) {
@@ -266,6 +385,12 @@ function trainSingleNetwork(
           }
           for (let r = 0; r < grads.gradB[l].length; r++) {
             grads.gradB[l][r] += g.gradB[l][r];
+          }
+          if (l < grads.gradGamma.length && g.gradGamma?.[l]) {
+            for (let r = 0; r < grads.gradGamma[l].length; r++) {
+              grads.gradGamma[l][r] += g.gradGamma[l][r];
+              grads.gradBeta[l][r] += g.gradBeta[l][r];
+            }
           }
         }
       }
@@ -280,13 +405,19 @@ function trainSingleNetwork(
         for (let r = 0; r < grads.gradB[l].length; r++) {
           grads.gradB[l][r] /= denom;
         }
+        if (l < grads.gradGamma.length) {
+          for (let r = 0; r < grads.gradGamma[l].length; r++) {
+            grads.gradGamma[l][r] /= denom;
+            grads.gradBeta[l][r] /= denom;
+          }
+        }
       }
-      updateNetwork(net, grads, lr);
+      updateNetwork(net, grads, lr, l2);
     }
 
     let valLoss = 0;
     for (let i = 0; i < Xval.length; i++) {
-      const pred = forward(net, Xval[i]).out;
+      const pred = forward(net, Xval[i], { training: false }).out;
       valLoss += lossBCE(pred, yval[i]);
     }
     valLoss /= Math.max(1, Xval.length);
@@ -316,7 +447,8 @@ export function trainANNCommittee(
     committeeSize: committeeSizeOption,
     committees: committeesOption,
     batchSize,
-    l2
+    l2,
+    dropout
   } = {}
 ) {
   if (!X?.length) {
@@ -325,15 +457,24 @@ export function trainANNCommittee(
   const start = Date.now();
   const results = [];
   const maxSeeds = Math.max(1, Math.round(seeds));
-  const arch = Array.isArray(architecture) && architecture.length ? architecture : [64, 32, 16];
-  const committeeSize = Math.max(1, Math.round(committeeSizeOption ?? Math.min(3, maxSeeds)));
+  const arch = Array.isArray(architecture) && architecture.length ? architecture : [128, 64, 32];
+  const committeeSize = Math.max(1, Math.round(committeeSizeOption ?? Math.min(5, maxSeeds, 5)));
   const maxCommitteesDefault = Math.max(1, Math.ceil(maxSeeds / committeeSize));
   const committeeCount = Math.max(1, Math.round(committeesOption ?? Math.min(3, maxCommitteesDefault)));
   for (let i = 0; i < maxSeeds; i++) {
     const seed = i + 1;
-    const result = trainSingleNetwork(X, y, { seed, maxEpochs, lr, patience, architecture: arch, batchSize, l2 });
+    const result = trainSingleNetwork(X, y, {
+      seed,
+      maxEpochs,
+      lr,
+      patience,
+      architecture: arch,
+      batchSize,
+      l2,
+      dropout
+    });
     results.push({ ...result, seed });
-    const lossMsg = Number.isFinite(result.bestLoss) ? result.bestLoss.toFixed(4) : 'inf';
+    const lossMsg = Number.isFinite(result.bestLoss) ? result.bestLoss.toFixed(4) : "inf";
     console.log(`[ANN] seed=${seed} valLoss=${lossMsg}`);
     if (Date.now() - start > timeLimitMs) break;
   }
@@ -369,7 +510,9 @@ export function trainANNCommittee(
 export function predictANNCommittee(model, X) {
   const committees = model?.committees?.length
     ? model.committees
-    : (model?.models?.length ? [{ networks: model.models }] : []);
+    : model?.models?.length
+      ? [{ networks: model.models }]
+      : [];
   if (!committees.length) return X.map(() => 0.5);
   const scores = new Array(X.length).fill(0);
   let activeCount = 0;
@@ -379,7 +522,7 @@ export function predictANNCommittee(model, X) {
     const committeeScores = new Array(X.length).fill(0);
     for (const net of committee.networks) {
       for (let i = 0; i < X.length; i++) {
-        committeeScores[i] += forward(net, X[i]).out;
+        committeeScores[i] += forward(net, X[i], { training: false }).out;
       }
     }
     for (let i = 0; i < X.length; i++) {
@@ -392,7 +535,7 @@ export function predictANNCommittee(model, X) {
 }
 
 function gradientInput(network, x) {
-  const cache = forward(network, x);
+  const cache = forward(network, x, { training: false });
   const { weights } = network;
   const lastIdx = weights.length - 1;
   const deltaOut = cache.out * (1 - cache.out);
@@ -406,11 +549,18 @@ function gradientInput(network, x) {
   for (let layer = lastIdx - 1; layer >= 0; layer--) {
     const z = cache.zs[layer] || [];
     const neurons = weights[layer].length;
+    const dropoutMask = cache.dropoutMasks?.[layer];
     const current = new Array(neurons).fill(0);
     for (let j = 0; j < neurons; j++) {
-      const activation = z[j] ?? 0;
-      const downVal = downstream[j] ?? 0;
-      current[j] = downVal * dtanh(activation);
+      let activation = dtanh(z[j]);
+      if (dropoutMask && dropoutMask[j] === 0) activation = 0;
+      current[j] = downstream[j] * activation;
+    }
+    if (cache.bnCaches?.[layer] && network.batchNorm?.[layer]) {
+      const bnGrads = batchNormBackward(current, cache.bnCaches[layer], network.batchNorm[layer]);
+      for (let j = 0; j < neurons; j++) {
+        current[j] = bnGrads.gradInput[j];
+      }
     }
     const prevSize = weights[layer][0]?.length ?? x.length;
     const newDownstream = new Array(prevSize).fill(0);
@@ -431,7 +581,9 @@ function gradientInput(network, x) {
 export function gradientANNCommittee(model, x) {
   const committees = model?.committees?.length
     ? model.committees
-    : (model?.models?.length ? [{ networks: model.models }] : []);
+    : model?.models?.length
+      ? [{ networks: model.models }]
+      : [];
   if (!committees.length) return new Array(x.length).fill(0);
   const grad = new Array(x.length).fill(0);
   let activeCount = 0;
@@ -444,7 +596,8 @@ export function gradientANNCommittee(model, x) {
       for (let i = 0; i < grad.length; i++) committeeGrad[i] += g[i];
     }
     for (let i = 0; i < grad.length; i++) {
-      grad[i] += committeeGrad[i] / committee.networks.length;
+      committeeGrad[i] /= committee.networks.length;
+      grad[i] += committeeGrad[i];
     }
   }
   if (!activeCount) return new Array(x.length).fill(0);

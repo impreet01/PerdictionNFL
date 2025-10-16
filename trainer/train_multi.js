@@ -21,7 +21,7 @@ import {
   listDatasetSeasons
 } from "./dataSources.js";
 import { buildContextForWeek } from "./contextPack.js";
-import { writeExplainArtifact } from "./explainRubric.js";
+import { writeExplainArtifact, calibrateThresholds } from "./explainRubric.js";
 import { buildFeatures, FEATS as FEATS_BASE } from "./featureBuild.js";
 import { buildBTFeatures, BT_FEATURES } from "./featureBuild_bt.js";
 import { trainBTModel, predictBT, predictBTDeterministic } from "./model_bt.js";
@@ -41,11 +41,13 @@ import {
 } from "./trainingState.js";
 import { ensureTrainingStateCurrent } from "./bootstrapState.js";
 import { loadLogisticWarmStart } from "./modelWarmStart.js";
+import { validateArtifact } from "./schemaValidator.js";
 
 const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
 
 const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
+const MODEL_PARAMS_PATH = "./config/modelParams.json";
 
 const DEFAULT_MIN_TRAIN_SEASON = 1999;
 const DEFAULT_MAX_TRAIN_SEASONS = Number.POSITIVE_INFINITY;
@@ -96,6 +98,42 @@ function shouldRewriteHistorical() {
     "REGEN_HISTORICAL"
   ];
   return keys.some((key) => envFlag(key));
+}
+
+function loadModelParamsFile() {
+  try {
+    const raw = readFileSync(MODEL_PARAMS_PATH, "utf8");
+    return JSON.parse(raw);
+  } catch (err) {
+    if (err?.code !== "ENOENT") {
+      console.warn(`[train] unable to read model params: ${err?.message || err}`);
+    }
+    return {};
+  }
+}
+
+function deepMerge(target, source) {
+  if (typeof target !== "object" || target === null) return source;
+  if (typeof source !== "object" || source === null) return target;
+  const out = Array.isArray(target) ? target.slice() : { ...target };
+  for (const [key, value] of Object.entries(source)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      out[key] = deepMerge(out[key] ?? {}, value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function persistModelParams(updates = {}) {
+  const current = loadModelParamsFile();
+  const merged = deepMerge(current, updates);
+  try {
+    writeFileSync(MODEL_PARAMS_PATH, JSON.stringify(merged, null, 2));
+  } catch (err) {
+    console.warn(`[train] unable to persist model params: ${err?.message || err}`);
+  }
 }
 
 const toFiniteNumber = (value, fallback = 0.5) => {
@@ -305,6 +343,96 @@ function kfoldIndices(n, k) {
     folds[i % k].push(i);
   }
   return folds;
+}
+
+const ANN_EPOCH_OPTIONS = [100, 200, 300, 400, 500];
+const ANN_DROPOUT_OPTIONS = [0.2, 0.35, 0.5];
+const BT_LR_OPTIONS = [1e-3, 2.5e-3, 5e-3, 1e-2];
+const BT_L2_OPTIONS = [1e-5, 5e-5, 1e-4, 1e-3];
+
+function tuneAnnHyperparams(trainStd, labels, folds, options = {}) {
+  if (!Array.isArray(folds) || !folds.length || !trainStd?.length) return null;
+  const seeds = Math.max(2, Math.min(options.annSeeds ?? 5, 5));
+  let best = null;
+  for (const epochs of ANN_EPOCH_OPTIONS) {
+    for (const dropout of ANN_DROPOUT_OPTIONS) {
+      const losses = [];
+      for (const valIdx of folds) {
+        const trainIdx = new Set(Array.from({ length: trainStd.length }, (_, i) => i).filter((i) => !valIdx.includes(i)));
+        const Xtr = [];
+        const ytr = [];
+        const Xva = [];
+        const yva = [];
+        for (let i = 0; i < trainStd.length; i++) {
+          if (trainIdx.has(i)) {
+            Xtr.push(trainStd[i]);
+            ytr.push(labels[i]);
+          } else {
+            Xva.push(trainStd[i]);
+            yva.push(labels[i]);
+          }
+        }
+        if (!Xtr.length || !Xva.length) continue;
+        const model = trainANNCommittee(Xtr, ytr, {
+          seeds: Math.min(seeds, 3),
+          maxEpochs: epochs,
+          dropout,
+          lr: 1e-3,
+          patience: 8,
+          batchSize: options.annBatchSize ?? 32,
+          l2: options.annL2 ?? 1e-4,
+          timeLimitMs: options.annTuningTimeLimit ?? 20000,
+          architecture: options.annArchitecture
+        });
+        const preds = predictANNCommittee(model, Xva);
+        const loss = logLoss(yva, preds);
+        if (Number.isFinite(loss)) losses.push(loss);
+      }
+      if (!losses.length) continue;
+      const avg = losses.reduce((a, b) => a + b, 0) / losses.length;
+      if (!best || avg < best.loss) {
+        best = { loss: avg, epochs, dropout };
+      }
+    }
+  }
+  if (best) {
+    persistModelParams({ ann: { maxEpochs: best.epochs, dropout: best.dropout } });
+  }
+  return best;
+}
+
+function tuneBTHyperparams(btTrainRows, folds, baseSteps) {
+  if (!Array.isArray(folds) || !folds.length || !btTrainRows?.length) return null;
+  let best = null;
+  for (const lr of BT_LR_OPTIONS) {
+    for (const l2 of BT_L2_OPTIONS) {
+      const losses = [];
+      for (const valIdx of folds) {
+        const trainIdx = new Set(Array.from({ length: btTrainRows.length }, (_, i) => i).filter((i) => !valIdx.includes(i)));
+        const trainSubset = [];
+        const valSubset = [];
+        for (let i = 0; i < btTrainRows.length; i++) {
+          if (trainIdx.has(i)) trainSubset.push(btTrainRows[i]);
+          else valSubset.push(btTrainRows[i]);
+        }
+        if (!trainSubset.length || !valSubset.length) continue;
+        const model = trainBTModel(trainSubset, { steps: baseSteps, lr, l2 });
+        const preds = predictBTDeterministic(model, valSubset).map((p) => safeProb(p?.prob));
+        const labels = valSubset.map((r) => Number(r.label_win));
+        const loss = logLoss(labels, preds);
+        if (Number.isFinite(loss)) losses.push(loss);
+      }
+      if (!losses.length) continue;
+      const avg = losses.reduce((a, b) => a + b, 0) / losses.length;
+      if (!best || avg < best.loss) {
+        best = { loss: avg, lr, l2 };
+      }
+    }
+  }
+  if (best) {
+    persistModelParams({ bt: { gd: { learningRate: best.lr, l2: best.l2 } } });
+  }
+  return best;
 }
 
 function enumerateWeights(step = 0.05) {
@@ -892,9 +1020,26 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     oofTree = ensureArray([], nTrain, 0.5);
   }
 
+  const modelParamsFile = loadModelParamsFile();
+  const annTuning = tuneAnnHyperparams(trainStd, labels, folds, {
+    annSeeds: options.annCvSeeds ?? options.annSeeds,
+    annBatchSize: modelParamsFile?.ann?.batchSize ?? 32,
+    annL2: options.annL2,
+    annArchitecture: options.annArchitecture
+  });
+  const tunedAnnEpochs = annTuning?.epochs ?? options.annMaxEpochs ?? modelParamsFile?.ann?.maxEpochs ?? Number(process.env.ANN_MAX_EPOCHS ?? 250);
+  const tunedAnnDropout = annTuning?.dropout ?? options.annDropout ?? modelParamsFile?.ann?.dropout ?? 0.3;
+
+  const btStepsBase = Number(
+    process.env.BT_GD_STEPS ?? modelParamsFile?.bt?.gd?.steps ?? 2000
+  );
+  const btTuning = tuneBTHyperparams(btTrainRows, folds, btStepsBase);
+  const tunedBtLr = btTuning?.lr ?? options.btLearningRate ?? modelParamsFile?.bt?.gd?.learningRate ?? 5e-3;
+  const tunedBtL2 = btTuning?.l2 ?? options.btL2 ?? modelParamsFile?.bt?.gd?.l2 ?? 1e-4;
+
   // --- BEGIN: robust ANN OOF ---
   const annSeeds = options.annSeeds ?? Number(process.env.ANN_SEEDS ?? 5); // committee size
-  const annMaxEpochs = options.annMaxEpochs ?? Number(process.env.ANN_MAX_EPOCHS ?? 250);
+  const annMaxEpochs = tunedAnnEpochs;
   const annCvSeeds = Math.max(3, Math.min(annSeeds, options.annCvSeeds ?? 5));
   const annOOF = new Array(nTrain).fill(0.5);
 
@@ -914,9 +1059,10 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       // train a small committee for OOF
       const annModel = trainANNCommittee(XtrS, ytr, {
         seeds: annCvSeeds,
-        maxEpochs: Math.min(annMaxEpochs, options.annCvMaxEpochs ?? 150),
+        maxEpochs: Math.min(annMaxEpochs, options.annCvMaxEpochs ?? annMaxEpochs),
         lr: 1e-3,
         patience: 10,
+        dropout: tunedAnnDropout,
         timeLimitMs: options.annCvTimeLimit ?? 25000
       });
       const preds = predictANNCommittee(annModel, XvaS);
@@ -940,7 +1086,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
           iva.push(i);
         }
       }
-      const model = trainBTModel(btTr);
+      const model = trainBTModel(btTr, { steps: btStepsBase, lr: tunedBtLr, l2: tunedBtL2 });
       const preds = predictBTDeterministic(model, btVa);
       for (let j = 0; j < iva.length; j++) btOOF[iva[j]] = safeProb(preds[j]?.prob);
     }
@@ -991,13 +1137,18 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   // --- BEGIN: robust ANN full fit ---
   const annModelFull = trainANNCommittee(trainStd, labels, {
     seeds: options.annSeeds ?? Number(process.env.ANN_SEEDS ?? 5),
-    maxEpochs: options.annMaxEpochs ?? Number(process.env.ANN_MAX_EPOCHS ?? 300),
+    maxEpochs: annMaxEpochs,
     lr: 1e-3,
     patience: 12,
+    dropout: tunedAnnDropout,
     timeLimitMs: options.annTimeLimit ?? 70000
   });
   // --- END: robust ANN full fit ---
-  const btModelFull = trainBTModel(btTrainRows);
+  const btModelFull = trainBTModel(btTrainRows, {
+    steps: btStepsBase,
+    lr: tunedBtLr,
+    l2: tunedBtL2
+  });
 
   const testMatrix = matrixFromRows(testRows, FEATS_ENR);
   const testStd = applyScaler(testMatrix, scaler);
@@ -1161,6 +1312,10 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       return { mean: m, var: v };
     })()
   };
+  diagnostics.hyperparams = {
+    ann: { epochs: annMaxEpochs, dropout: tunedAnnDropout },
+    bt: { learningRate: tunedBtLr, l2: tunedBtL2, steps: btStepsBase }
+  };
 
   const trainLogitFull = predictLogit(trainStd, logitModelFull).map(safeProb);
   const trainTreeFull = predictTree(cartFull, leafStatsFull, trainStd).map(safeProb);
@@ -1237,16 +1392,24 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       coefficients: btModelFull.w,
       intercept: btModelFull.b,
       scaler: btModelFull.scaler,
-      features: BT_FEATURES
+      features: BT_FEATURES,
+      hyperparams: {
+        steps: btStepsBase,
+        learningRate: tunedBtLr,
+        l2: tunedBtL2
+      }
     },
     ann: {
       seeds: annModelFull.seeds,
       architecture: annModelFull.architecture,
-      committee_size: annModelFull.models.length
+      committee_size: annModelFull.models.length,
+      max_epochs: annMaxEpochs,
+      dropout: tunedAnnDropout
     },
     ensemble: {
       weights: clampedWeights,
-      calibration_beta: calibrator.beta ?? 0
+      calibration_beta: calibrator.beta ?? 0,
+      oof_variance: diagnostics.oof_variance
     },
     pca,
     feature_enrichment: {
@@ -1280,6 +1443,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
 
 export async function writeArtifacts(result) {
   const stamp = `${result.season}_W${String(result.week).padStart(2, "0")}`;
+  validateArtifact("predictions", result.predictions);
   writeFileSync(`${ART_DIR}/predictions_${stamp}.json`, JSON.stringify(result.predictions, null, 2));
   // 1) Build & write context pack
   const context = Array.isArray(result.context)
@@ -1291,6 +1455,7 @@ export async function writeArtifacts(result) {
   );
 
   // 2) Compute & write explanation scorecards
+  calibrateThresholds();
   await writeExplainArtifact({
     season: result.season,
     week: result.week,
@@ -1299,8 +1464,11 @@ export async function writeArtifacts(result) {
       : result.predictions?.games || result.predictions,
     context
   });
+  validateArtifact("model", result.modelSummary);
   writeFileSync(`${ART_DIR}/model_${stamp}.json`, JSON.stringify(result.modelSummary, null, 2));
+  validateArtifact("diagnostics", result.diagnostics);
   writeFileSync(`${ART_DIR}/diagnostics_${stamp}.json`, JSON.stringify(result.diagnostics, null, 2));
+  validateArtifact("bt_features", result.btDebug);
   writeFileSync(`${ART_DIR}/bt_features_${stamp}.json`, JSON.stringify(result.btDebug, null, 2));
 }
 
@@ -1448,6 +1616,7 @@ export function updateHistoricalArtifacts({ season, schedules }) {
       continue;
     }
 
+    validateArtifact("outcomes", outcomes);
     writeFileSync(outcomesPath, JSON.stringify(outcomes, null, 2));
 
     const perModel = {
@@ -1465,6 +1634,7 @@ export function updateHistoricalArtifacts({ season, schedules }) {
       calibration_bins: calibrationBins(labels, probBuckets.blended)
     };
 
+    validateArtifact("metrics", metricsPayload);
     writeFileSync(metricsPath, JSON.stringify(metricsPayload, null, 2));
     weeklySummaries.push(metricsPayload);
     latestCompletedWeek = Math.max(latestCompletedWeek, week);
@@ -1495,11 +1665,14 @@ export function updateHistoricalArtifacts({ season, schedules }) {
 
   const seasonMetrics = {
     season,
+    week: 0,
+    aggregation_scope: "season",
     latest_completed_week: latestCompletedWeek,
-    cumulative,
+    per_model: cumulative,
     weeks: weeklySummaries.map((entry) => ({ week: entry.week, per_model: entry.per_model }))
   };
 
+  validateArtifact("metrics", seasonMetrics);
   writeFileSync(`${ART_DIR}/metrics_${season}.json`, JSON.stringify(seasonMetrics, null, 2));
 
   const seasonIndex = {
@@ -1508,6 +1681,7 @@ export function updateHistoricalArtifacts({ season, schedules }) {
     weeks: weekMetadata
   };
 
+  validateArtifact("season_index", seasonIndex);
   writeFileSync(`${ART_DIR}/season_index_${season}.json`, JSON.stringify(seasonIndex, null, 2));
 
   const weeklyGameCounts = weeklySummaries.map((entry) => ({
@@ -1526,6 +1700,7 @@ export function updateHistoricalArtifacts({ season, schedules }) {
     week_metadata: weekMetadata
   };
 
+  validateArtifact("season_summary", seasonSummary);
   writeFileSync(`${ART_DIR}/season_summary_${season}.json`, JSON.stringify(seasonSummary, null, 2));
 }
 

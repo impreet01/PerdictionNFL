@@ -160,6 +160,29 @@ const windowAverage = (history = [], size = 3) => {
   return weightedAverage(slice);
 };
 
+const SOS_DIFF_KEYS = [
+  "off_total_yds_s2d_minus_opp",
+  "def_total_yds_s2d_minus_opp",
+  "off_turnovers_s2d_minus_opp",
+  "def_turnovers_s2d_minus_opp",
+  "off_third_down_pct_s2d_minus_opp",
+  "off_red_zone_td_pct_s2d_minus_opp",
+  "off_sack_rate_s2d_minus_opp",
+  "off_neutral_pass_rate_s2d_minus_opp"
+];
+
+function applySosAdjustments(row, opponentElo) {
+  const oppElo = Number(opponentElo);
+  if (!Number.isFinite(oppElo) || oppElo <= 0) return row;
+  const scale = 1500 / oppElo;
+  for (const key of SOS_DIFF_KEYS) {
+    if (row[key] != null) {
+      row[key] = Number(row[key]) * scale;
+    }
+  }
+  return row;
+}
+
 const avgLast = (arr = [], k = 3) => {
   if (!arr.length) return 0;
   const slice = arr.slice(-k);
@@ -823,6 +846,8 @@ export function buildFeatures({
         awayQbr,
         weatherFeats
       );
+      applySosAdjustments(homeRow, awayElo);
+      applySosAdjustments(awayRow, homeElo);
       out.push(homeRow, awayRow);
 
       updateFormSnapshots(homeFormState, hSignals, hUsageWeek);

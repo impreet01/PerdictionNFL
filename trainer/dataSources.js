@@ -86,6 +86,14 @@ function coerceNumericFields(record, keys = [], fallback = 0) {
   }
 }
 
+function coerceIntegerFields(record, keys = []) {
+  for (const key of keys) {
+    if (!(key in record)) continue;
+    const value = toInt(record[key]);
+    record[key] = value == null ? null : value;
+  }
+}
+
 function cloneRow(row) {
   return row && typeof row === 'object' ? { ...row } : {};
 }
@@ -1609,6 +1617,7 @@ function cleanWeeklyTeamRows(rows = []) {
   return rows.map((row) => {
     const next = cloneRow(row);
     normalizeTeamFields(next, ['team', 'team_abbr', 'opponent', 'opp']);
+    coerceIntegerFields(next, ['season', 'week']);
     coerceNumericFields(next, [
       'passing_yards',
       'rushing_yards',
@@ -1625,6 +1634,7 @@ function cleanWeeklyPlayerRows(rows = []) {
   return rows.map((row) => {
     const next = cloneRow(row);
     normalizeTeamFields(next, ['team', 'team_abbr', 'recent_team', 'posteam']);
+    coerceIntegerFields(next, ['season', 'week']);
     coerceNumericFields(next, [
       'passing_yards',
       'rushing_yards',

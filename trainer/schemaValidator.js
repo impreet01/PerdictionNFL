@@ -7,7 +7,13 @@ import Ajv from "ajv";
 
 const ajv = new Ajv({
   strict: false,
-  allErrors: true
+  allErrors: true,
+  // Coerce primitive values (e.g. "2024" -> 2024) so that upstream
+  // data sources that serialize numbers as strings still satisfy the
+  // schema constraints. This prevents failures like FTN chart rows
+  // providing a season as a string and keeps the behaviour consistent
+  // across all artifact validations.
+  coerceTypes: true
 });
 
 const SCHEMA_ROOT = path.resolve("./docs/schemas");

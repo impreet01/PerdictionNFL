@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Snap counts rows",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "season": { "type": ["integer", "null"] },
+      "team": { "type": ["string", "null"] },
+      "recent_team": { "type": ["string", "null"] },
+      "offense_pct": { "type": "number", "minimum": 0 },
+      "defense_pct": { "type": "number", "minimum": 0 },
+      "special_teams_pct": { "type": "number", "minimum": 0 }
+    },
+    "additionalProperties": true
+  }
+}

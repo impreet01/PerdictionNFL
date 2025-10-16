@@ -32,6 +32,7 @@ import {
   loadParticipation as loadParticipationDS,
   listDatasetSeasons
 } from "./dataSources.js";
+import { normalizeTeam } from "./teamNormalizer.js";
 
 const BASE_REL = "https://github.com/nflverse/nflverse-data/releases/download";
 const RAW_MAIN = "https://raw.githubusercontent.com/nflverse/nflverse-data/main";
@@ -47,6 +48,8 @@ function toInt(x) {
 }
 function uniq(arr) { return Array.from(new Set(arr)); }
 function ensureDir(p) { fs.mkdirSync(p, { recursive: true }); }
+
+const MIN_SEASON = 1999;
 
 export async function resolveSeasonList({
   targetSeason,
@@ -70,12 +73,13 @@ export async function resolveSeasonList({
         .filter((s) => Number.isFinite(s))
     )
   ).sort((a, b) => a - b);
+  const bounded = canonical.filter((s) => s == null ? false : s >= MIN_SEASON);
 
-  if (!canonical.length && Number.isFinite(targetSeason)) {
+  if (!bounded.length && Number.isFinite(targetSeason)) {
     return [Number(targetSeason)];
   }
 
-  let filtered = canonical;
+  let filtered = bounded;
   const since = toInt(sinceSeason);
   if (Number.isFinite(since)) {
     filtered = filtered.filter((s) => s >= since);
@@ -417,8 +421,8 @@ function summarizeMarkets(markets, schedules, weekCap) {
   for (const r of schedules || []) {
     const season = toInt(r.season ?? r.year);
     const week = toInt(r.week ?? r.game_week ?? r.gameday);
-    const home = (r.home_team ?? r.home ?? r.home_team_abbr ?? r.team_home ?? "").toString().trim().toUpperCase();
-    const away = (r.away_team ?? r.away ?? r.away_team_abbr ?? r.team_away ?? "").toString().trim().toUpperCase();
+    const home = T(r.home_team ?? r.home ?? r.home_team_abbr ?? r.team_home);
+    const away = T(r.away_team ?? r.away ?? r.away_team_abbr ?? r.team_away);
     if (!season || !week || !home || !away) continue;
     const key = matchupKey(season, week, home, away);
     if (!scheduleLookup.has(key)) {
@@ -438,8 +442,8 @@ function summarizeMarkets(markets, schedules, weekCap) {
     const week = toInt(row.week);
     if (!season || !week) continue;
     if (weekCap && week > weekCap) continue;
-    const home = (row.home_team ?? row.home ?? "").toString().trim().toUpperCase();
-    const away = (row.away_team ?? row.away ?? "").toString().trim().toUpperCase();
+    const home = T(row.home_team ?? row.home);
+    const away = T(row.away_team ?? row.away);
     if (!home || !away) continue;
 
     const schedKey = matchupKey(season, week, home, away);
@@ -518,8 +522,8 @@ function summarizeWeather(weatherRows, schedules, weekCap) {
   for (const r of schedules || []) {
     const season = toInt(r.season ?? r.year);
     const week = toInt(r.week ?? r.game_week ?? r.gameday);
-    const home = (r.home_team ?? r.home ?? r.home_team_abbr ?? r.team_home ?? "").toString().trim().toUpperCase();
-    const away = (r.away_team ?? r.away ?? r.away_team_abbr ?? r.team_away ?? "").toString().trim().toUpperCase();
+    const home = T(r.home_team ?? r.home ?? r.home_team_abbr ?? r.team_home);
+    const away = T(r.away_team ?? r.away ?? r.away_team_abbr ?? r.team_away);
     if (!season || !week || !home || !away) continue;
     const key = matchupKey(season, week, home, away);
     if (!scheduleLookup.has(key)) {
@@ -539,8 +543,8 @@ function summarizeWeather(weatherRows, schedules, weekCap) {
     const week = toInt(row.week);
     if (!season || !week) continue;
     if (weekCap && week > weekCap) continue;
-    const home = (row.home_team ?? row.home ?? "").toString().trim().toUpperCase();
-    const away = (row.away_team ?? row.away ?? "").toString().trim().toUpperCase();
+    const home = T(row.home_team ?? row.home);
+    const away = T(row.away_team ?? row.away);
     if (!home || !away) continue;
 
     const schedKey = matchupKey(season, week, home, away);
@@ -769,7 +773,13 @@ export async function buildContextDB(season, weekCap, outDir = "artifacts") {
 // Season database facade used by training pipeline
 const keyTW = (s, w, t) => `${s}|${w}|${t}`;
 const kGame = (gid) => String(gid);
-const T = (v) => String(v || "").toUpperCase();
+const T = (v) => {
+  const norm = normalizeTeam(v);
+  if (norm) return norm;
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim().toUpperCase();
+  return s || null;
+};
 
 function scheduleKey(r) {
   const season = toInt(r.season ?? r.year);

@@ -10,6 +10,8 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline as streamPipeline } from 'node:stream/promises';
 
 import { getDataConfig } from './config.js';
+import { normalizeTeam } from './teamNormalizer.js';
+import { validateArtifact } from './schemaValidator.js';
 
 // ---------- discovery helpers ----------
 const GH_ROOT = 'https://api.github.com/repos/nflverse/nflverse-data';
@@ -32,6 +34,53 @@ const WEEKLY_SANITY_DATASETS = new Set([
   'nextGenStats',
   'participation'
 ]);
+
+// ---------- shared cleaning helpers ----------
+const DEFAULT_STRING_FALLBACK = 'Unknown';
+
+function toFiniteNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeTeamField(record, key) {
+  if (!record || !(key in record)) return;
+  record[key] = normalizeTeam(record[key]);
+}
+
+function normalizeTeamFields(record, keys = []) {
+  for (const key of keys) {
+    normalizeTeamField(record, key);
+  }
+}
+
+function normalizeStringField(record, key, fallback = DEFAULT_STRING_FALLBACK) {
+  if (!record || !(key in record)) return;
+  const raw = record[key];
+  if (raw === undefined || raw === null || raw === '') {
+    record[key] = fallback;
+  } else {
+    record[key] = String(raw);
+  }
+}
+
+function coerceNumericFields(record, keys = [], fallback = 0) {
+  for (const key of keys) {
+    if (!(key in record)) continue;
+    record[key] = toFiniteNumber(record[key], fallback);
+  }
+}
+
+function cloneRow(row) {
+  return row && typeof row === 'object' ? { ...row } : {};
+}
+
+function percentile(values = [], fraction = 0.99) {
+  if (!values.length) return null;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const rank = Math.min(sorted.length - 1, Math.max(0, Math.floor(fraction * (sorted.length - 1))));
+  return sorted[rank];
+}
 
 const DEFAULT_RETRY = {
   attempts: 3,
@@ -1459,6 +1508,194 @@ export async function loadOfficials(){
     inspect: (rows) => inspectData('officials', rows, { season: null })
   });
 }
+
+// ---------- dataset cleaning helpers ----------
+
+function cleanNextGenRows(rows = [], season, statType) {
+  const seasonNum = Number(season);
+  return rows.map((row) => {
+    const next = cloneRow(row);
+    normalizeTeamFields(next, ['team', 'recent_team', 'club_code']);
+    coerceNumericFields(next, [
+      'avg_time_to_throw',
+      'aggressiveness',
+      'expected_yac',
+      'avg_air_yards',
+      'avg_completed_air_yards',
+      'avg_intended_air_yards'
+    ], 0);
+    if (seasonNum && seasonNum < 2016) {
+      const passYds = toFiniteNumber(next.passing_yards ?? next.pass_yards, 0);
+      const attempts = toFiniteNumber(next.attempts ?? next.pass_attempts ?? next.passing_attempts, 0);
+      next.avg_air_yards = attempts > 0 ? passYds / attempts : 0;
+    }
+    if (Number.isFinite(next.avg_time_to_throw) && next.avg_time_to_throw < 0) next.avg_time_to_throw = 0;
+    if (Number.isFinite(next.aggressiveness) && next.aggressiveness < 0) next.aggressiveness = 0;
+    if (Number.isFinite(next.expected_yac) && next.expected_yac < 0) next.expected_yac = 0;
+    normalizeStringField(next, 'report_status');
+    next.stat_type = statType;
+    next.season = seasonNum;
+    return next;
+  });
+}
+
+function cleanParticipationRows(rows = [], season) {
+  const seasonNum = Number(season);
+  return rows.map((row) => {
+    const next = cloneRow(row);
+    normalizeTeamFields(next, [
+      'team',
+      'posteam',
+      'defteam',
+      'offense_team',
+      'defense_team',
+      'home_team',
+      'away_team'
+    ]);
+    normalizeStringField(next, 'report_status');
+    normalizeStringField(next, 'offense_personnel');
+    normalizeStringField(next, 'defense_personnel');
+    normalizeStringField(next, 'special_teams_personnel');
+    if (next.offense_players != null && !Array.isArray(next.offense_players)) {
+      next.offense_players = String(next.offense_players);
+    }
+    if (next.defense_players != null && !Array.isArray(next.defense_players)) {
+      next.defense_players = String(next.defense_players);
+    }
+    if (next.special_teams_players != null && !Array.isArray(next.special_teams_players)) {
+      next.special_teams_players = String(next.special_teams_players);
+    }
+    next.season = seasonNum;
+    return next;
+  });
+}
+
+function cleanSnapCountRows(rows = [], season) {
+  const seasonNum = Number(season);
+  return rows.map((row) => {
+    const next = cloneRow(row);
+    normalizeTeamFields(next, ['team', 'recent_team', 'team_abbr']);
+    coerceNumericFields(next, ['offense_pct', 'defense_pct', 'special_teams_pct', 'snap_pct'], 0);
+    coerceNumericFields(next, ['offense_snaps', 'defense_snaps', 'special_teams_snaps', 'snaps'], 0);
+    normalizeStringField(next, 'report_status');
+    if (seasonNum && seasonNum < 2012) {
+      if (!Number.isFinite(next.offense_pct) || next.offense_pct === 0) next.offense_pct = 1;
+      if (!Number.isFinite(next.defense_pct) || next.defense_pct === 0) next.defense_pct = 1;
+      if (!Number.isFinite(next.special_teams_pct) || next.special_teams_pct === 0) next.special_teams_pct = 1;
+      next.starters = toFiniteNumber(next.starters, 11);
+    }
+    next.season = seasonNum;
+    return next;
+  });
+}
+
+function cleanWeeklyTeamRows(rows = []) {
+  return rows.map((row) => {
+    const next = cloneRow(row);
+    normalizeTeamFields(next, ['team', 'team_abbr', 'opponent', 'opp']);
+    coerceNumericFields(next, [
+      'passing_yards',
+      'rushing_yards',
+      'total_yards',
+      'turnovers',
+      'points',
+      'score'
+    ], 0);
+    return next;
+  });
+}
+
+function cleanWeeklyPlayerRows(rows = []) {
+  return rows.map((row) => {
+    const next = cloneRow(row);
+    normalizeTeamFields(next, ['team', 'team_abbr', 'recent_team', 'posteam']);
+    coerceNumericFields(next, [
+      'passing_yards',
+      'rushing_yards',
+      'receiving_yards',
+      'passing_attempts',
+      'rushing_attempts',
+      'targets'
+    ], 0);
+    normalizeStringField(next, 'report_status');
+    return next;
+  });
+}
+
+function cleanRosterRows(rows = []) {
+  return rows.map((row) => {
+    const next = cloneRow(row);
+    normalizeTeamFields(next, ['team', 'team_abbr', 'recent_team']);
+    normalizeStringField(next, 'status');
+    return next;
+  });
+}
+
+function cleanDepthChartRows(rows = []) {
+  return rows.map((row) => {
+    const next = cloneRow(row);
+    normalizeTeamFields(next, ['team', 'team_abbr']);
+    normalizeStringField(next, 'report_status');
+    return next;
+  });
+}
+
+function cleanFTNRows(rows = []) {
+  return rows.map((row) => {
+    const next = cloneRow(row);
+    normalizeTeamFields(next, ['team', 'team_abbr']);
+    return next;
+  });
+}
+
+function cleanPbpRows(rows = [], season) {
+  const seasonNum = Number(season);
+  const epaValues = [];
+  const yardValues = [];
+  const cleaned = rows.map((row) => {
+    const next = cloneRow(row);
+    normalizeTeamFields(next, [
+      'posteam',
+      'offense',
+      'offense_team',
+      'defteam',
+      'defense',
+      'defense_team',
+      'home_team',
+      'away_team',
+      'penalty_team'
+    ]);
+    coerceNumericFields(next, [
+      'epa',
+      'yards_gained',
+      'air_yards',
+      'yardline_100',
+      'score_home',
+      'score_away',
+      'passing_yards',
+      'rushing_yards'
+    ], 0);
+    const yards = toFiniteNumber(next.yards_gained, 0);
+    const derivedEpa = seasonNum && seasonNum < 2001 ? 0 : toFiniteNumber(next.epa, 0);
+    next.epa = derivedEpa;
+    next.success = seasonNum && seasonNum < 2001
+      ? (yards > 0 ? 1 : 0)
+      : toFiniteNumber(next.success, yards > 0 ? 1 : 0) > 0 ? 1 : 0;
+    yardValues.push(Math.abs(yards));
+    epaValues.push(Math.abs(next.epa));
+    return next;
+  });
+  const epaCap = Math.max(5, percentile(epaValues, 0.99) ?? 5);
+  const yardCap = Math.max(200, percentile(yardValues, 0.99) ?? 200);
+  for (const row of cleaned) {
+    if (row.epa > epaCap) row.epa = epaCap;
+    if (row.epa < -epaCap) row.epa = -epaCap;
+    if (row.yards_gained > yardCap) row.yards_gained = yardCap;
+    if (row.yards_gained < -yardCap) row.yards_gained = -yardCap;
+    row.success = row.success > 0 ? 1 : 0;
+  }
+  return cleaned;
+}
 const NEXT_GEN_TYPE_KEYS = new Map([
   ['passing', 'nextGenPassing'],
   ['rushing', 'nextGenRushing'],
@@ -1499,11 +1736,13 @@ export async function loadNextGenStats(season, statType = 'passing') {
     }
     const { rows, source, checksum } = await fetchCsvFlexible(targetUrl);
     sanityCheckRows('nextGenStats', rows);
+    const cleaned = cleanNextGenRows(rows, y, normalizedType);
+    validateArtifact('ngs', cleaned);
     const sourceLabel = resolved?.source || source;
     console.log(
       `[loadNextGenStats/${normalizedType}] OK ${sourceLabel} rows=${rows.length} checksum=${checksum.slice(0, 12)}`
     );
-    return rows;
+    return cleaned;
   }, {
     inspect: (rows) => inspectData('nextGenStats', rows, { season: y, statType: normalizedType })
   });
@@ -1533,9 +1772,11 @@ export async function loadParticipation(season) {
     }
     const { rows, source, checksum } = await fetchCsvFlexible(targetUrl);
     sanityCheckRows('participation', rows);
+    const cleaned = cleanParticipationRows(rows, y);
+    validateArtifact('participation', cleaned);
     const label = resolved?.source || source;
     console.log(`[loadParticipation] OK ${label} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
-    return rows;
+    return cleaned;
   }, {
     inspect: (rows) => inspectData('participation', rows, { season: y })
   });
@@ -1548,8 +1789,10 @@ export async function loadSnapCounts(season){
     const targetUrl = resolved?.url ?? REL.snapCounts(y);
     const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
     sanityCheckRows('snapCounts', rows);
+    const cleaned = cleanSnapCountRows(rows, y);
+    validateArtifact('snapCounts', cleaned);
     console.log(`[loadSnapCounts] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
-    return rows;
+    return cleaned;
   }, {
     inspect: (rows) => inspectData('snapCounts', rows, { season: y })
   });
@@ -1561,8 +1804,10 @@ export async function loadTeamWeekly(season){
     const targetUrl = resolved?.url ?? REL.teamWeekly(y);
     const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
     sanityCheckRows('teamWeekly', rows);
+    const cleaned = cleanWeeklyTeamRows(rows);
+    validateArtifact('teamWeekly', cleaned);
     console.log(`[loadTeamWeekly] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
-    return rows;
+    return cleaned;
   }, {
     inspect: (rows) => inspectData('teamWeekly', rows, { season: y })
   });
@@ -1578,8 +1823,10 @@ export async function loadPlayerWeekly(season){
     const targetUrl = resolved?.url ?? REL.playerWeekly(y);
     const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
     sanityCheckRows('playerWeekly', rows);
+    const cleaned = cleanWeeklyPlayerRows(rows);
+    validateArtifact('playerWeekly', cleaned);
     console.log(`[loadPlayerWeekly] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
-    return rows;
+    return cleaned;
   }, {
     inspect: (rows) => inspectData('playerWeekly', rows, { season: y })
   });
@@ -1592,8 +1839,10 @@ export async function loadRostersWeekly(season){
     try {
       const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
       sanityCheckRows('rosterWeekly', rows);
+      const cleaned = cleanRosterRows(rows);
+      validateArtifact('rosterWeekly', cleaned);
       console.log(`[loadRostersWeekly] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
-      return rows;
+      return cleaned;
     } catch (err) {
       const msg = err?.message || String(err);
       if (msg.includes('404')) {
@@ -1613,8 +1862,10 @@ export async function loadDepthCharts(season){
     const targetUrl = resolved?.url ?? REL.depthCharts(y);
     const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
     sanityCheckRows('depthCharts', rows);
+    const cleaned = cleanDepthChartRows(rows);
+    validateArtifact('depthCharts', cleaned);
     console.log(`[loadDepthCharts] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
-    return rows;
+    return cleaned;
   }, {
     inspect: (rows) => inspectData('depthCharts', rows, { season: y })
   });
@@ -1626,8 +1877,10 @@ export async function loadFTNCharts(season){
     const targetUrl = resolved?.url ?? REL.ftnCharts(y);
     const {rows,source,checksum} = await fetchCsvFlexible(targetUrl);
     sanityCheckRows('ftnCharts', rows);
+    const cleaned = cleanFTNRows(rows);
+    validateArtifact('ftnCharts', cleaned);
     console.log(`[loadFTNCharts] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
-    return rows;
+    return cleaned;
   }, {
     inspect: (rows) => inspectData('ftnCharts', rows, { season: y })
   });
@@ -1640,9 +1893,11 @@ export async function loadPBP(season){
     try {
       const { rows, checksum } = await fetchPbpSeason(targetUrl, y);
       sanityCheckRows('pbp', rows);
+      const cleaned = cleanPbpRows(rows, y);
+      validateArtifact('pbp', cleaned);
       const source = resolved?.url ?? targetUrl;
       console.log(`[loadPBP] OK ${source} rows=${rows.length} checksum=${checksum.slice(0, 12)}`);
-      return rows;
+      return cleaned;
     } catch (err) {
       const msg = err?.message || String(err);
       if (msg.includes('404')) {

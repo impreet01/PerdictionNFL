@@ -1,6 +1,8 @@
 // trainer/featureBuild_players.js
 // Aggregate player-week data into team usage metrics.
 
+import { normalizeTeam } from "./teamNormalizer.js";
+
 const isReg = (v) => {
   if (v == null) return true;
   const s = String(v).trim().toUpperCase();
@@ -13,7 +15,9 @@ const num = (value, def = 0) => {
 };
 
 const normTeam = (value) => {
-  if (!value) return null;
+  const norm = normalizeTeam(value);
+  if (norm) return norm;
+  if (value == null) return null;
   const s = String(value).trim().toUpperCase();
   return s || null;
 };

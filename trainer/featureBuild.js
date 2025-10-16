@@ -7,6 +7,7 @@
 
 import { aggregatePBP } from "./featureBuild_pbp.js";
 import { aggregatePlayerUsage } from "./featureBuild_players.js";
+import { normalizeTeam } from "./teamNormalizer.js";
 
 export const FEATS = [
   "off_1st_down_s2d",
@@ -135,7 +136,9 @@ const num = (value, def = 0) => {
 const dateOnly = (value) => (value ? String(value).slice(0, 10) : null);
 
 const normTeam = (value) => {
-  if (!value) return null;
+  const norm = normalizeTeam(value);
+  if (norm) return norm;
+  if (value == null) return null;
   const s = String(value).trim().toUpperCase();
   return s || null;
 };

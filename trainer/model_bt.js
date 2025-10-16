@@ -1,6 +1,7 @@
 // trainer/model_bt.js
 // Bradley-Terry style logistic model with bootstrap simulation
 
+import modelParams from "../config/modelParams.json" with { type: "json" };
 import { BT_FEATURES } from "./featureBuild_bt.js";
 
 /**
@@ -56,9 +57,11 @@ const applyScaler = (X, scaler) => {
   return X.map((row) => row.map((v, j) => (v - mu[j]) / (sd[j] || 1)));
 };
 
-const DEFAULT_GD_STEPS = Number(process.env.BT_GD_STEPS ?? 2000);
-const DEFAULT_GD_LR = Number(process.env.BT_GD_LR ?? 5e-3);
-const DEFAULT_GD_L2 = Number(process.env.BT_GD_L2 ?? 1e-4);
+const GD_CONFIG = modelParams?.bt?.gd || {};
+const DEFAULT_GD_STEPS = Number(process.env.BT_GD_STEPS ?? GD_CONFIG.steps ?? 2000);
+const DEFAULT_GD_LR = Number(process.env.BT_GD_LR ?? GD_CONFIG.learningRate ?? 5e-3);
+const DEFAULT_GD_L2 = Number(process.env.BT_GD_L2 ?? GD_CONFIG.l2 ?? 1e-4);
+const DEFAULT_GD_BATCH = Number(process.env.BT_GD_BATCH ?? GD_CONFIG.batchSize ?? 128);
 
 function trainLogisticGD(
   X,
@@ -68,13 +71,13 @@ function trainLogisticGD(
     lr = DEFAULT_GD_LR,
     l2 = DEFAULT_GD_L2,
     featureLength,
-    batchSize = Number(process.env.BT_GD_BATCH ?? 128)
+    batchSize = DEFAULT_GD_BATCH
   } = {}
 ) {
   const n = X.length;
   const observedDim = X[0]?.length || 0;
   const dim = Number.isInteger(featureLength) && featureLength > 0 ? featureLength : observedDim;
-  let w = new Array(dim).fill(0);
+  let w = new Array(dim).fill(0).map(() => (Math.random() - 0.5) * 0.01);
   let b = 0;
   if (!n || !observedDim || !dim) return { w, b, neutral: true };
   const effectiveBatch = Math.max(1, Math.min(n, Math.round(batchSize)));
@@ -399,7 +402,7 @@ export function predictBT({
       week: Number(row.week)
     };
     const probs = [];
-    const iterations = Math.max(1, Math.min(600, Math.round(bootstrap)));
+    const iterations = Math.max(1, Math.min(500, Math.round(bootstrap)));
     for (let i = 0; i < iterations; i++) {
       const hSample = drawHistorySamples(hHist, homeTarget, block, rng);
       const aSample = drawHistorySamples(aHist, awayTarget, block, rng);
@@ -420,6 +423,9 @@ export function predictBT({
         awayAvg: aAvg,
         row
       });
+      const expectedLen = Array.isArray(coeffs) && coeffs.length ? coeffs.length : BT_FEATURES.length;
+      while (featVec.length < expectedLen) featVec.push(0);
+      if (featVec.length > expectedLen) featVec.length = expectedLen;
       const std = applyScaler([featVec], scaler)[0];
       const prob = sigmoid(std.reduce((s, v, idx) => s + v * coeffs[idx], 0) + model.b);
       probs.push(safeProb(prob));

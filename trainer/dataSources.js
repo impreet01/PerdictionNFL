@@ -24,6 +24,21 @@ if (process.env.GITHUB_TOKEN) {
 }
 
 const manifestCache = new Map();
+const CACHE_TTL_SECONDS = 86400;
+
+function cacheGet(key) {
+  const entry = manifestCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt && entry.expiresAt < Date.now()) {
+    manifestCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function cacheSet(key, value) {
+  manifestCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_SECONDS * 1000 });
+}
 const DATA_CONFIG = getDataConfig();
 const WEEKLY_SANITY_DATASETS = new Set([
   'teamWeekly',
@@ -139,10 +154,11 @@ async function fetchGithubJson(url) {
 
 async function fetchReleaseByTag(tag) {
   const cacheKey = `release:${tag}`;
-  if (manifestCache.has(cacheKey)) return manifestCache.get(cacheKey);
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
   try {
     const rel = await fetchGithubJson(`${GH_ROOT}/releases/tags/${tag}`);
-    manifestCache.set(cacheKey, rel);
+    cacheSet(cacheKey, rel);
     return rel;
   } catch (err) {
     if (err?.status === 404) {
@@ -150,7 +166,7 @@ async function fetchReleaseByTag(tag) {
       const releases = await fetchGithubJson(`${GH_ROOT}/releases?per_page=100`);
       const match = releases.find((r) => r.tag_name === tag || r.name === tag);
       if (match) {
-        manifestCache.set(cacheKey, match);
+        cacheSet(cacheKey, match);
         return match;
       }
     }

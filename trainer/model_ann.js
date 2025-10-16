@@ -1,6 +1,8 @@
 // trainer/model_ann.js
 // Lightweight ANN committee for win probability estimation
 
+import modelParams from "../config/modelParams.json" with { type: "json" };
+
 const sigmoid = (z) => 1 / (1 + Math.exp(-z));
 const tanh = (z) => Math.tanh(z);
 const dtanh = (z) => 1 - Math.tanh(z) ** 2;
@@ -189,6 +191,17 @@ function selectVals(arr, idx) {
   return idx.map((i) => arr[i]);
 }
 
+function ensureConsistentDimensions(X = []) {
+  if (!Array.isArray(X) || !X.length) return 0;
+  const dim = X[0]?.length || 0;
+  for (const row of X) {
+    if (!Array.isArray(row) || row.length !== dim) {
+      throw new Error("Inconsistent feature dimensions for ANN training");
+    }
+  }
+  return dim;
+}
+
 function trainSingleNetwork(
   X,
   y,
@@ -198,13 +211,13 @@ function trainSingleNetwork(
     lr = 1e-3,
     patience = 10,
     architecture = [64, 32, 16],
-    batchSize = 64,
+    batchSize = modelParams?.ann?.batchSize ?? 32,
     l2 = 1e-4
   }
 ) {
   const rng = makeLCG(seed);
   const splitRng = makeLCG((seed ^ 0xa5a5a5a5) >>> 0);
-  const inputDim = X[0]?.length || 0;
+  const inputDim = ensureConsistentDimensions(X);
   const net = initNetwork(inputDim, architecture, rng);
 
   if (X.length <= 1 || !inputDim) {
@@ -227,7 +240,7 @@ function trainSingleNetwork(
   let badRounds = 0;
   let epochs = 0;
 
-  const batch = Math.max(1, Math.min(batchSize, Xtrain.length));
+  const batch = Math.max(1, Math.min(Math.round(batchSize) || 1, Xtrain.length));
   for (let epoch = 0; epoch < maxEpochs; epoch++) {
     epochs = epoch + 1;
     const indices = Array.from({ length: Xtrain.length }, (_, i) => i);

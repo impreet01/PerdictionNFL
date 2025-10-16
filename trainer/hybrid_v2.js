@@ -14,7 +14,7 @@ const PREDICTION_PREFIX = "predictions";
 const MODEL_PREFIX = "model";
 const OUTCOME_PREFIX = "outcomes";
 const DIAGNOSTIC_PREFIX = "diagnostics";
-const CALIBRATION_WINDOW = Number(process.env.HYBRID_CAL_WINDOW ?? 2);
+const CALIBRATION_WINDOW = Number(process.env.HYBRID_CAL_WINDOW ?? 5);
 
 const sigmoid = (z) => 1 / (1 + Math.exp(-z));
 
@@ -46,8 +46,7 @@ function loadJsonIfExists(fileName) {
 function normaliseWeights(source) {
   const keys = ["logistic", "tree", "bt", "ann"];
   if (!source || typeof source !== "object") {
-    const uniform = 1 / keys.length;
-    return keys.reduce((acc, key) => ({ ...acc, [key]: uniform }), {});
+    return keys.reduce((acc, key) => ({ ...acc, [key]: 0.25 }), {});
   }
   const weights = {};
   let total = 0;
@@ -61,8 +60,7 @@ function normaliseWeights(source) {
     }
   }
   if (total <= 0) {
-    const uniform = 1 / keys.length;
-    return keys.reduce((acc, key) => ({ ...acc, [key]: uniform }), {});
+    return keys.reduce((acc, key) => ({ ...acc, [key]: 0.25 }), {});
   }
   for (const key of keys) {
     weights[key] = weights[key] / total;
@@ -86,8 +84,41 @@ function deriveBlendWeights({ season, week, model }) {
     return fromModel;
   }
 
-  const fallback = { logistic: 0.25, tree: 0.25, bt: 0.25, ann: 0.25 };
-  return fallback;
+  return { logistic: 0.25, tree: 0.25, bt: 0.25, ann: 0.25 };
+}
+
+function loadArtifactsForCalibration(season, week) {
+  const modelFileName = buildFileName(MODEL_PREFIX, season, week, "");
+  const predictionsFileName = buildFileName(PREDICTION_PREFIX, season, week, "");
+  const model = requireJson(modelFileName);
+  const predictions = requireJson(predictionsFileName);
+  return { model, predictions, modelFileName, predictionsFileName };
+}
+
+function applyCalibrationToModel({ model, weights, beta, intercept, modelFileName }) {
+  model.ensemble = model.ensemble || {};
+  model.ensemble.blend_weights = weights;
+  model.ensemble.weights = weights;
+  model.ensemble.calibration_beta = beta;
+  model.ensemble.calibration_intercept = intercept;
+  fs.writeFileSync(path.join(ARTIFACTS_DIR, modelFileName), JSON.stringify(model, null, 2));
+}
+
+function applyCalibrationToPredictions({ predictions, beta, intercept, predictionsFileName }) {
+  const calibratedPredictions = applyHybridV2(predictions, beta, intercept);
+  fs.writeFileSync(
+    path.join(ARTIFACTS_DIR, predictionsFileName),
+    JSON.stringify(calibratedPredictions, null, 2)
+  );
+  return calibratedPredictions;
+}
+
+function persistCalibrationArtifacts({ season, week, beta, intercept, weights, modelFileName, predictionsFileName }) {
+  persistCalibrationHistory({ season, week, beta, intercept, weights });
+  console.table({ season, week, beta, intercept, ...weights });
+  console.log(
+    `Hybrid v2 calibration complete for season ${season} week ${week} → updated ${modelFileName}, ${predictionsFileName}`
+  );
 }
 
 function collectCalibrationSamples({ season, week }) {
@@ -258,41 +289,25 @@ export function runHybridV2(season, week, options = {}) {
   if (!Number.isInteger(week) || week < 1) {
     throw new Error(`Invalid week provided: ${week}`);
   }
-
-  const modelFileName = buildFileName(MODEL_PREFIX, season, week, "");
-  const predictionsFileName = buildFileName(PREDICTION_PREFIX, season, week, "");
-
-  const model = requireJson(modelFileName);
-  const predictions = requireJson(predictionsFileName);
-
+  const { model, predictions, modelFileName, predictionsFileName } = loadArtifactsForCalibration(season, week);
   const weights = deriveBlendWeights({ season, week, model });
   const { beta, intercept } = fitCalibration({ season, week });
 
-  model.ensemble = model.ensemble || {};
-  model.ensemble.blend_weights = weights;
-  model.ensemble.weights = weights;
-  model.ensemble.calibration_beta = beta;
-  model.ensemble.calibration_intercept = intercept;
-  fs.writeFileSync(path.join(ARTIFACTS_DIR, modelFileName), JSON.stringify(model, null, 2));
+  applyCalibrationToModel({ model, weights, beta, intercept, modelFileName });
+  const calibratedPredictions = applyCalibrationToPredictions({
+    predictions,
+    beta,
+    intercept,
+    predictionsFileName
+  });
 
-  const calibratedPredictions = applyHybridV2(predictions, beta, intercept);
-  fs.writeFileSync(
-    path.join(ARTIFACTS_DIR, predictionsFileName),
-    JSON.stringify(calibratedPredictions, null, 2)
-  );
-
-  persistCalibrationHistory({ season, week, beta, intercept, weights });
+  persistCalibrationArtifacts({ season, week, beta, intercept, weights, modelFileName, predictionsFileName });
 
   if (updateState) {
     const state = providedState ?? loadTrainingState();
     recordLatestRun(state, BOOTSTRAP_KEYS.HYBRID, { season, week });
     saveTrainingState(state);
   }
-
-  console.table({ season, week, beta, intercept, ...weights });
-  console.log(
-    `Hybrid v2 calibration complete for season ${season} week ${week} → updated ${modelFileName}, ${predictionsFileName}`
-  );
   return { beta, intercept, weights };
 }
 

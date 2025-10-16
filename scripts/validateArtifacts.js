@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import fs from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
@@ -18,23 +18,30 @@ const SCHEMA_PATTERNS = {
   bt_features: /^bt_features_.*\.json$/
 };
 
-function listFiles(dir, pattern) {
-  return fs
-    .readdirSync(dir)
-    .filter((name) => pattern.test(name))
-    .map((name) => path.join(dir, name));
+async function listFiles(dir, pattern) {
+  const entries = await fs.readdir(dir).catch(() => []);
+  return entries.filter((name) => pattern.test(name)).map((name) => path.join(dir, name));
 }
 
-function main() {
+async function validateFile(schemaName, file) {
+  const raw = await fs.readFile(file, "utf8");
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`invalid JSON: ${err.message}`);
+  }
+  validateArtifact(schemaName, data);
+  console.log(`✔ ${schemaName} ${path.basename(file)}`);
+}
+
+async function main() {
   let failures = 0;
   for (const [schemaName, pattern] of Object.entries(SCHEMA_PATTERNS)) {
-    const matches = listFiles(ARTIFACT_DIR, pattern);
+    const matches = await listFiles(ARTIFACT_DIR, pattern);
     for (const file of matches) {
       try {
-        const raw = fs.readFileSync(file, "utf8");
-        const data = JSON.parse(raw);
-        validateArtifact(schemaName, data);
-        console.log(`✔ ${schemaName} ${path.basename(file)}`);
+        await validateFile(schemaName, file);
       } catch (err) {
         failures += 1;
         console.error(`✖ ${schemaName} ${path.basename(file)} -> ${err.message}`);
@@ -47,4 +54,7 @@ function main() {
   }
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

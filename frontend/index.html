@@ -1,107 +1,295 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NFL Prediction Dashboard</title>
+    <title>NFL Prediction Intelligence Center</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
-    <header class="hero">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <header class="hero" role="banner">
       <div class="hero__content">
-        <h1>Perdiction NFL Ensemble Dashboard</h1>
-        <p>
-          This project leverages only open data from the
-          <a href="https://nflverse.nflverse.com/" target="_blank" rel="noopener">nflverse</a>
-          community to forecast outcomes. Five complementary models &mdash; logistic
-          regression, decision tree, Bradley&ndash;Terry, artificial neural network,
-          and the Hybrid v2 ensemble &mdash; are blended together, calibrated, and
-          monitored every week to deliver transparent probabilities and
-          storytelling around each matchup.
-        </p>
+        <div class="hero__heading">
+          <h1>Perdiction NFL Intelligence Center</h1>
+          <p>
+            Bringing together 25+ years of open NFL data, calibrated model blends,
+            and rich diagnostics to deliver transparent, explainable forecasts.
+            Explore predictions, performance monitoring, historical context, and
+            feature-level storytelling in one interactive hub.
+          </p>
+        </div>
+        <button
+          id="theme-toggle"
+          class="theme-toggle"
+          type="button"
+          aria-pressed="false"
+          aria-label="Toggle dark mode"
+        >
+          <span aria-hidden="true" class="theme-toggle__icon">🌙</span>
+          <span class="sr-only">Enable dark mode</span>
+        </button>
       </div>
     </header>
 
-    <main>
-      <section class="controls" aria-label="Filters">
-        <div class="control-group">
-          <label for="season-select">Season</label>
-          <select id="season-select" aria-label="Select NFL season"></select>
+    <main id="main-content" tabindex="-1">
+      <nav class="tabs" role="tablist" aria-label="Dashboard sections">
+        <button class="tab is-active" role="tab" aria-selected="true" aria-controls="tab-predictions" id="tab-predictions-btn">
+          Predictions
+        </button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="tab-metrics" id="tab-metrics-btn">
+          Metrics
+        </button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="tab-explanations" id="tab-explanations-btn">
+          Explanations
+        </button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="tab-history" id="tab-history-btn">
+          History
+        </button>
+      </nav>
+
+      <section id="tab-predictions" class="tab-panel" role="tabpanel" aria-labelledby="tab-predictions-btn">
+        <form class="controls" aria-label="Prediction filters">
+          <div class="control-group">
+            <label for="season-select">Season</label>
+            <select id="season-select" aria-label="Select NFL season"></select>
+          </div>
+          <div class="control-group">
+            <label for="week-select">Week</label>
+            <select id="week-select" aria-label="Select NFL week"></select>
+          </div>
+          <div class="control-group">
+            <label for="metric-select">Metric</label>
+            <select id="metric-select" aria-label="Select evaluation metric">
+              <option value="accuracy">Accuracy</option>
+              <option value="auc">AUC</option>
+              <option value="brier">Brier Score</option>
+              <option value="logloss">Log Loss</option>
+            </select>
+          </div>
+          <div class="control-group control-group--checkboxes" aria-label="Toggle model columns" role="group">
+            <span>Models</span>
+            <div id="model-toggles"></div>
+          </div>
+        </form>
+
+        <section class="status" aria-live="polite">
+          <p id="status-message">Discovering available seasons…</p>
+        </section>
+
+        <section class="search" aria-label="Prediction search tools">
+          <label for="team-filter">Filter matchups by team abbreviation</label>
+          <input
+            type="search"
+            id="team-filter"
+            placeholder="e.g., KC or NE"
+            aria-controls="predictions-table"
+          />
+          <label for="feature-filter">Highlight explanations mentioning a feature</label>
+          <input
+            type="search"
+            id="feature-filter"
+            placeholder="e.g., pressure rate"
+            aria-controls="predictions-table"
+          />
+        </section>
+
+        <section class="table-section" aria-live="polite">
+          <header class="table-header">
+            <h2>Weekly Predictions</h2>
+            <div class="table-header__actions">
+              <span id="table-summary" role="status" aria-live="polite"></span>
+              <div class="loader" id="predictions-loader" hidden aria-hidden="true">
+                <span class="loader__spinner" aria-hidden="true"></span>
+                <span class="sr-only">Loading predictions…</span>
+              </div>
+            </div>
+          </header>
+          <div class="table-wrapper" role="region" aria-labelledby="tab-predictions-btn">
+            <table id="predictions-table" role="table">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p id="table-empty" class="empty-state" hidden>
+            Predictions are not yet available for the selected season and week.
+          </p>
+        </section>
+
+        <section class="charts predictions-charts">
+          <article class="chart-card" aria-live="polite">
+            <div class="chart-card__header">
+              <h3>Week-Level Model Comparison</h3>
+              <div class="chart-toolbar">
+                <button type="button" class="chart-reset" data-chart="week">Reset Zoom</button>
+              </div>
+            </div>
+            <canvas id="week-chart" aria-label="Bar chart showing per-model metrics"></canvas>
+            <p id="week-chart-message" class="chart-message" role="status"></p>
+          </article>
+          <article class="chart-card" aria-live="polite">
+            <div class="chart-card__header">
+              <h3>Season Trajectory</h3>
+              <div class="chart-toolbar">
+                <label for="history-range" class="sr-only">Week range</label>
+                <input type="range" id="history-range" min="1" max="23" value="23" aria-label="Select maximum week displayed" />
+                <button type="button" class="chart-reset" data-chart="trend">Reset Zoom</button>
+              </div>
+            </div>
+            <canvas id="trend-chart" aria-label="Line chart showing season-long metrics"></canvas>
+            <p id="trend-chart-message" class="chart-message" role="status"></p>
+          </article>
+        </section>
+      </section>
+
+      <section id="tab-metrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-metrics-btn" hidden>
+        <div class="panel-intro">
+          <h2>Season Metrics &amp; Diagnostics</h2>
+          <p>
+            Monitor calibration and stability over the course of the season. Compare
+            cumulative performance, review model variance heatmaps, and inspect blend
+            weights for transparency.
+          </p>
         </div>
-        <div class="control-group">
-          <label for="week-select">Week</label>
-          <select id="week-select" aria-label="Select NFL week"></select>
-        </div>
-        <div class="control-group">
-          <label for="metric-select">Metric</label>
-          <select id="metric-select" aria-label="Select evaluation metric">
-            <option value="accuracy">Accuracy</option>
-            <option value="auc">Area Under the Curve (AUC)</option>
-            <option value="brier">Brier Score</option>
-            <option value="logloss">Log Loss</option>
-          </select>
+        <div class="metrics-grid">
+          <article class="card" id="season-summary-card">
+            <header>
+              <h3>Season Summary</h3>
+              <div class="loader" id="metrics-loader" hidden aria-hidden="true">
+                <span class="loader__spinner" aria-hidden="true"></span>
+                <span class="sr-only">Loading metrics…</span>
+              </div>
+            </header>
+            <dl id="season-summary" class="definition-list"></dl>
+          </article>
+          <article class="card">
+            <header>
+              <h3>Blend Weights</h3>
+            </header>
+            <canvas id="blend-chart" aria-label="Doughnut chart of blend weights"></canvas>
+            <p id="blend-chart-message" class="chart-message"></p>
+          </article>
+          <article class="card card--wide" aria-live="polite">
+            <header>
+              <h3>Out-of-Fold Variance Heatmap</h3>
+            </header>
+            <div id="variance-heatmap" class="heatmap" role="table" aria-label="Model variance heatmap"></div>
+            <p id="variance-message" class="chart-message"></p>
+          </article>
         </div>
       </section>
 
-      <section class="status" aria-live="polite">
-        <p id="status-message">Loading available seasons&hellip;</p>
-      </section>
-
-      <section class="search" aria-label="Team filter">
-        <label for="team-filter">Filter matchups by team abbreviation</label>
-        <input
-          type="search"
-          id="team-filter"
-          placeholder="e.g. KC or NE"
-          aria-controls="predictions-table"
-        />
-      </section>
-
-      <section class="table-section">
-        <h2>Weekly Predictions</h2>
-        <div class="table-wrapper">
-          <table id="predictions-table">
-            <thead>
-              <tr>
-                <th scope="col">Matchup</th>
-                <th scope="col">Hybrid v2 (Ensemble)</th>
-                <th scope="col">Logistic Regression</th>
-                <th scope="col">Decision Tree</th>
-                <th scope="col">Bradley&ndash;Terry</th>
-                <th scope="col">ANN</th>
-                <th scope="col">Details</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+      <section id="tab-explanations" class="tab-panel" role="tabpanel" aria-labelledby="tab-explanations-btn" hidden>
+        <div class="panel-intro">
+          <h2>Feature Explanations</h2>
+          <p>
+            Dive into calibrated drivers behind each forecast. Compare magnitude and
+            direction of key features, inspect radar charts of unit impacts, and
+            search across the explanation corpus for specific concepts.
+          </p>
         </div>
-        <p id="table-empty" class="empty-state" hidden>
-          Predictions are not yet available for the selected season and week.
-        </p>
+        <div class="explanations-grid">
+          <article class="card">
+            <header>
+              <h3>Top Drivers (Week Aggregate)</h3>
+            </header>
+            <canvas id="drivers-chart" aria-label="Bar chart of top feature drivers"></canvas>
+            <p id="drivers-message" class="chart-message"></p>
+          </article>
+          <article class="card">
+            <header>
+              <h3>Feature Impact Radar</h3>
+            </header>
+            <canvas id="impact-radar" aria-label="Radar chart of feature impacts"></canvas>
+            <p id="impact-radar-message" class="chart-message"></p>
+          </article>
+          <article class="card card--wide">
+            <header>
+              <h3>Calibrated Thresholds</h3>
+            </header>
+            <table class="threshold-table" role="table" aria-label="Calibrated thresholds">
+              <thead>
+                <tr>
+                  <th scope="col">Model</th>
+                  <th scope="col">Threshold</th>
+                  <th scope="col">Commentary</th>
+                </tr>
+              </thead>
+              <tbody id="threshold-table-body"></tbody>
+            </table>
+            <p id="threshold-message" class="chart-message"></p>
+          </article>
+        </div>
       </section>
 
-      <section class="charts">
-        <article class="chart-card">
-          <h2>Week-Level Model Comparison</h2>
-          <canvas id="week-chart" aria-label="Bar chart showing model metrics"></canvas>
-          <p id="week-chart-message" class="chart-message"></p>
-        </article>
-        <article class="chart-card">
-          <h2>Season Trajectory</h2>
-          <canvas id="trend-chart" aria-label="Line chart showing model performance by week"></canvas>
-          <p id="trend-chart-message" class="chart-message"></p>
+      <section id="tab-history" class="tab-panel" role="tabpanel" aria-labelledby="tab-history-btn" hidden>
+        <div class="panel-intro">
+          <h2>Historical Trajectories</h2>
+          <p>
+            Trace model accuracy trends from 1999 onward, compare teams across
+            seasons, and zoom into specific eras using the interactive controls.
+          </p>
+        </div>
+        <form class="history-controls" aria-label="Historical filters">
+          <div class="control-group">
+            <label for="history-team-select">Team</label>
+            <select id="history-team-select" aria-label="Select team for historical view"></select>
+          </div>
+          <div class="control-group">
+            <label for="history-model-select">Model</label>
+            <select id="history-model-select" aria-label="Select model for historical view"></select>
+          </div>
+          <div class="control-group">
+            <label for="history-metric-select">Metric</label>
+            <select id="history-metric-select" aria-label="Select metric for historical view">
+              <option value="accuracy">Accuracy</option>
+              <option value="auc">AUC</option>
+              <option value="brier">Brier Score</option>
+              <option value="logloss">Log Loss</option>
+            </select>
+          </div>
+        </form>
+        <article class="card">
+          <header>
+            <h3>Historical Trend</h3>
+            <div class="chart-toolbar">
+              <button type="button" class="chart-reset" data-chart="history">Reset Zoom</button>
+            </div>
+          </header>
+          <canvas id="history-chart" aria-label="Historical performance trend"></canvas>
+          <p id="history-chart-message" class="chart-message"></p>
         </article>
       </section>
     </main>
 
+    <div id="game-modal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="modal-title">
+      <div class="modal__content" role="document">
+        <header class="modal__header">
+          <h3 id="modal-title">Matchup Details</h3>
+          <button type="button" class="modal__close" id="modal-close" aria-label="Close details">✕</button>
+        </header>
+        <div class="modal__body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
     <footer>
       <p>
-        Built for transparency and reproducibility. Data courtesy of the
-        nflverse community, forecasts blended from multiple open models, and
-        explanations augmented with contextual factors such as injuries,
-        weather, and market signals where available.
+        Built for transparency and reproducibility. Data courtesy of the nflverse
+        community, forecasts blended from multiple open models, and explanations
+        augmented with contextual factors such as injuries, Next Gen Stats, and
+        market intelligence where available.
       </p>
     </footer>
   </body>

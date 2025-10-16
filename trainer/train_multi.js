@@ -49,10 +49,108 @@ const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
 const MODEL_PARAMS_PATH = "./config/modelParams.json";
 
-const DEFAULT_MIN_TRAIN_SEASON = 1999;
+const MIN_SEASON = 1999;
+const DEFAULT_MIN_TRAIN_SEASON = MIN_SEASON;
 const DEFAULT_MAX_TRAIN_SEASONS = Number.POSITIVE_INFINITY;
 const INJURY_DATA_MIN_SEASON = 2009;
 const NEXTGEN_DATA_MIN_SEASON = 2016;
+
+const seasonDbCache = new Map();
+const seasonDataCache = new Map();
+
+function cachePromise(cache, key, factory) {
+  if (cache.has(key)) return cache.get(key);
+  const promise = Promise.resolve().then(factory).then(
+    (value) => {
+      cache.set(key, Promise.resolve(value));
+      return value;
+    },
+    (err) => {
+      cache.delete(key);
+      throw err;
+    }
+  );
+  cache.set(key, promise);
+  return promise;
+}
+
+async function getSeasonDB(season) {
+  return cachePromise(seasonDbCache, season, () => buildSeasonDB(season));
+}
+
+function createLimiter(maxConcurrent) {
+  const limit = Number.isFinite(maxConcurrent) && maxConcurrent > 0 ? Math.floor(maxConcurrent) : 1;
+  let active = 0;
+  const queue = [];
+
+  const next = () => {
+    if (!queue.length || active >= limit) return;
+    const task = queue.shift();
+    active += 1;
+    Promise.resolve()
+      .then(task.fn)
+      .then(
+        (value) => {
+          active -= 1;
+          task.resolve(value);
+          next();
+        },
+        (err) => {
+          active -= 1;
+          task.reject(err);
+          next();
+        }
+      );
+  };
+
+  return (fn) => {
+    if (active < limit) {
+      active += 1;
+      return Promise.resolve()
+        .then(fn)
+        .then(
+          (value) => {
+            active -= 1;
+            next();
+            return value;
+          },
+          (err) => {
+            active -= 1;
+            next();
+            throw err;
+          }
+        );
+    }
+
+    return new Promise((resolve, reject) => {
+      queue.push({ fn, resolve, reject });
+      next();
+    });
+  };
+}
+
+const dataGapNotices = new Set();
+
+function logDataCoverage(season) {
+  if (season < 2001 && !dataGapNotices.has(`epa-${season}`)) {
+    console.log(
+      `[train] Season ${season}: Using basic yards fallback (EPA/play-by-play advanced features unavailable before 2001).`
+    );
+    dataGapNotices.add(`epa-${season}`);
+  }
+  if (season < INJURY_DATA_MIN_SEASON && !dataGapNotices.has(`inj-${season}`)) {
+    console.log(
+      `[train] Season ${season}: Injury reports unavailable; disabling injury-derived features until 2009.`
+    );
+    dataGapNotices.add(`inj-${season}`);
+  }
+  if (season < NEXTGEN_DATA_MIN_SEASON && !dataGapNotices.has(`ngs-${season}`)) {
+    console.log(
+      `[train] Season ${season}: Next Gen Stats not published; skipping speed/separation inputs until 2016.`
+    );
+    dataGapNotices.add(`ngs-${season}`);
+  }
+}
 
 const envMinSeason = Number(process.env.MIN_TRAIN_SEASON);
 const MIN_TRAIN_SEASON = Number.isFinite(envMinSeason) ? envMinSeason : DEFAULT_MIN_TRAIN_SEASON;
@@ -813,7 +911,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     resolvedSeason < NEXTGEN_DATA_MIN_SEASON || availability.nextGen === false;
   const skipSeasonDB =
     options.skipSeasonDB != null ? Boolean(options.skipSeasonDB) : defaultSkipSeasonDB;
-  const DB = skipSeasonDB ? null : await buildSeasonDB(resolvedSeason);
+  const DB = skipSeasonDB ? null : await getSeasonDB(resolvedSeason);
 
   const schedules = data.schedules ?? (await loadSchedules(resolvedSeason));
   const teamWeekly = data.teamWeekly ?? (await loadTeamWeekly(resolvedSeason));
@@ -1855,6 +1953,13 @@ async function loadSeasonData(season) {
   };
 }
 
+function loadSeasonDataCached(season) {
+  return cachePromise(seasonDataCache, season, () => loadSeasonData(season));
+}
+
+/**
+ * Bootstrap 1999-2024 if needed, then incrementally update the active season (2025+).
+ */
 async function main() {
   const targetSeason = Number(process.env.SEASON ?? new Date().getFullYear());
   let weekEnv = Number(process.env.WEEK ?? 6);
@@ -1889,6 +1994,14 @@ async function main() {
     });
   }
 
+  seasonsInScope = Array.from(
+    new Set(
+      seasonsInScope
+        .map((s) => Number.parseInt(s, 10))
+        .filter((s) => Number.isFinite(s))
+    )
+  ).sort((a, b) => a - b);
+
   if (bootstrapRequired) {
     console.log(
       `[train] Historical bootstrap required (expected revision ${CURRENT_BOOTSTRAP_REVISION}). Replaying seasons: ${seasonsInScope.join(", ")}`
@@ -1915,8 +2028,18 @@ async function main() {
   const processedSeasons = [];
   let latestTargetResult = null;
 
+  const loadLimiter = createLimiter(seasonsInScope.length > 10 ? 3 : 1);
+  const seasonLoadPromises = new Map();
+  for (const season of seasonsInScope) {
+    seasonLoadPromises.set(season, loadLimiter(() => loadSeasonDataCached(season)));
+  }
+  if (bootstrapRequired && seasonsInScope.length > 1) {
+    await Promise.all(seasonLoadPromises.values());
+  }
+
   for (const resolvedSeason of seasonsInScope) {
-    const sharedData = await loadSeasonData(resolvedSeason);
+    logDataCoverage(resolvedSeason);
+    const sharedData = await (seasonLoadPromises.get(resolvedSeason) ?? loadSeasonDataCached(resolvedSeason));
     const seasonWeeks = [...new Set(
       sharedData.schedules
         .filter((game) => Number(game.season) === resolvedSeason && isRegularSeason(game.season_type))

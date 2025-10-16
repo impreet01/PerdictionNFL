@@ -9,7 +9,10 @@ export const BOOTSTRAP_KEYS = Object.freeze({
   HYBRID: "hybrid_v2"
 });
 
-const MODEL_PATTERN = /^model_(\d{4})_W(\d{2})\.json$/;
+const MODEL_PATTERN = /^model_(\d{4})_W(\d{1,2})\.json$/;
+
+const EMPTY_STATE = Object.freeze({ schema_version: 1, bootstraps: {}, latest_runs: {} });
+const DEFAULT_MIN_BOOTSTRAP_SEASON = 1999;
 
 function ensureArtifactsDir() {
   fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
@@ -18,7 +21,8 @@ function ensureArtifactsDir() {
 export function loadTrainingState() {
   ensureArtifactsDir();
   if (!fs.existsSync(STATE_PATH)) {
-    return { schema_version: 1, bootstraps: {}, latest_runs: {} };
+    saveTrainingState({ ...EMPTY_STATE });
+    return { ...EMPTY_STATE };
   }
   try {
     const raw = fs.readFileSync(STATE_PATH, "utf8");
@@ -32,12 +36,14 @@ export function loadTrainingState() {
   } catch (err) {
     console.warn(`[trainingState] failed to read state (${err?.message || err}). Reinitialising.`);
   }
-  return { schema_version: 1, bootstraps: {}, latest_runs: {} };
+  saveTrainingState({ ...EMPTY_STATE });
+  return { ...EMPTY_STATE };
 }
 
 export function saveTrainingState(state) {
   ensureArtifactsDir();
-  fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
+  const payload = state && typeof state === "object" ? state : { ...EMPTY_STATE };
+  fs.writeFileSync(STATE_PATH, JSON.stringify(payload, null, 2));
 }
 
 export function envFlag(name) {
@@ -59,14 +65,89 @@ export function shouldForceBootstrap() {
   return FORCE_KEYS.some((key) => envFlag(key));
 }
 
-export function shouldRunHistoricalBootstrap(state, key) {
+function normaliseSeasonEntries(record) {
+  if (!record || typeof record !== "object") return [];
+  const seasons = Array.isArray(record.seasons) ? record.seasons : [];
+  return seasons
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const season = Number.parseInt(entry.season ?? entry.year ?? entry.season_id, 10);
+      if (!Number.isFinite(season)) return null;
+      const weeks = Array.isArray(entry.weeks)
+        ? entry.weeks
+            .map((wk) => Number.parseInt(wk, 10))
+            .filter((wk) => Number.isFinite(wk))
+            .sort((a, b) => a - b)
+        : [];
+      return { season, weeks };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.season - b.season);
+}
+
+function hasCoverageForRange(entries, { minSeason, maxSeason }) {
+  if (!entries.length) return false;
+  const coverage = new Map(entries.map((entry) => [entry.season, entry]));
+  const lower = Number.isFinite(minSeason) ? minSeason : entries[0].season;
+  const upper = Number.isFinite(maxSeason)
+    ? Math.max(maxSeason, lower)
+    : entries[entries.length - 1].season;
+  for (let season = lower; season <= upper; season += 1) {
+    if (!coverage.has(season)) return false;
+  }
+  return true;
+}
+
+export function shouldRunHistoricalBootstrap(state, key, { minSeason = DEFAULT_MIN_BOOTSTRAP_SEASON, requiredThroughSeason = null } = {}) {
   if (shouldForceBootstrap()) return true;
   if (key === BOOTSTRAP_KEYS.MODEL && !hasModelArtifactsOnDisk()) return true;
   const record = state?.bootstraps?.[key];
   if (!record) return true;
   if (record.revision !== CURRENT_BOOTSTRAP_REVISION) return true;
-  const latest = state?.latest_runs?.[key];
-  if (!latest || typeof latest !== "object") return true;
+  const entries = normaliseSeasonEntries(record);
+  if (!entries.length) return true;
+
+  const latestRun = state?.latest_runs?.[key];
+  const bySeasonRaw = latestRun?.by_season && typeof latestRun.by_season === "object"
+    ? latestRun.by_season
+    : null;
+  if (bySeasonRaw) {
+    const merged = new Map(entries.map((entry) => [entry.season, { ...entry }]));
+    for (const [seasonKey, weekValue] of Object.entries(bySeasonRaw)) {
+      const season = Number.parseInt(seasonKey, 10);
+      if (!Number.isFinite(season)) continue;
+      if (!merged.has(season)) {
+        merged.set(season, { season, weeks: [] });
+      }
+      const week = Number.parseInt(weekValue, 10);
+      if (Number.isFinite(week)) {
+        const entry = merged.get(season);
+        if (!entry.weeks.includes(week)) {
+          entry.weeks.push(week);
+          entry.weeks.sort((a, b) => a - b);
+        }
+      }
+    }
+    entries.splice(0, entries.length, ...Array.from(merged.values()).sort((a, b) => a.season - b.season));
+  }
+
+  if (Number.isFinite(minSeason) && entries[0].season > minSeason) {
+    return true;
+  }
+
+  const coverageOk = hasCoverageForRange(entries, {
+    minSeason: Number.isFinite(minSeason) ? minSeason : entries[0].season,
+    maxSeason: Number.isFinite(requiredThroughSeason) ? requiredThroughSeason : null
+  });
+  if (!coverageOk) return true;
+
+  if (Number.isFinite(requiredThroughSeason)) {
+    const lastCovered = entries[entries.length - 1].season;
+    if (lastCovered < requiredThroughSeason) return true;
+  }
+
+  if (!latestRun || typeof latestRun !== "object") return true;
+
   return false;
 }
 
@@ -98,10 +179,55 @@ export function recordLatestRun(state, key, details = {}) {
   if (!state.latest_runs || typeof state.latest_runs !== "object") {
     state.latest_runs = {};
   }
-  state.latest_runs[key] = {
-    ...details,
-    timestamp: new Date().toISOString()
-  };
+
+  const next = { ...details };
+  const season = Number.parseInt(details.season ?? details.season_id, 10);
+  const week = Number.parseInt(details.week ?? details.week_id, 10);
+  const prevRecord = state.latest_runs[key];
+  const bySeason = {};
+
+  if (prevRecord?.by_season && typeof prevRecord.by_season === "object") {
+    for (const [seasonKey, weekValue] of Object.entries(prevRecord.by_season)) {
+      const parsedSeason = Number.parseInt(seasonKey, 10);
+      const parsedWeek = Number.parseInt(weekValue, 10);
+      if (!Number.isFinite(parsedSeason) || !Number.isFinite(parsedWeek)) continue;
+      bySeason[parsedSeason] = parsedWeek;
+    }
+  }
+
+  if (details?.by_season && typeof details.by_season === "object") {
+    for (const [seasonKey, weekValue] of Object.entries(details.by_season)) {
+      const parsedSeason = Number.parseInt(seasonKey, 10);
+      if (!Number.isFinite(parsedSeason)) continue;
+      const parsedWeek = Number.parseInt(weekValue, 10);
+      const prevWeek = Number.isFinite(bySeason[parsedSeason]) ? bySeason[parsedSeason] : null;
+      if (Number.isFinite(parsedWeek)) {
+        bySeason[parsedSeason] = Number.isFinite(prevWeek)
+          ? Math.max(prevWeek, parsedWeek)
+          : parsedWeek;
+      } else if (!Number.isFinite(prevWeek)) {
+        bySeason[parsedSeason] = parsedWeek;
+      }
+    }
+  }
+
+  if (Number.isFinite(season) && Number.isFinite(week)) {
+    const prevWeek = Number.isFinite(bySeason[season]) ? bySeason[season] : null;
+    bySeason[season] = Number.isFinite(prevWeek) ? Math.max(prevWeek, week) : week;
+    next.season = season;
+    next.week = week;
+  }
+
+  if (Object.keys(bySeason).length) {
+    next.by_season = Object.fromEntries(
+      Object.entries(bySeason)
+        .filter(([seasonKey, value]) => Number.isFinite(Number.parseInt(seasonKey, 10)) && Number.isFinite(value))
+        .map(([seasonKey, value]) => [Number.parseInt(seasonKey, 10), value])
+    );
+  }
+
+  next.timestamp = new Date().toISOString();
+  state.latest_runs[key] = next;
   return state;
 }
 

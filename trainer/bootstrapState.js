@@ -13,11 +13,7 @@ const ARTIFACTS_DIR = path.resolve("artifacts");
 const STATE_PATH = path.join(ARTIFACTS_DIR, "training_state.json");
 
 function ensureArtifactsDir() {
-  if (!fs.existsSync(ARTIFACTS_DIR)) {
-    throw new Error(
-      `[bootstrap] artifacts directory missing at ${ARTIFACTS_DIR}. Run the trainer once manually or restore artifacts before bootstrapping.`
-    );
-  }
+  fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
 }
 
 function buildSeasonWeekMap(entries, pattern) {
@@ -28,6 +24,7 @@ function buildSeasonWeekMap(entries, pattern) {
     const season = Number.parseInt(match[1], 10);
     const week = Number.parseInt(match[2], 10);
     if (!Number.isFinite(season) || !Number.isFinite(week)) continue;
+    if (season < 1999) continue;
     if (!map.has(season)) {
       map.set(season, new Set());
     }
@@ -88,7 +85,7 @@ function areLatestRunsAligned(state) {
 }
 
 function discoverHybridSeasons(entries, predictionsSet) {
-  const pattern = /^model_(\d{4})_W(\d{2})\.json$/;
+  const pattern = /^model_(\d{4})_W(\d{1,2})\.json$/;
   const map = new Map();
   for (const entry of entries) {
     const match = entry.match(pattern);
@@ -189,19 +186,26 @@ export function isTrainingStateCurrent(state) {
 export function refreshTrainingStateFromArtifacts(existingState = null) {
   ensureArtifactsDir();
   const entries = fs.readdirSync(ARTIFACTS_DIR);
-  const predictionPattern = /^predictions_(\d{4})_W(\d{2})\.json$/;
+  const predictionPattern = /^predictions_(\d{4})_W(\d{1,2})\.json$/;
   const predictionsSet = new Set(entries.filter((entry) => predictionPattern.test(entry)));
 
   const modelMap = buildSeasonWeekMap(entries, predictionPattern);
+  const state = existingState ?? loadTrainingState();
+
   if (modelMap.size === 0) {
-    throw new Error(
-      `[bootstrap] No prediction artifacts found in ${ARTIFACTS_DIR}. Restore artifacts before bootstrapping training state.`
-    );
+    if (state.bootstraps && typeof state.bootstraps === "object") {
+      delete state.bootstraps[BOOTSTRAP_KEYS.MODEL];
+      delete state.bootstraps[BOOTSTRAP_KEYS.HYBRID];
+    }
+    if (state.latest_runs && typeof state.latest_runs === "object") {
+      delete state.latest_runs[BOOTSTRAP_KEYS.MODEL];
+      delete state.latest_runs[BOOTSTRAP_KEYS.HYBRID];
+    }
+    saveTrainingState(state);
+    return { state, modelSeasons: [], hybridSeasons: [] };
   }
 
   const hybridMap = discoverHybridSeasons(entries, predictionsSet);
-
-  const state = existingState ?? loadTrainingState();
 
   const modelSeasons = serialiseSeasonMap(modelMap);
   const hybridSeasons = serialiseSeasonMap(hybridMap);

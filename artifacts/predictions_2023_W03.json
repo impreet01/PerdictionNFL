@@ -5,13 +5,13 @@
     "away_team": "PHI",
     "season": 2023,
     "week": 3,
-    "forecast": 0.597,
+    "forecast": 0.568,
     "probs": {
       "logistic": 1,
       "tree": 0.5,
-      "bt": 0.423,
-      "ann": 0.598,
-      "blended": 0.597
+      "bt": 0.496,
+      "ann": 0.568,
+      "blended": 0.568
     },
     "blend_weights": {
       "logistic": 0,
@@ -20,16 +20,16 @@
       "ann": 1
     },
     "calibration": {
-      "pre": 0.598,
-      "post": 0.597
+      "pre": 0.568,
+      "post": 0.568
     },
     "ci": {
       "bt90": [
-        0.423,
-        0.423
+        0.496,
+        0.496
       ]
     },
-    "natural_language": "NE vs PHI: logistic 100%, tree 50%, BT 42.253%, ANN 59.774%, blended 59.713%. Key differentials: Total yards edge +12.00 (favorable); Possession time edge +12.00 (favorable); Penalty yards edge +6.00 (needs attention). Trend watch: Red-zone TD rate is higher than league average by 4.1% (favorable).",
+    "natural_language": "NE vs PHI: logistic 100%, tree 50%, BT 49.59%, ANN 56.825%, blended 56.764%. Key differentials: Total yards edge +12.00 (favorable); Possession time edge +12.00 (favorable); Penalty yards edge +6.00 (needs attention). Trend watch: Red-zone TD rate is higher than league average by 4.1% (favorable).",
     "top_drivers": [
       {
         "feature": "off_total_yds_s2d_minus_opp",
@@ -56,27 +56,27 @@
         "source": "tree"
       },
       {
-        "feature": "total yards differential",
-        "direction": "negative",
-        "magnitude": 0.055061563452898435,
-        "source": "bt"
-      },
-      {
         "feature": "possession differential",
-        "direction": "negative",
-        "magnitude": 0.03978117225695789,
+        "direction": "positive",
+        "magnitude": 0.022436618316958847,
         "source": "bt"
       },
       {
-        "feature": "Forecast temperature (°F)",
-        "direction": "positive",
-        "magnitude": 5.988114357560217e-7,
+        "feature": "penalty yards differential",
+        "direction": "negative",
+        "magnitude": 0.014678752437544983,
+        "source": "bt"
+      },
+      {
+        "feature": "qb_ypa_3g",
+        "direction": "negative",
+        "magnitude": 2.0708793927896935e-7,
         "source": "ann"
       },
       {
-        "feature": "off_turnovers_s2d_minus_opp",
-        "direction": "negative",
-        "magnitude": 5.524823298181858e-7,
+        "feature": "RB rush share (exp)",
+        "direction": "positive",
+        "magnitude": 2.0698461351775338e-7,
         "source": "ann"
       }
     ],
@@ -88,13 +88,13 @@
     "away_team": "KC",
     "season": 2023,
     "week": 3,
-    "forecast": 0.23,
+    "forecast": 0.235,
     "probs": {
       "logistic": 0.126,
       "tree": 0.5,
-      "bt": 0.423,
-      "ann": 0.23,
-      "blended": 0.23
+      "bt": 0.496,
+      "ann": 0.235,
+      "blended": 0.235
     },
     "blend_weights": {
       "logistic": 0,
@@ -103,16 +103,16 @@
       "ann": 1
     },
     "calibration": {
-      "pre": 0.23,
-      "post": 0.23
+      "pre": 0.235,
+      "post": 0.235
     },
     "ci": {
       "bt90": [
-        0.423,
-        0.423
+        0.496,
+        0.496
       ]
     },
-    "natural_language": "BUF vs KC: logistic 12.639%, tree 50%, BT 42.253%, ANN 23.048%, blended 23.003%. Key differentials: Turnovers even ±0.00 (balanced); R-ratio even ±0.00 (balanced); Penalty yards even ±0.00 (balanced).",
+    "natural_language": "BUF vs KC: logistic 12.639%, tree 50%, BT 49.59%, ANN 23.531%, blended 23.486%. Key differentials: Turnovers even ±0.00 (balanced); R-ratio even ±0.00 (balanced); Penalty yards even ±0.00 (balanced).",
     "top_drivers": [
       {
         "feature": "defensive EPA/play allowed (exp)",
@@ -151,15 +151,15 @@
         "source": "bt"
       },
       {
-        "feature": "TE target share (3wk)",
+        "feature": "defensive EPA/play allowed (exp)",
         "direction": "negative",
-        "magnitude": 0.0016127916745876443,
+        "magnitude": 0.002072078048689693,
         "source": "ann"
       },
       {
-        "feature": "losses_s2d",
+        "feature": "TE target share (3wk)",
         "direction": "negative",
-        "magnitude": 0.0015989293645759604,
+        "magnitude": 0.0020047315892671312,
         "source": "ann"
       }
     ],

@@ -1652,6 +1652,7 @@ function cleanRosterRows(rows = []) {
   return rows.map((row) => {
     const next = cloneRow(row);
     normalizeTeamFields(next, ['team', 'team_abbr', 'recent_team']);
+    coerceIntegerFields(next, ['season', 'week']);
     normalizeStringField(next, 'status');
     return next;
   });

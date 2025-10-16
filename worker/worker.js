@@ -7,12 +7,20 @@ const DEFAULT_REPO_NAME = "PerdictionNFL";
 const DEFAULT_BRANCH = "main";
 const DEFAULT_CACHE_TTL = 900;
 
+const globalEnv = typeof process !== "undefined" && process?.env ? process.env : {};
+
 const runtimeConfig = {
-  repoUser: DEFAULT_REPO_USER,
-  repoName: DEFAULT_REPO_NAME,
-  branch: DEFAULT_BRANCH,
-  cacheTtl: DEFAULT_CACHE_TTL
+  repoUser: globalEnv.REPO_USER || DEFAULT_REPO_USER,
+  repoName: globalEnv.REPO_NAME || DEFAULT_REPO_NAME,
+  branch: globalEnv.REPO_BRANCH || globalEnv.BRANCH || DEFAULT_BRANCH,
+  cacheTtl: Number(globalEnv.CACHE_TTL) > 0 ? Number(globalEnv.CACHE_TTL) : DEFAULT_CACHE_TTL
 };
+
+let artifactCache = null;
+
+function bindArtifactCache(env = {}) {
+  artifactCache = env && env.ARTIFACT_CACHE ? env.ARTIFACT_CACHE : null;
+}
 
 function resolveConfig() {
   const { repoUser, repoName, branch, cacheTtl } = runtimeConfig;
@@ -32,6 +40,7 @@ function applyRuntimeConfig(env = {}) {
   if (env.REPO_BRANCH || env.BRANCH) runtimeConfig.branch = env.REPO_BRANCH || env.BRANCH;
   const ttl = Number(env.CACHE_TTL);
   if (Number.isFinite(ttl) && ttl > 0) runtimeConfig.cacheTtl = ttl;
+  bindArtifactCache(env);
 }
 
 const CACHE_TTL = () => resolveConfig().cacheTtl;
@@ -89,8 +98,8 @@ function json(obj, status = 200, options = {}) {
   });
 }
 
-const toInt = (value, field) => {
-  if (value == null) return null;
+const toInt = (value, field, defaultValue = 0) => {
+  if (value == null || value === "") return defaultValue;
   const num = Number(value);
   if (!Number.isFinite(num) || !Number.isInteger(num)) {
     throw new HttpError(400, `${field} must be an integer`);
@@ -162,6 +171,13 @@ function parseSeasonFiles(listing, prefix) {
 async function fetchJsonFile(file) {
   const { rawBase, cacheTtl } = resolveConfig();
   const url = `${rawBase}/${file}`;
+  const cacheKey = `artifact:${file}`;
+  if (artifactCache) {
+    const cached = await artifactCache.get(cacheKey, { type: "json" }).catch(() => null);
+    if (cached && typeof cached === "object" && cached.data != null) {
+      return cached;
+    }
+  }
   const resp = await fetch(url, { cf: { cacheEverything: true, cacheTtl } });
   if (!resp.ok) {
     if (resp.status === 404) {
@@ -172,11 +188,17 @@ async function fetchJsonFile(file) {
   const text = await resp.text();
   try {
     const data = JSON.parse(text);
-    return {
+    const result = {
       data,
       etag: resp.headers.get("etag"),
       lastModified: resp.headers.get("last-modified")
     };
+    if (artifactCache) {
+      await artifactCache.put(cacheKey, JSON.stringify(result), {
+        expirationTtl: CACHE_TTL()
+      });
+    }
+    return result;
   } catch (err) {
     throw new HttpError(502, `invalid JSON in artifact ${file}`);
   }
@@ -229,8 +251,8 @@ function buildWeekCandidates(prefix, season, week) {
 }
 
 async function resolveSeasonWeek(prefix, seasonParam, weekParam, listing) {
-  const seasonInput = toInt(seasonParam, "season");
-  const weekInput = toInt(weekParam, "week");
+  const seasonInput = toInt(seasonParam, "season", null);
+  const weekInput = toInt(weekParam, "week", null);
   let data = listing;
   let listingError = null;
   if (!data) {
@@ -285,7 +307,7 @@ async function resolveSeasonWeek(prefix, seasonParam, weekParam, listing) {
 }
 
 async function resolveSeasonFile(prefix, seasonParam, listing) {
-  const seasonInput = toInt(seasonParam, "season");
+  const seasonInput = toInt(seasonParam, "season", null);
   const data = listing || (await listArtifacts());
   const parsed = parseSeasonFiles(data, prefix);
   if (!parsed.length) {
@@ -360,7 +382,7 @@ function paginateArray(source, url, options = {}) {
   const rawChunk = url.searchParams.get(chunkParam);
   const rawSize = url.searchParams.get(sizeParam);
 
-  let chunkSize = rawSize != null ? toInt(rawSize, sizeParam) : defaultChunkSize;
+  let chunkSize = rawSize != null ? toInt(rawSize, sizeParam, defaultChunkSize) : defaultChunkSize;
   if (chunkSize == null || chunkSize <= 0) {
     throw new HttpError(400, `${sizeParam} must be a positive integer`);
   }
@@ -368,7 +390,7 @@ function paginateArray(source, url, options = {}) {
     chunkSize = maxChunkSize;
   }
 
-  let chunk = rawChunk != null ? toInt(rawChunk, chunkParam) : 1;
+  let chunk = rawChunk != null ? toInt(rawChunk, chunkParam, 1) : 1;
   if (chunk == null || chunk <= 0) {
     throw new HttpError(400, `${chunkParam} must be a positive integer`);
   }
@@ -436,7 +458,7 @@ async function respondWithInjuries(url) {
 
   const limitParam = url.searchParams.get("limit");
   if (limitParam != null) {
-    const limit = toInt(limitParam, "limit");
+    const limit = toInt(limitParam, "limit", null);
     if (limit == null || limit <= 0) {
       throw new HttpError(400, "limit must be a positive integer");
     }
@@ -554,7 +576,7 @@ async function healthResponse(url) {
     throw new HttpError(404, "no prediction artifacts found");
   }
   const seasonParam = url.searchParams.get("season");
-  let season = toInt(seasonParam, "season");
+  let season = toInt(seasonParam, "season", null);
   if (season == null) {
     season = predictions[0].season;
   }
@@ -587,7 +609,7 @@ async function weeksResponse(url) {
     throw new HttpError(404, "no prediction artifacts found");
   }
   const seasonParam = url.searchParams.get("season");
-  let season = toInt(seasonParam, "season");
+  let season = toInt(seasonParam, "season", null);
   if (season == null) {
     season = predictions[0].season;
   }
@@ -675,7 +697,7 @@ async function historyResponse(query, mode) {
     throw new HttpError(404, "no prediction artifacts found");
   }
   const seasonParam = query.get("season");
-  const seasonFilter = seasonParam ? toInt(seasonParam, "season") : null;
+  const seasonFilter = seasonParam ? toInt(seasonParam, "season", null) : null;
   if (seasonFilter != null && !parsed.some((p) => p.season === seasonFilter)) {
     throw new HttpError(404, `no predictions for season ${seasonFilter}`);
   }

@@ -1,9 +1,17 @@
 // trainer/metrics.js
 // Lightweight metric helpers for binary classification.
 
-const toFinite = (value, fallback = null) => {
+/**
+ * Convert an arbitrary value to a finite number, returning a fallback when conversion fails.
+ * @param {unknown} value
+ * @param {number|null} [fallback=null]
+ * @returns {number|null}
+ */
+export const toFiniteNumber = (value, fallback = null) => {
   const num = Number(value);
-  return Number.isFinite(num) ? num : fallback;
+  if (!Number.isFinite(num)) return fallback;
+  if (Number.isNaN(num)) return fallback;
+  return num;
 };
 
 /**
@@ -18,8 +26,8 @@ export function logLoss(yTrue = [], probs = []) {
   let sum = 0;
   let count = 0;
   for (let i = 0; i < yTrue.length; i++) {
-    const y = toFinite(yTrue[i]);
-    const p = toFinite(probs[i]);
+    const y = toFiniteNumber(yTrue[i]);
+    const p = toFiniteNumber(probs[i]);
     if (y == null || p == null) continue;
     const clipped = Math.min(Math.max(p, eps), 1 - eps);
     sum += -(y * Math.log(clipped) + (1 - y) * Math.log(1 - clipped));
@@ -39,8 +47,8 @@ export function brier(yTrue = [], probs = []) {
   let sum = 0;
   let count = 0;
   for (let i = 0; i < yTrue.length; i++) {
-    const y = toFinite(yTrue[i]);
-    const p = toFinite(probs[i]);
+    const y = toFiniteNumber(yTrue[i]);
+    const p = toFiniteNumber(probs[i]);
     if (y == null || p == null) continue;
     const diff = p - y;
     sum += diff * diff;
@@ -58,12 +66,12 @@ export function brier(yTrue = [], probs = []) {
  */
 export function accuracy(yTrue = [], probs = [], threshold = 0.5) {
   if (!Array.isArray(yTrue) || yTrue.length === 0) return null;
-  const cut = toFinite(threshold, 0.5);
+  const cut = toFiniteNumber(threshold, 0.5);
   let correct = 0;
   let count = 0;
   for (let i = 0; i < yTrue.length; i++) {
-    const y = toFinite(yTrue[i]);
-    const p = toFinite(probs[i]);
+    const y = toFiniteNumber(yTrue[i]);
+    const p = toFiniteNumber(probs[i]);
     if (y == null || p == null) continue;
     const pred = p >= cut ? 1 : 0;
     if (pred === y) correct += 1;
@@ -82,8 +90,8 @@ export function aucRoc(yTrue = [], probs = []) {
   if (!Array.isArray(yTrue) || yTrue.length === 0) return null;
   const pairs = [];
   for (let i = 0; i < yTrue.length; i++) {
-    const y = toFinite(yTrue[i]);
-    const p = toFinite(probs[i]);
+    const y = toFiniteNumber(yTrue[i]);
+    const p = toFiniteNumber(probs[i]);
     if (y == null || p == null) continue;
     pairs.push({ y, p });
   }
@@ -128,8 +136,8 @@ export function calibrationBins(yTrue = [], probs = [], bins = 10) {
   }));
 
   for (let i = 0; i < yTrue.length; i++) {
-    const y = toFinite(yTrue[i]);
-    const p = toFinite(probs[i]);
+    const y = toFiniteNumber(yTrue[i]);
+    const p = toFiniteNumber(probs[i]);
     if (y == null || p == null) continue;
     const clipped = Math.min(Math.max(p, 0), 1);
     const idx = Math.min(usableBins - 1, Math.floor(clipped * usableBins));
@@ -152,6 +160,7 @@ export function calibrationBins(yTrue = [], probs = [], bins = 10) {
 }
 
 export default {
+  toFiniteNumber,
   logLoss,
   brier,
   accuracy,

@@ -9,7 +9,7 @@ function toFiniteNumber(value, fallback = 0) {
   return Number.isFinite(num) ? num : fallback;
 }
 
-async function listModelArtifacts() {
+export async function listModelArtifacts() {
   try {
     const entries = await fs.readdir(ARTIFACTS_DIR, { withFileTypes: true });
     return entries

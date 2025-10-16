@@ -9,6 +9,8 @@ export const BOOTSTRAP_KEYS = Object.freeze({
   HYBRID: "hybrid_v2"
 });
 
+const MODEL_PATTERN = /^model_(\d{4})_W(\d{2})\.json$/;
+
 function ensureArtifactsDir() {
   fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
 }
@@ -59,10 +61,23 @@ export function shouldForceBootstrap() {
 
 export function shouldRunHistoricalBootstrap(state, key) {
   if (shouldForceBootstrap()) return true;
+  if (key === BOOTSTRAP_KEYS.MODEL && !hasModelArtifactsOnDisk()) return true;
   const record = state?.bootstraps?.[key];
   if (!record) return true;
   if (record.revision !== CURRENT_BOOTSTRAP_REVISION) return true;
+  const latest = state?.latest_runs?.[key];
+  if (!latest || typeof latest !== "object") return true;
   return false;
+}
+
+function hasModelArtifactsOnDisk() {
+  try {
+    const entries = fs.readdirSync(ARTIFACTS_DIR, { withFileTypes: true });
+    return entries.some((entry) => entry.isFile() && MODEL_PATTERN.test(entry.name));
+  } catch (err) {
+    if (err?.code === "ENOENT") return false;
+    throw err;
+  }
 }
 
 export function markBootstrapCompleted(state, key, details = {}) {

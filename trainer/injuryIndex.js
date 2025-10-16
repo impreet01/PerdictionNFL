@@ -6,7 +6,7 @@
 const KEY_SKILL_POSITIONS = new Set(["QB", "RB", "WR", "TE"]);
 const KEY_OFFENSIVE_LINE = new Set(["LT", "RT", "LG", "RG", "C", "OL", "T", "G", "OT", "OG"]);
 
-const ZERO_SNAPSHOT = Object.freeze({
+export const ZERO_SNAPSHOT = Object.freeze({
   total: 0,
   out: 0,
   questionable: 0,

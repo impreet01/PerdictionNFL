@@ -254,6 +254,12 @@ export function recordBootstrapChunk(state, key, chunkDetails = {}) {
     ? ensureBootstrapRecord({ ...state.bootstraps[key] })
     : ensureBootstrapRecord({});
 
+  if (record.revision && record.revision !== CURRENT_BOOTSTRAP_REVISION) {
+    record.chunks = [];
+    delete record.seasons;
+    delete record.completed_at;
+  }
+
   const start = Number.parseInt(
     chunkDetails.startSeason ?? chunkDetails.start_season ?? chunkDetails.start,
     10
@@ -297,7 +303,6 @@ export function recordBootstrapChunk(state, key, chunkDetails = {}) {
     record.chunks.push(incoming);
   }
   record.chunks.sort((a, b) => (Number(a.start_season) || 0) - (Number(b.start_season) || 0));
-  record.revision = CURRENT_BOOTSTRAP_REVISION;
   state.bootstraps[key] = record;
   return state;
 }

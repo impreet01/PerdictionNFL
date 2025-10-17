@@ -2,6 +2,7 @@
 // Multi-model ensemble trainer with logistic+CART, Bradley-Terry, and ANN committee.
 
 import fs from "node:fs";
+import { promises as fsp } from "node:fs";
 import {
   loadSchedules,
   loadTeamWeekly,
@@ -35,6 +36,7 @@ import {
   saveTrainingState,
   shouldRunHistoricalBootstrap,
   markBootstrapCompleted,
+  recordBootstrapChunk,
   recordLatestRun,
   BOOTSTRAP_KEYS,
   CURRENT_BOOTSTRAP_REVISION
@@ -43,10 +45,17 @@ import { ensureTrainingStateCurrent } from "./bootstrapState.js";
 import { loadLogisticWarmStart } from "./modelWarmStart.js";
 import { validateArtifact } from "./schemaValidator.js";
 
-const { writeFileSync, mkdirSync, readFileSync, existsSync } = fs;
+const { readFileSync, existsSync } = fs;
+
+const HISTORICAL_BATCH_SIZE = Number.isFinite(Number(process.env.BATCH_SIZE))
+  ? Math.max(1, Number(process.env.BATCH_SIZE))
+  : 6;
 
 const ART_DIR = "artifacts";
-mkdirSync(ART_DIR, { recursive: true });
+
+async function ensureArtifactsDir() {
+  await fsp.mkdir(ART_DIR, { recursive: true });
+}
 const MODEL_PARAMS_PATH = "./config/modelParams.json";
 
 const MIN_SEASON = 2016;
@@ -59,6 +68,32 @@ const NEXTGEN_DATA_MIN_SEASON = 2016;
 
 const seasonDbCache = new Map();
 const seasonDataCache = new Map();
+
+function normaliseSeason(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function chunkSeasonList(seasons, size = HISTORICAL_BATCH_SIZE) {
+  if (!Array.isArray(seasons) || !seasons.length) return [];
+  const chunkSize = Math.max(1, Math.floor(size));
+  const sorted = seasons
+    .map(normaliseSeason)
+    .filter((season) => season !== null)
+    .sort((a, b) => a - b);
+  const chunks = [];
+  for (let i = 0; i < sorted.length; i += chunkSize) {
+    const slice = sorted.slice(i, i + chunkSize);
+    if (slice.length) {
+      chunks.push({
+        seasons: slice,
+        start: slice[0],
+        end: slice[slice.length - 1]
+      });
+    }
+  }
+  return chunks;
+}
 
 function cachePromise(cache, key, factory) {
   if (cache.has(key)) return cache.get(key);
@@ -228,11 +263,11 @@ function deepMerge(target, source) {
   return out;
 }
 
-function persistModelParams(updates = {}) {
+async function persistModelParams(updates = {}) {
   const current = loadModelParamsFile();
   const merged = deepMerge(current, updates);
   try {
-    writeFileSync(MODEL_PARAMS_PATH, JSON.stringify(merged, null, 2));
+    await fsp.writeFile(MODEL_PARAMS_PATH, JSON.stringify(merged, null, 2));
   } catch (err) {
     console.warn(`[train] unable to persist model params: ${err?.message || err}`);
   }
@@ -452,7 +487,7 @@ const ANN_DROPOUT_OPTIONS = [0.2, 0.35, 0.5];
 const BT_LR_OPTIONS = [1e-3, 2.5e-3, 5e-3, 1e-2];
 const BT_L2_OPTIONS = [1e-5, 5e-5, 1e-4, 1e-3];
 
-function tuneAnnHyperparams(trainStd, labels, folds, options = {}) {
+async function tuneAnnHyperparams(trainStd, labels, folds, options = {}) {
   if (!Array.isArray(folds) || !folds.length || !trainStd?.length) return null;
   const seeds = Math.max(2, Math.min(options.annSeeds ?? 5, 5));
   let best = null;
@@ -498,12 +533,12 @@ function tuneAnnHyperparams(trainStd, labels, folds, options = {}) {
     }
   }
   if (best) {
-    persistModelParams({ ann: { maxEpochs: best.epochs, dropout: best.dropout } });
+    await persistModelParams({ ann: { maxEpochs: best.epochs, dropout: best.dropout } });
   }
   return best;
 }
 
-function tuneBTHyperparams(btTrainRows, folds, baseSteps) {
+async function tuneBTHyperparams(btTrainRows, folds, baseSteps) {
   if (!Array.isArray(folds) || !folds.length || !btTrainRows?.length) return null;
   let best = null;
   for (const lr of BT_LR_OPTIONS) {
@@ -532,7 +567,7 @@ function tuneBTHyperparams(btTrainRows, folds, baseSteps) {
     }
   }
   if (best) {
-    persistModelParams({ bt: { gd: { learningRate: best.lr, l2: best.l2 } } });
+    await persistModelParams({ bt: { gd: { learningRate: best.lr, l2: best.l2 } } });
   }
   return best;
 }
@@ -1123,7 +1158,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   }
 
   const modelParamsFile = loadModelParamsFile();
-  const annTuning = tuneAnnHyperparams(trainStd, labels, folds, {
+  const annTuning = await tuneAnnHyperparams(trainStd, labels, folds, {
     annSeeds: options.annCvSeeds ?? options.annSeeds,
     annBatchSize: modelParamsFile?.ann?.batchSize ?? 32,
     annL2: options.annL2,
@@ -1135,7 +1170,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const btStepsBase = Number(
     process.env.BT_GD_STEPS ?? modelParamsFile?.bt?.gd?.steps ?? 2000
   );
-  const btTuning = tuneBTHyperparams(btTrainRows, folds, btStepsBase);
+  const btTuning = await tuneBTHyperparams(btTrainRows, folds, btStepsBase);
   const tunedBtLr = btTuning?.lr ?? options.btLearningRate ?? modelParamsFile?.bt?.gd?.learningRate ?? 5e-3;
   const tunedBtL2 = btTuning?.l2 ?? options.btL2 ?? modelParamsFile?.bt?.gd?.l2 ?? 1e-4;
 
@@ -1545,8 +1580,9 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
 
 export async function writeArtifacts(result) {
   const stamp = `${result.season}_W${String(result.week).padStart(2, "0")}`;
+  await ensureArtifactsDir();
   validateArtifact("predictions", result.predictions);
-  writeFileSync(`${ART_DIR}/predictions_${stamp}.json`, JSON.stringify(result.predictions, null, 2));
+  await fsp.writeFile(`${ART_DIR}/predictions_${stamp}.json`, JSON.stringify(result.predictions, null, 2));
   // 1) Build & write context pack
   const context = Array.isArray(result.context)
     ? result.context
@@ -1567,14 +1603,15 @@ export async function writeArtifacts(result) {
     context
   });
   validateArtifact("model", result.modelSummary);
-  writeFileSync(`${ART_DIR}/model_${stamp}.json`, JSON.stringify(result.modelSummary, null, 2));
+  await fsp.writeFile(`${ART_DIR}/model_${stamp}.json`, JSON.stringify(result.modelSummary, null, 2));
   validateArtifact("diagnostics", result.diagnostics);
-  writeFileSync(`${ART_DIR}/diagnostics_${stamp}.json`, JSON.stringify(result.diagnostics, null, 2));
+  await fsp.writeFile(`${ART_DIR}/diagnostics_${stamp}.json`, JSON.stringify(result.diagnostics, null, 2));
   validateArtifact("bt_features", result.btDebug);
-  writeFileSync(`${ART_DIR}/bt_features_${stamp}.json`, JSON.stringify(result.btDebug, null, 2));
+  await fsp.writeFile(`${ART_DIR}/bt_features_${stamp}.json`, JSON.stringify(result.btDebug, null, 2));
 }
 
-export function updateHistoricalArtifacts({ season, schedules }) {
+export async function updateHistoricalArtifacts({ season, schedules }) {
+  await ensureArtifactsDir();
   if (!Array.isArray(schedules) || !schedules.length) return;
   const seasonGames = schedules.filter(
     (game) => Number(game.season) === Number(season) && isRegularSeason(game.season_type)
@@ -1719,7 +1756,7 @@ export function updateHistoricalArtifacts({ season, schedules }) {
     }
 
     validateArtifact("outcomes", outcomes);
-    writeFileSync(outcomesPath, JSON.stringify(outcomes, null, 2));
+    await fsp.writeFile(outcomesPath, JSON.stringify(outcomes, null, 2));
 
     const perModel = {
       logistic: metricBlock(labels, probBuckets.logistic),
@@ -1737,7 +1774,7 @@ export function updateHistoricalArtifacts({ season, schedules }) {
     };
 
     validateArtifact("metrics", metricsPayload);
-    writeFileSync(metricsPath, JSON.stringify(metricsPayload, null, 2));
+    await fsp.writeFile(metricsPath, JSON.stringify(metricsPayload, null, 2));
     weeklySummaries.push(metricsPayload);
     latestCompletedWeek = Math.max(latestCompletedWeek, week);
 
@@ -1775,7 +1812,7 @@ export function updateHistoricalArtifacts({ season, schedules }) {
   };
 
   validateArtifact("metrics", seasonMetrics);
-  writeFileSync(`${ART_DIR}/metrics_${season}.json`, JSON.stringify(seasonMetrics, null, 2));
+  await fsp.writeFile(`${ART_DIR}/metrics_${season}.json`, JSON.stringify(seasonMetrics, null, 2));
 
   const seasonIndex = {
     season,
@@ -1784,7 +1821,7 @@ export function updateHistoricalArtifacts({ season, schedules }) {
   };
 
   validateArtifact("season_index", seasonIndex);
-  writeFileSync(`${ART_DIR}/season_index_${season}.json`, JSON.stringify(seasonIndex, null, 2));
+  await fsp.writeFile(`${ART_DIR}/season_index_${season}.json`, JSON.stringify(seasonIndex, null, 2));
 
   const weeklyGameCounts = weeklySummaries.map((entry) => ({
     week: entry.week,
@@ -1803,7 +1840,7 @@ export function updateHistoricalArtifacts({ season, schedules }) {
   };
 
   validateArtifact("season_summary", seasonSummary);
-  writeFileSync(`${ART_DIR}/season_summary_${season}.json`, JSON.stringify(seasonSummary, null, 2));
+  await fsp.writeFile(`${ART_DIR}/season_summary_${season}.json`, JSON.stringify(seasonSummary, null, 2));
 }
 
 async function loadSeasonData(season) {
@@ -1962,9 +1999,10 @@ function loadSeasonDataCached(season) {
 }
 
 /**
- * Bootstrap 1999-2024 if needed, then incrementally update the active season (2025+).
+ * Chunked training: process season batches sequentially to avoid CI timeouts.
  */
 async function main() {
+  await ensureArtifactsDir();
   const targetSeason = Number(process.env.SEASON ?? new Date().getFullYear());
   let weekEnv = Number(process.env.WEEK ?? 6);
   if (!Number.isFinite(weekEnv) || weekEnv < 1) weekEnv = 1;
@@ -1992,6 +2030,10 @@ async function main() {
   });
   const allowHistoricalRewrite = historicalOverride || bootstrapRequired;
 
+  const envBatchStart = normaliseSeason(process.env.BATCH_START);
+  const envBatchEnd = normaliseSeason(process.env.BATCH_END);
+  const envChunkRequested = envBatchStart !== null || envBatchEnd !== null;
+
   let seasonsInScope = [targetSeason];
   if (bootstrapRequired || allowHistoricalRewrite) {
     const discoveredSeasons = await listDatasetSeasons("teamWeekly").catch(() => []);
@@ -2004,26 +2046,81 @@ async function main() {
     });
   }
 
-  seasonsInScope = Array.from(
+  const uniqueSeasons = Array.from(
     new Set(
       seasonsInScope
-        .map((s) => Number.parseInt(s, 10))
-        .filter((s) => Number.isFinite(s))
+        .map((season) => Number.parseInt(season, 10))
+        .filter((season) => Number.isFinite(season))
     )
   ).sort((a, b) => a - b);
 
-  if (bootstrapRequired) {
+  const availableChunks = chunkSeasonList(uniqueSeasons, HISTORICAL_BATCH_SIZE);
+  let chunkSelection = null;
+  if ((bootstrapRequired || historicalOverride) && uniqueSeasons.length) {
+    if (envChunkRequested) {
+      const filtered = uniqueSeasons
+        .filter((season) => (envBatchStart === null || season >= envBatchStart))
+        .filter((season) => (envBatchEnd === null || season <= envBatchEnd))
+        .slice(0, HISTORICAL_BATCH_SIZE);
+      if (filtered.length) {
+        chunkSelection = {
+          seasons: filtered,
+          start: filtered[0],
+          end: filtered[filtered.length - 1],
+          source: "env"
+        };
+      }
+    }
+    if (!chunkSelection && availableChunks.length) {
+      const recordedChunks = Array.isArray(state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL]?.chunks)
+        ? state.bootstraps[BOOTSTRAP_KEYS.MODEL].chunks
+        : [];
+      const completedKeys = new Set(
+        recordedChunks
+          .map((entry) => {
+            const start = normaliseSeason(entry?.start_season ?? entry?.start);
+            const end = normaliseSeason(entry?.end_season ?? entry?.end);
+            return start !== null && end !== null ? `${start}-${end}` : null;
+          })
+          .filter(Boolean)
+      );
+      chunkSelection =
+        availableChunks.find((chunk) => !completedKeys.has(`${chunk.start}-${chunk.end}`)) ??
+        availableChunks[availableChunks.length - 1];
+    }
+  }
+
+  let activeSeasons = uniqueSeasons;
+  if (chunkSelection) {
+    activeSeasons = chunkSelection.seasons;
+  } else if (!bootstrapRequired && !historicalOverride) {
+    activeSeasons = uniqueSeasons.filter((season) => season === targetSeason);
+  }
+
+  if (!activeSeasons.length) {
+    if (bootstrapRequired) {
+      console.log(
+        `[train] Historical bootstrap already satisfied for requested chunk range ${envChunkRequested ? `${envBatchStart ?? "*"}-${envBatchEnd ?? "*"}` : "auto"}.`
+      );
+    }
+    saveTrainingState(state);
+    return;
+  }
+
+  if (bootstrapRequired && chunkSelection) {
     console.log(
-      `[train] Historical bootstrap required (expected revision ${CURRENT_BOOTSTRAP_REVISION}). Replaying seasons: ${seasonsInScope.join(", ")}`
+      `[train] Historical bootstrap chunk ${chunkSelection.start}-${chunkSelection.end} (${activeSeasons.length} seasons, batch size ${HISTORICAL_BATCH_SIZE}).`
+    );
+  } else if (bootstrapRequired) {
+    console.log(
+      `[train] Historical bootstrap required (expected revision ${CURRENT_BOOTSTRAP_REVISION}). Replaying seasons: ${activeSeasons.join(", ")}`
     );
   } else if (historicalOverride) {
     console.log(
-      `[train] Historical rewrite requested via override flag. Processing seasons: ${seasonsInScope.join(", ")}`
+      `[train] Historical rewrite requested via override flag. Processing seasons: ${activeSeasons.join(", ")}`
     );
   } else {
-    const resumeWeek = Number.isFinite(Number(lastModelRun?.week))
-      ? Number(lastModelRun.week) + 1
-      : 1;
+    const resumeWeek = Number.isFinite(Number(lastModelRun?.week)) ? Number(lastModelRun.week) + 1 : 1;
     if (lastModelRun?.season) {
       console.log(
         `[train] Cached bootstrap ${CURRENT_BOOTSTRAP_REVISION} detected. Resuming from season ${lastModelRun.season} week ${resumeWeek}.`
@@ -2039,16 +2136,18 @@ async function main() {
   const seasonWeekMax = new Map();
   let latestTargetResult = null;
 
-  const loadLimiter = createLimiter(seasonsInScope.length > 10 ? 3 : 1);
+  const loadLimiter = createLimiter(activeSeasons.length > 10 ? 3 : 1);
   const seasonLoadPromises = new Map();
-  for (const season of seasonsInScope) {
+  for (const season of activeSeasons) {
     seasonLoadPromises.set(season, loadLimiter(() => loadSeasonDataCached(season)));
   }
-  if (bootstrapRequired && seasonsInScope.length > 1) {
+  if (bootstrapRequired && activeSeasons.length > 1) {
     await Promise.all(seasonLoadPromises.values());
   }
 
-  for (const resolvedSeason of seasonsInScope) {
+  const weekLimiter = createLimiter(3);
+
+  for (const resolvedSeason of activeSeasons) {
     logDataCoverage(resolvedSeason);
     const sharedData = await (seasonLoadPromises.get(resolvedSeason) ?? loadSeasonDataCached(resolvedSeason));
     const seasonWeeks = [...new Set(
@@ -2059,7 +2158,7 @@ async function main() {
     )].sort((a, b) => a - b);
 
     if (!seasonWeeks.length) {
-      console.warn(`[train] no regular-season weeks found for season ${resolvedSeason}`);
+      console.warn(`[train] Season ${resolvedSeason}: no regular-season weeks found. Skipping.`);
       continue;
     }
 
@@ -2078,12 +2177,7 @@ async function main() {
       }
     }
 
-    let latestSeasonResult = null;
-    const processedWeeks = [];
-
-    for (const wk of seasonWeeks) {
-      if (wk < startWeek) continue;
-      if (wk > finalWeek) break;
+    const trainWeek = async (wk) => {
       const result = await runTraining({ season: resolvedSeason, week: wk, data: sharedData });
       const hasArtifacts = weekArtifactsExist(resolvedSeason, wk);
       const isTargetWeek = resolvedSeason === targetSeason && wk === finalWeek;
@@ -2094,54 +2188,99 @@ async function main() {
       } else {
         await writeArtifacts(result);
       }
-      latestSeasonResult = result;
-      processedWeeks.push(result.week);
-      if (resolvedSeason === targetSeason) {
-        latestTargetResult = result;
-      }
       console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
+      return result;
+    };
+
+    const weekTasks = [];
+    for (const wk of seasonWeeks) {
+      if (wk < startWeek) continue;
+      if (wk > finalWeek) break;
+      weekTasks.push(weekLimiter(() => trainWeek(wk)));
     }
 
-    if (!latestSeasonResult) {
-      const fallbackResult = await runTraining({ season: resolvedSeason, week: finalWeek, data: sharedData });
-      const hasArtifacts = weekArtifactsExist(fallbackResult.season, fallbackResult.week);
-      const isTargetWeek = fallbackResult.season === targetSeason && fallbackResult.week === finalWeek;
-      if (!allowHistoricalRewrite && hasArtifacts && !isTargetWeek) {
-        console.log(
-          `[train] skipping artifact write for season ${fallbackResult.season} week ${fallbackResult.week} (historical artifacts locked)`
-        );
-      } else {
-        await writeArtifacts(fallbackResult);
-      }
-      latestSeasonResult = fallbackResult;
-      if (!processedWeeks.includes(fallbackResult.week)) processedWeeks.push(fallbackResult.week);
-      if (resolvedSeason === targetSeason) {
-        latestTargetResult = fallbackResult;
-      }
-      console.log(`Trained ensemble for season ${fallbackResult.season} week ${fallbackResult.week}`);
+    let weekResults = [];
+    if (weekTasks.length) {
+      weekResults = (await Promise.all(weekTasks)).filter(Boolean);
+      weekResults.sort((a, b) => a.week - b.week);
     }
 
-    if (processedWeeks.length) {
-      const sortedWeeks = processedWeeks.slice().sort((a, b) => a - b);
-      processedSeasons.push({ season: resolvedSeason, weeks: sortedWeeks });
-      const maxWeek = sortedWeeks[sortedWeeks.length - 1];
-      if (Number.isFinite(maxWeek)) {
-        seasonWeekMax.set(resolvedSeason, maxWeek);
-      }
+    if (!weekResults.length && Number.isFinite(finalWeek)) {
+      const fallbackResult = await trainWeek(finalWeek);
+      weekResults = [fallbackResult];
     }
 
+    if (!weekResults.length) {
+      console.warn(`[train] Season ${resolvedSeason}: no evaluable weeks after filtering.`);
+      continue;
+    }
+
+    const processedWeeks = Array.from(new Set(weekResults.map((entry) => entry.week))).sort((a, b) => a - b);
+    processedSeasons.push({ season: resolvedSeason, weeks: processedWeeks });
+    const maxWeek = processedWeeks[processedWeeks.length - 1];
+    if (Number.isFinite(maxWeek)) {
+      seasonWeekMax.set(resolvedSeason, maxWeek);
+    }
+
+    if (resolvedSeason === targetSeason) {
+      latestTargetResult = weekResults[weekResults.length - 1];
+    }
+
+    const latestSeasonResult = weekResults[weekResults.length - 1];
     if (latestSeasonResult) {
-      updateHistoricalArtifacts({ season: latestSeasonResult.season, schedules: latestSeasonResult.schedules });
+      await updateHistoricalArtifacts({ season: latestSeasonResult.season, schedules: latestSeasonResult.schedules });
     }
   }
 
-  if (bootstrapRequired) {
-    state = markBootstrapCompleted(state, BOOTSTRAP_KEYS.MODEL, {
-      seasons: processedSeasons.map((entry) => ({
-        season: entry.season,
-        weeks: entry.weeks
-      }))
+  if (bootstrapRequired && chunkSelection) {
+    state = recordBootstrapChunk(state, BOOTSTRAP_KEYS.MODEL, {
+      startSeason: chunkSelection.start,
+      endSeason: chunkSelection.end,
+      seasons: processedSeasons
     });
+    console.log(
+      `[train] Chunk ${chunkSelection.start}-${chunkSelection.end}: processed ${processedSeasons.length} seasons.`
+    );
+  }
+
+  if (bootstrapRequired) {
+    const bootstrapRecord = state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL] ?? {};
+    const historicalSeasonsNeeded = uniqueSeasons.filter((season) =>
+      historicalUpperBound === null ? true : season <= historicalUpperBound
+    );
+    const aggregate = new Map();
+    const recordChunks = Array.isArray(bootstrapRecord.chunks) ? bootstrapRecord.chunks : [];
+    const mergeSeasonEntry = (entry) => {
+      const season = normaliseSeason(entry?.season);
+      if (season === null) return;
+      const bucket = aggregate.get(season) ?? new Set();
+      const weeks = Array.isArray(entry?.weeks) ? entry.weeks : [];
+      for (const wk of weeks) {
+        const wkNum = Number.parseInt(wk, 10);
+        if (Number.isFinite(wkNum)) bucket.add(wkNum);
+      }
+      aggregate.set(season, bucket);
+    };
+    for (const chunk of recordChunks) {
+      if (Array.isArray(chunk?.seasons)) {
+        chunk.seasons.forEach(mergeSeasonEntry);
+      }
+    }
+    processedSeasons.forEach(mergeSeasonEntry);
+
+    const coverageComplete = historicalSeasonsNeeded.every((season) => aggregate.has(season));
+    if (coverageComplete) {
+      const seasonsPayload = Array.from(aggregate.entries())
+        .map(([season, weeks]) => ({ season, weeks: Array.from(weeks).sort((a, b) => a - b) }))
+        .sort((a, b) => a.season - b.season);
+      state = markBootstrapCompleted(state, BOOTSTRAP_KEYS.MODEL, {
+        seasons: seasonsPayload,
+        chunks: recordChunks
+      });
+      console.log(
+        `[train] Historical bootstrap revision ${CURRENT_BOOTSTRAP_REVISION} now covers seasons ${seasonsPayload[0]?.season ?? ""}-${seasonsPayload[seasonsPayload.length - 1]?.season ?? ""}.`
+      );
+    }
   }
 
   const runSummary = latestTargetResult

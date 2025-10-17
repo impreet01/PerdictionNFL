@@ -133,7 +133,7 @@ async function main() {
 
   result.context = [];
   await writeArtifacts(result);
-  updateHistoricalArtifacts({ season, schedules });
+  await updateHistoricalArtifacts({ season, schedules });
 
   const indexPath = `artifacts/season_index_${season}.json`;
   if (!existsSync(indexPath)) throw new Error("Smoke test: season index missing");

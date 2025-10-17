@@ -58,7 +58,7 @@ async function ensureArtifactsDir() {
 }
 const MODEL_PARAMS_PATH = "./config/modelParams.json";
 
-const MIN_SEASON = 2016;
+const MIN_SEASON = 1999;
 const DEFAULT_MIN_TRAIN_SEASON = MIN_SEASON;
 // GitHub Actions sets CI=true. When that flag is present we keep the bootstrap replay short
 // so scheduled runs do not spend hours downloading two decades of data.

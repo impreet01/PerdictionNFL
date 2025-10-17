@@ -11,6 +11,8 @@ export const BOOTSTRAP_KEYS = Object.freeze({
 
 const MODEL_PATTERN = /^model_(\d{4})_W(\d{1,2})\.json$/;
 
+const DEFAULT_MIN_BOOTSTRAP_SEASON = 2016;
+
 const EMPTY_STATE = Object.freeze({ schema_version: 1, bootstraps: {}, latest_runs: {} });
 
 function ensureArtifactsDir() {

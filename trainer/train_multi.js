@@ -51,7 +51,9 @@ const MODEL_PARAMS_PATH = "./config/modelParams.json";
 
 const MIN_SEASON = 2016;
 const DEFAULT_MIN_TRAIN_SEASON = MIN_SEASON;
-const DEFAULT_MAX_TRAIN_SEASONS = Number.POSITIVE_INFINITY;
+// GitHub Actions sets CI=true. When that flag is present we keep the bootstrap replay short
+// so scheduled runs do not spend hours downloading two decades of data.
+const DEFAULT_MAX_TRAIN_SEASONS = process.env.CI ? 4 : Number.POSITIVE_INFINITY;
 const INJURY_DATA_MIN_SEASON = 2009;
 const NEXTGEN_DATA_MIN_SEASON = 2016;
 

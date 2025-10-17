@@ -15,6 +15,51 @@ const DEFAULT_MIN_BOOTSTRAP_SEASON = 2016;
 
 const EMPTY_STATE = Object.freeze({ schema_version: 1, bootstraps: {}, latest_runs: {} });
 
+function normaliseChunkSeasons(list) {
+  if (!Array.isArray(list)) return [];
+  const map = new Map();
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object") continue;
+    const season = Number.parseInt(entry.season ?? entry.year ?? entry.season_id, 10);
+    if (!Number.isFinite(season)) continue;
+    const weeks = Array.isArray(entry.weeks) ? entry.weeks : [];
+    const bucket = map.get(season) ?? new Set();
+    for (const wk of weeks) {
+      const wkNum = Number.parseInt(wk, 10);
+      if (Number.isFinite(wkNum)) bucket.add(wkNum);
+    }
+    map.set(season, bucket);
+  }
+  return Array.from(map.entries())
+    .map(([season, weeks]) => ({ season, weeks: Array.from(weeks).sort((a, b) => a - b) }))
+    .sort((a, b) => a.season - b.season);
+}
+
+function normaliseChunkRecord(chunk) {
+  if (!chunk || typeof chunk !== "object") return null;
+  const start = Number.parseInt(chunk.start_season ?? chunk.start ?? chunk.startSeason, 10);
+  const end = Number.parseInt(chunk.end_season ?? chunk.end ?? chunk.endSeason, 10);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  const record = {
+    start_season: start,
+    end_season: end,
+    completed_at: chunk.completed_at ?? chunk.completedAt ?? null
+  };
+  const seasons = normaliseChunkSeasons(chunk.seasons);
+  if (seasons.length) record.seasons = seasons;
+  return record;
+}
+
+function ensureBootstrapRecord(record) {
+  if (!record || typeof record !== "object") return { chunks: [] };
+  if (!Array.isArray(record.chunks)) {
+    record.chunks = [];
+  } else {
+    record.chunks = record.chunks.map(normaliseChunkRecord).filter(Boolean);
+  }
+  return record;
+}
+
 function ensureArtifactsDir() {
   fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
 }
@@ -30,6 +75,14 @@ export function loadTrainingState() {
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
       if (!parsed.bootstraps || typeof parsed.bootstraps !== "object") parsed.bootstraps = {};
+      else {
+        for (const key of Object.keys(parsed.bootstraps)) {
+          const record = parsed.bootstraps[key];
+          if (record && typeof record === "object") {
+            parsed.bootstraps[key] = ensureBootstrapRecord(record);
+          }
+        }
+      }
       if (!parsed.latest_runs || typeof parsed.latest_runs !== "object") parsed.latest_runs = {};
       if (!parsed.schema_version) parsed.schema_version = 1;
       return parsed;
@@ -44,6 +97,14 @@ export function loadTrainingState() {
 export function saveTrainingState(state) {
   ensureArtifactsDir();
   const payload = state && typeof state === "object" ? state : { ...EMPTY_STATE };
+  if (payload.bootstraps && typeof payload.bootstraps === "object") {
+    for (const key of Object.keys(payload.bootstraps)) {
+      const record = payload.bootstraps[key];
+      if (record && typeof record === "object") {
+        payload.bootstraps[key] = ensureBootstrapRecord(record);
+      }
+    }
+  }
   fs.writeFileSync(STATE_PATH, JSON.stringify(payload, null, 2));
 }
 
@@ -167,11 +228,77 @@ export function markBootstrapCompleted(state, key, details = {}) {
   if (!state.bootstraps || typeof state.bootstraps !== "object") {
     state.bootstraps = {};
   }
-  state.bootstraps[key] = {
-    revision: CURRENT_BOOTSTRAP_REVISION,
-    completed_at: new Date().toISOString(),
-    ...details
+  const prevRecord = state.bootstraps[key] && typeof state.bootstraps[key] === "object"
+    ? { ...state.bootstraps[key] }
+    : {};
+  ensureBootstrapRecord(prevRecord);
+  const next = { ...prevRecord, ...details };
+  if (Array.isArray(details.chunks)) {
+    next.chunks = details.chunks.map(normaliseChunkRecord).filter(Boolean);
+  } else {
+    next.chunks = prevRecord.chunks;
+  }
+  ensureBootstrapRecord(next);
+  next.revision = CURRENT_BOOTSTRAP_REVISION;
+  next.completed_at = new Date().toISOString();
+  state.bootstraps[key] = next;
+  return state;
+}
+
+export function recordBootstrapChunk(state, key, chunkDetails = {}) {
+  if (!state || typeof state !== "object") return state;
+  if (!state.bootstraps || typeof state.bootstraps !== "object") {
+    state.bootstraps = {};
+  }
+  const record = state.bootstraps[key] && typeof state.bootstraps[key] === "object"
+    ? ensureBootstrapRecord({ ...state.bootstraps[key] })
+    : ensureBootstrapRecord({});
+
+  const start = Number.parseInt(
+    chunkDetails.startSeason ?? chunkDetails.start_season ?? chunkDetails.start,
+    10
+  );
+  const end = Number.parseInt(
+    chunkDetails.endSeason ?? chunkDetails.end_season ?? chunkDetails.end,
+    10
+  );
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    state.bootstraps[key] = record;
+    return state;
+  }
+
+  const incomingRaw = {
+    start_season: start,
+    end_season: end,
+    completed_at: chunkDetails.completed_at ?? new Date().toISOString(),
+    seasons: chunkDetails.seasons
   };
+  const incoming = normaliseChunkRecord(incomingRaw);
+  if (!incoming) {
+    state.bootstraps[key] = record;
+    return state;
+  }
+  if (!incoming.completed_at) {
+    incoming.completed_at = new Date().toISOString();
+  }
+
+  const idx = record.chunks.findIndex(
+    (entry) => Number(entry.start_season) === incoming.start_season && Number(entry.end_season) === incoming.end_season
+  );
+  if (idx >= 0) {
+    const prev = record.chunks[idx];
+    const mergedSeasons = normaliseChunkSeasons([...(prev.seasons ?? []), ...(incoming.seasons ?? [])]);
+    record.chunks[idx] = {
+      ...prev,
+      ...incoming,
+      seasons: mergedSeasons.length ? mergedSeasons : undefined
+    };
+  } else {
+    record.chunks.push(incoming);
+  }
+  record.chunks.sort((a, b) => (Number(a.start_season) || 0) - (Number(b.start_season) || 0));
+  record.revision = CURRENT_BOOTSTRAP_REVISION;
+  state.bootstraps[key] = record;
   return state;
 }
 

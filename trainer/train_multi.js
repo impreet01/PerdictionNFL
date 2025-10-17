@@ -49,7 +49,7 @@ const ART_DIR = "artifacts";
 mkdirSync(ART_DIR, { recursive: true });
 const MODEL_PARAMS_PATH = "./config/modelParams.json";
 
-const MIN_SEASON = 1999;
+const MIN_SEASON = 2016;
 const DEFAULT_MIN_TRAIN_SEASON = MIN_SEASON;
 const DEFAULT_MAX_TRAIN_SEASONS = Number.POSITIVE_INFINITY;
 const INJURY_DATA_MIN_SEASON = 2009;

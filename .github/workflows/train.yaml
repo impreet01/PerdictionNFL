@@ -15,38 +15,80 @@ on:
 env:
   NODE_VERSION: 20.x
   LOG_LEVEL: warn
+  CI_FAST: '1'
 
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
+    timeout-minutes: 75
     strategy:
       max-parallel: 1
       matrix:
         chunk:
-          - label: '1999-2004'
+          - label: '1999-2000'
             start: 1999
-            end: 2004
+            end: 2000
             artifact_in: ''
-            artifact_out: 'bootstrap-1999-2004'
-          - label: '2005-2010'
+            artifact_out: 'bootstrap-1999-2000'
+          - label: '2001-2002'
+            start: 2001
+            end: 2002
+            artifact_in: 'bootstrap-1999-2000'
+            artifact_out: 'bootstrap-2001-2002'
+          - label: '2003-2004'
+            start: 2003
+            end: 2004
+            artifact_in: 'bootstrap-2001-2002'
+            artifact_out: 'bootstrap-2003-2004'
+          - label: '2005-2006'
             start: 2005
+            end: 2006
+            artifact_in: 'bootstrap-2003-2004'
+            artifact_out: 'bootstrap-2005-2006'
+          - label: '2007-2008'
+            start: 2007
+            end: 2008
+            artifact_in: 'bootstrap-2005-2006'
+            artifact_out: 'bootstrap-2007-2008'
+          - label: '2009-2010'
+            start: 2009
             end: 2010
-            artifact_in: 'bootstrap-1999-2004'
-            artifact_out: 'bootstrap-2005-2010'
-          - label: '2011-2016'
+            artifact_in: 'bootstrap-2007-2008'
+            artifact_out: 'bootstrap-2009-2010'
+          - label: '2011-2012'
             start: 2011
+            end: 2012
+            artifact_in: 'bootstrap-2009-2010'
+            artifact_out: 'bootstrap-2011-2012'
+          - label: '2013-2014'
+            start: 2013
+            end: 2014
+            artifact_in: 'bootstrap-2011-2012'
+            artifact_out: 'bootstrap-2013-2014'
+          - label: '2015-2016'
+            start: 2015
             end: 2016
-            artifact_in: 'bootstrap-2005-2010'
-            artifact_out: 'bootstrap-2011-2016'
-          - label: '2017-2022'
+            artifact_in: 'bootstrap-2013-2014'
+            artifact_out: 'bootstrap-2015-2016'
+          - label: '2017-2018'
             start: 2017
+            end: 2018
+            artifact_in: 'bootstrap-2015-2016'
+            artifact_out: 'bootstrap-2017-2018'
+          - label: '2019-2020'
+            start: 2019
+            end: 2020
+            artifact_in: 'bootstrap-2017-2018'
+            artifact_out: 'bootstrap-2019-2020'
+          - label: '2021-2022'
+            start: 2021
             end: 2022
-            artifact_in: 'bootstrap-2011-2016'
-            artifact_out: 'bootstrap-2017-2022'
+            artifact_in: 'bootstrap-2019-2020'
+            artifact_out: 'bootstrap-2021-2022'
           - label: '2023-2024'
             start: 2023
             end: 2024
-            artifact_in: 'bootstrap-2017-2022'
+            artifact_in: 'bootstrap-2021-2022'
             artifact_out: 'bootstrap-final'
     steps:
       - name: Checkout
@@ -86,11 +128,16 @@ jobs:
         env:
           BATCH_START: ${{ matrix.chunk.start }}
           BATCH_END: ${{ matrix.chunk.end }}
+          CI_FAST: '1'
         run: |
           echo "Running historical chunk ${{ matrix.chunk.label }}"
+          if [ -f "artifacts/chunks/model_${{ matrix.chunk.label }}.done" ]; then
+            echo "Chunk ${{ matrix.chunk.label }} already complete – skipping."
+            exit 0
+          fi
           BATCH_START=${{ matrix.chunk.start }} \
           BATCH_END=${{ matrix.chunk.end }} \
-          npm run train:multi
+          CI_FAST=1 npm run train:multi
       - name: Upload artifacts ${{ matrix.chunk.label }}
         uses: actions/upload-artifact@v4
         with:
@@ -102,6 +149,7 @@ jobs:
   train:
     runs-on: ubuntu-latest
     needs: bootstrap
+    timeout-minutes: 90
     permissions:
       contents: write
       pull-requests: write
@@ -216,7 +264,7 @@ jobs:
       - name: Train + Predict (auto week)
         run: |
           echo "Training SEASON=$SEASON WEEK=$WEEK"
-          SEASON=$SEASON WEEK=$WEEK npm run train:multi
+          CI_FAST=1 SEASON=$SEASON WEEK=$WEEK npm run train:multi
       - name: Run Hybrid v2 Calibration
         run: node trainer/hybrid_v2.js
         env:

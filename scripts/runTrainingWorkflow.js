@@ -240,8 +240,11 @@ async function main() {
 
   const trainer = resolveTrainer(options.trainer);
   console.log(`[workflow] Starting ${trainer.label} (npm run ${trainer.npmScript})...`);
+  const trainerEnv = buildEnv({
+    CI_FAST: process.env.CI_FAST ?? (process.env.CI === 'true' ? '1' : undefined)
+  });
   if (!options.dryRun) {
-    await runCommand('npm', ['run', trainer.npmScript]);
+    await runCommand('npm', ['run', trainer.npmScript], { env: trainerEnv });
     state = loadState();
   }
 

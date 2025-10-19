@@ -6,7 +6,8 @@ import {
   shouldRunHistoricalBootstrap,
   markBootstrapCompleted,
   recordLatestRun,
-  BOOTSTRAP_KEYS
+  BOOTSTRAP_KEYS,
+  envFlag
 } from "./trainingState.js";
 
 const ARTIFACTS_DIR = path.resolve("artifacts");
@@ -113,6 +114,22 @@ function loadArtifactsForCalibration(season, week) {
   const model = requireJson(modelFileName);
   const predictions = requireJson(predictionsFileName);
   return { model, predictions, modelFileName, predictionsFileName };
+}
+
+function predictionsAlreadyCalibrated(predictions) {
+  if (!Array.isArray(predictions) || !predictions.length) return false;
+  return predictions.every((entry) => entry?.forecast_hybrid_v2 != null);
+}
+
+function hasExistingCalibration(model, predictions) {
+  if (!model || typeof model !== "object") return false;
+  const ensemble = model.ensemble || {};
+  const weights = ensemble.blend_weights || ensemble.weights;
+  const beta = Number(ensemble.calibration_beta);
+  const intercept = Number(ensemble.calibration_intercept);
+  if (!weights || typeof weights !== "object") return false;
+  if (!Number.isFinite(beta) || !Number.isFinite(intercept)) return false;
+  return predictionsAlreadyCalibrated(predictions);
 }
 
 function applyCalibrationToModel({ model, weights, beta, intercept, modelFileName }) {
@@ -302,7 +319,7 @@ function runHybridBootstrap(state) {
 }
 
 export function runHybridV2(season, week, options = {}) {
-  const { state: providedState = null, updateState = true } = options;
+  const { state: providedState = null, updateState = true, forceRecalibrate: forceOverride } = options;
   if (!Number.isInteger(season) || season < 1900) {
     throw new Error(`Invalid season provided: ${season}`);
   }
@@ -310,6 +327,21 @@ export function runHybridV2(season, week, options = {}) {
     throw new Error(`Invalid week provided: ${week}`);
   }
   const { model, predictions, modelFileName, predictionsFileName } = loadArtifactsForCalibration(season, week);
+  const forceRecalibrate = Boolean(forceOverride ?? envFlag("FORCE_HYBRID_RECALIBRATION"));
+  if (!forceRecalibrate && hasExistingCalibration(model, predictions)) {
+    const weights = normaliseWeights(model?.ensemble?.blend_weights || model?.ensemble?.weights);
+    const beta = Number(model?.ensemble?.calibration_beta ?? 0);
+    const intercept = Number(model?.ensemble?.calibration_intercept ?? 0);
+    if (updateState) {
+      const state = providedState ?? loadTrainingState();
+      recordLatestRun(state, BOOTSTRAP_KEYS.HYBRID, { season, week });
+      saveTrainingState(state);
+    }
+    console.log(
+      `[hybrid] Season ${season} week ${week}: existing calibration detected – reusing cached parameters.`
+    );
+    return { beta, intercept, weights };
+  }
   const weights = deriveBlendWeights({ season, week, model });
   const { beta, intercept } = fitCalibration({ season, week });
 

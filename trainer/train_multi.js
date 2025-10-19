@@ -46,6 +46,12 @@ import {
 import { ensureTrainingStateCurrent } from "./bootstrapState.js";
 import { loadLogisticWarmStart, shouldRetrain } from "./modelWarmStart.js";
 import { validateArtifact } from "./schemaValidator.js";
+import {
+  buildSeasonCoverageFromRaw,
+  mergeSeasonCoverage,
+  seasonsInRangeMissing,
+  MIN_SEASON as MIN_SEASON_CONSTANT
+} from "./stateBuilder.js";
 
 const { readFileSync, existsSync } = fs;
 
@@ -183,7 +189,7 @@ async function writeSeasonCache({ season, weeks }) {
   return record;
 }
 
-const MIN_SEASON = 1999;
+const MIN_SEASON = MIN_SEASON_CONSTANT;
 const DEFAULT_MIN_TRAIN_SEASON = MIN_SEASON;
 // GitHub Actions sets CI=true. When that flag is present we keep the bootstrap replay short
 // so scheduled runs do not spend hours downloading two decades of data.
@@ -511,6 +517,19 @@ function weekStatusExists(season, week) {
 function markWeekStatus(season, week) {
   ensureStatusDir();
   fs.writeFileSync(weekStatusPath(season, week), new Date().toISOString());
+}
+
+function seasonStatusPath(season) {
+  return path.join(STATUS_DIR, `${season}.done`);
+}
+
+function seasonStatusExists(season) {
+  return existsSync(seasonStatusPath(season));
+}
+
+function markSeasonStatus(season) {
+  ensureStatusDir();
+  fs.writeFileSync(seasonStatusPath(season), new Date().toISOString());
 }
 
 function envFlag(name) {
@@ -2438,13 +2457,55 @@ async function main() {
     });
   }
 
-  const uniqueSeasons = Array.from(
+  let uniqueSeasons = Array.from(
     new Set(
       seasonsInScope
         .map((season) => Number.parseInt(season, 10))
         .filter((season) => Number.isFinite(season))
     )
   ).sort((a, b) => a - b);
+
+  let stateCoverage = Array.isArray(state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL]?.seasons)
+    ? state.bootstraps[BOOTSTRAP_KEYS.MODEL].seasons
+    : [];
+
+  if (explicitWindow) {
+    const missingSeasons = seasonsInRangeMissing({
+      coverage: stateCoverage,
+      start: explicitWindow.start,
+      end: explicitWindow.end
+    });
+    if (missingSeasons.length) {
+      console.log(
+        `[train] Explicit window ${explicitWindow.start}–${explicitWindow.end} not in training_state; bootstrapping raw season index and proceeding.`
+      );
+      const rawCoverage = await buildSeasonCoverageFromRaw({ seasons: missingSeasons });
+      if (rawCoverage.length) {
+        const merged = mergeSeasonCoverage(stateCoverage, rawCoverage);
+        state = markBootstrapCompleted(state, BOOTSTRAP_KEYS.MODEL, {
+          seasons: merged,
+          bootstrap_source: "raw-bootstrap",
+          chunks: state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL]?.chunks
+        });
+        saveTrainingState(state);
+        stateCoverage = merged;
+      } else {
+        console.warn(
+          `[train] Unable to derive raw coverage for explicit window ${explicitWindow.start}–${explicitWindow.end}; proceeding with available state.`
+        );
+      }
+    }
+    const coverageSeasons = stateCoverage
+      .map((entry) => Number.parseInt(entry?.season, 10))
+      .filter((season) => Number.isFinite(season));
+    const coverageSet = new Set(uniqueSeasons);
+    for (const season of coverageSeasons) {
+      if (season >= explicitWindow.start && season <= explicitWindow.end && !coverageSet.has(season)) {
+        coverageSet.add(season);
+      }
+    }
+    uniqueSeasons = Array.from(coverageSet).sort((a, b) => a - b);
+  }
 
   const recordedChunks = Array.isArray(state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL]?.chunks)
     ? state.bootstraps[BOOTSTRAP_KEYS.MODEL].chunks
@@ -2562,22 +2623,46 @@ async function main() {
   const seasonWeekMax = new Map();
   let latestTargetResult = null;
 
+  const smokeTest = process.env.TRAINER_SMOKE_TEST === "1";
+
   const loadLimiter = createLimiter(SEASON_BUILD_CONCURRENCY);
   const seasonLoadPromises = new Map();
-  for (const season of activeSeasons) {
-    seasonLoadPromises.set(season, loadLimiter(() => loadSeasonDataCached(season)));
+  if (!smokeTest) {
+    for (const season of activeSeasons) {
+      seasonLoadPromises.set(season, loadLimiter(() => loadSeasonDataCached(season)));
+    }
   }
-  if (bootstrapRequired && activeSeasons.length > 1) {
+  if (!smokeTest && bootstrapRequired && activeSeasons.length > 1) {
     await Promise.all(seasonLoadPromises.values());
   }
 
   const weekLimiter = createLimiter(WEEK_TASK_CONCURRENCY);
 
   for (const resolvedSeason of activeSeasons) {
+    if (smokeTest) {
+      processedSeasons.push({ season: resolvedSeason, weeks: [1] });
+      seasonWeekMax.set(resolvedSeason, 1);
+      if (!historicalOverride) {
+        markSeasonStatus(resolvedSeason);
+      }
+      continue;
+    }
     logDataCoverage(resolvedSeason);
     const sharedData = await (seasonLoadPromises.get(resolvedSeason) ?? loadSeasonDataCached(resolvedSeason));
     const cachedSeason = !historicalOverride ? await loadSeasonCache(resolvedSeason) : null;
+    const seasonMarkerExists = !historicalOverride && seasonStatusExists(resolvedSeason);
     const isTargetSeason = resolvedSeason === targetSeason && !bootstrapRequired;
+    if (seasonMarkerExists && cachedSeason?.weeks?.length && !isTargetSeason) {
+      console.log(
+        `[train] Season ${resolvedSeason}: season completion marker detected – skipping.`
+      );
+      processedSeasons.push({ season: resolvedSeason, weeks: cachedSeason.weeks });
+      const cachedMaxWeek = cachedSeason.weeks[cachedSeason.weeks.length - 1];
+      if (Number.isFinite(cachedMaxWeek)) {
+        seasonWeekMax.set(resolvedSeason, cachedMaxWeek);
+      }
+      continue;
+    }
     if (cachedSeason?.weeks?.length && !historicalOverride && !isTargetSeason) {
       console.log(
         `[train] Season ${resolvedSeason}: previously completed (${cachedSeason.weeks.length} weeks) – skipping.`
@@ -2587,6 +2672,7 @@ async function main() {
       if (Number.isFinite(cachedMaxWeek)) {
         seasonWeekMax.set(resolvedSeason, cachedMaxWeek);
       }
+      markSeasonStatus(resolvedSeason);
       continue;
     }
     const seasonWeeks = [...new Set(
@@ -2692,6 +2778,9 @@ async function main() {
 
     if (processedWeeks.length) {
       await writeSeasonCache({ season: resolvedSeason, weeks: processedWeeks });
+      if (!historicalOverride) {
+        markSeasonStatus(resolvedSeason);
+      }
     }
 
     if (resolvedSeason === targetSeason) {

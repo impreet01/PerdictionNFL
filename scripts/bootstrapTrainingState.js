@@ -8,15 +8,37 @@ import {
   recordLatestRun,
   saveTrainingState
 } from "../trainer/trainingState.js";
+import { getArtifactsDir, getTrainingStatePath } from "../trainer/bootstrapState.js";
 import {
-  ensureTrainingStateCurrent,
-  getArtifactsDir,
-  getTrainingStatePath,
-  isTrainingStateCurrent
-} from "../trainer/bootstrapState.js";
+  buildSeasonCoverageFromRaw,
+  discoverSeasonRange,
+  mergeSeasonCoverage
+} from "../trainer/stateBuilder.js";
 
 const ARTIFACTS_DIR = getArtifactsDir();
 const STATE_PATH = getTrainingStatePath();
+
+function normaliseSeason(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseCliArgs(argv = []) {
+  const args = { start: null, end: null };
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (token === "--start" && i + 1 < argv.length) {
+      args.start = normaliseSeason(argv[i + 1]);
+      i += 1;
+    } else if (token === "--end" && i + 1 < argv.length) {
+      args.end = normaliseSeason(argv[i + 1]);
+      i += 1;
+    }
+  }
+  return args;
+}
+
+const CLI_ARGS = parseCliArgs(process.argv.slice(2));
 
 function ensureArtifactsDir() {
   if (fs.existsSync(ARTIFACTS_DIR)) {
@@ -128,49 +150,70 @@ function hasCurrentRevision(state, key) {
   return record.revision === CURRENT_BOOTSTRAP_REVISION;
 }
 
-function main() {
-  const artifactsAlreadyPresent = ensureArtifactsDir();
+async function resolveRawCoverage({
+  explicitStart = null,
+  explicitEnd = null
+} = {}) {
+  const start = normaliseSeason(process.env.BATCH_START ?? explicitStart ?? CLI_ARGS.start);
+  const end = normaliseSeason(process.env.BATCH_END ?? explicitEnd ?? CLI_ARGS.end);
+  if (start != null || end != null) {
+    return buildSeasonCoverageFromRaw({ startSeason: start ?? end, endSeason: end ?? start });
+  }
+  const range = await discoverSeasonRange();
+  return buildSeasonCoverageFromRaw({ startSeason: range.start, endSeason: range.end });
+}
+
+async function main() {
+  ensureArtifactsDir();
   const stateExisted = fs.existsSync(STATE_PATH);
 
   let state = loadTrainingState();
 
-  if (!artifactsAlreadyPresent) {
-    saveTrainingState(state);
-    console.warn(
-      `[bootstrap] artifacts directory missing at ${ARTIFACTS_DIR}. Created it automatically; run the trainer or restore artifacts before bootstrapping.`
-    );
-    return;
-  }
-
-  const entries = fs.readdirSync(ARTIFACTS_DIR);
+  const entries = fs.existsSync(ARTIFACTS_DIR) ? fs.readdirSync(ARTIFACTS_DIR) : [];
   const predictionPattern = /^predictions_(\d{4})_W(\d{2})\.json$/;
   const predictionsSet = new Set(entries.filter((entry) => predictionPattern.test(entry)));
 
   const modelMap = buildSeasonWeekMap(entries, predictionPattern);
-  if (modelMap.size === 0) {
-    saveTrainingState(state);
+  const artifactSeasons = serialiseSeasonMap(modelMap);
+
+  const rawCoverage = await resolveRawCoverage();
+  let modelSeasons = mergeSeasonCoverage(rawCoverage, artifactSeasons);
+  const bootstrapSource = artifactSeasons.length ? "artifact-scan" : "raw-bootstrap";
+
+  if (!artifactSeasons.length && !rawCoverage.length) {
     console.warn(
-      `[bootstrap] No prediction artifacts found in ${ARTIFACTS_DIR}. Restore artifacts before bootstrapping training state.`
+      `[bootstrap] No prediction artifacts found and unable to derive raw coverage; training_state.json will remain unchanged.`
     );
+    saveTrainingState(state);
     return;
+  }
+
+  if (!artifactSeasons.length) {
+    console.log("[bootstrap] Building training_state from raw sources (no predictions present).");
   }
 
   if (stateExisted) {
     const modelUpToDate = hasCurrentRevision(state, BOOTSTRAP_KEYS.MODEL);
     const hybridUpToDate = hasCurrentRevision(state, BOOTSTRAP_KEYS.HYBRID);
-    if (modelUpToDate && hybridUpToDate) {
+    if (modelUpToDate && hybridUpToDate && artifactSeasons.length) {
       console.log(
         `[bootstrap] training_state.json already present at ${STATE_PATH} (revision ${CURRENT_BOOTSTRAP_REVISION}); skipping.`
       );
       return;
     }
-    console.log("[bootstrap] Existing training_state.json has outdated bootstrap metadata; refreshing.");
+    if (!artifactSeasons.length) {
+      console.log("[bootstrap] training_state.json will be rebuilt from raw coverage.");
+    } else {
+      console.log("[bootstrap] Existing training_state.json has outdated bootstrap metadata; refreshing.");
+    }
   }
 
   const hybridMap = discoverHybridSeasons(entries, predictionsSet);
 
-  const modelSeasons = serialiseSeasonMap(modelMap);
-  markBootstrapCompleted(state, BOOTSTRAP_KEYS.MODEL, { seasons: modelSeasons, bootstrap_source: "artifact-scan" });
+  markBootstrapCompleted(state, BOOTSTRAP_KEYS.MODEL, {
+    seasons: modelSeasons,
+    bootstrap_source: bootstrapSource
+  });
 
   const latestModel = selectLatestRun(modelSeasons);
   if (latestModel) {
@@ -190,15 +233,13 @@ function main() {
 
   saveTrainingState(state);
   console.log(
-    `[bootstrap] Synthesised training_state.json (revision ${CURRENT_BOOTSTRAP_REVISION}) from existing artifacts.`
+    `[bootstrap] Synthesised training_state.json (revision ${CURRENT_BOOTSTRAP_REVISION}) from available coverage.`
   );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  try {
-    main();
-  } catch (err) {
+  main().catch((err) => {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);
-  }
+  });
 }

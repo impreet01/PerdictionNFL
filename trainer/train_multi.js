@@ -199,6 +199,156 @@ function normaliseSeason(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+const CLI_DEFAULT_STRICT_BATCH = process.env.CI ? true : false;
+
+function parseTrainCliArgs(argv = []) {
+  const result = {
+    start: null,
+    end: null,
+    strictBatch: CLI_DEFAULT_STRICT_BATCH
+  };
+  if (!Array.isArray(argv) || !argv.length) return result;
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (typeof token !== "string") continue;
+    if (token === "--strict-batch") {
+      result.strictBatch = true;
+      continue;
+    }
+    if (token === "--no-strict-batch") {
+      result.strictBatch = false;
+      continue;
+    }
+    if (token === "--start") {
+      result.start = argv[i + 1] ?? null;
+      i += 1;
+      continue;
+    }
+    if (token.startsWith("--start=")) {
+      result.start = token.slice("--start=".length);
+      continue;
+    }
+    if (token === "--end") {
+      result.end = argv[i + 1] ?? null;
+      i += 1;
+      continue;
+    }
+    if (token.startsWith("--end=")) {
+      result.end = token.slice("--end=".length);
+    }
+  }
+  return result;
+}
+
+export function formatBatchWindowLog({ chunkSelection, explicit }) {
+  if (!chunkSelection) return null;
+  const { start, end } = chunkSelection;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  const label = `${start}–${end}`;
+  if (explicit) {
+    return `[train] Using explicit batch window: ${label}`;
+  }
+  return `[train] Using auto-resolved bootstrap window: ${label}`;
+}
+
+function normaliseChunkKey(entry) {
+  const start = normaliseSeason(entry?.start_season ?? entry?.start ?? entry?.startSeason);
+  const end = normaliseSeason(entry?.end_season ?? entry?.end ?? entry?.endSeason);
+  return start !== null && end !== null ? `${start}-${end}` : null;
+}
+
+export function resolveHistoricalChunkSelection({
+  uniqueSeasons = [],
+  chunkSize = HISTORICAL_BATCH_SIZE,
+  recordedChunks = [],
+  explicitStart = null,
+  explicitEnd = null,
+  strictBatch = false,
+  minSeason = MIN_SEASON,
+  maxSeason = Number.POSITIVE_INFINITY
+} = {}) {
+  const seasons = Array.isArray(uniqueSeasons)
+    ? Array.from(
+        new Set(
+          uniqueSeasons
+            .map(normaliseSeason)
+            .filter((season) => season !== null)
+        )
+      ).sort((a, b) => a - b)
+    : [];
+  const start = normaliseSeason(explicitStart);
+  const end = normaliseSeason(explicitEnd);
+  const explicit = start !== null && end !== null;
+  const chunkSizeNormalised = Math.max(1, Math.min(MAX_SEASONS_PER_CHUNK, Math.floor(chunkSize)));
+  const chunks = chunkSeasonList(seasons, chunkSizeNormalised);
+  const completedKeys = new Set(
+    Array.isArray(recordedChunks)
+      ? recordedChunks.map(normaliseChunkKey).filter(Boolean)
+      : []
+  );
+  const autoCandidate = chunks.length
+    ? chunks.find((chunk) => !completedKeys.has(`${chunk.start}-${chunk.end}`)) ?? chunks[chunks.length - 1]
+    : null;
+
+  if (explicit) {
+    if (start > end) {
+      throw new Error(`[train] Invalid explicit batch window ${start}–${end}: start must be before end.`);
+    }
+    if (Number.isFinite(minSeason) && start < minSeason) {
+      throw new Error(
+        `[train] Explicit batch window ${start}–${end} begins before minimum supported season ${minSeason}.`
+      );
+    }
+    if (Number.isFinite(maxSeason) && end > maxSeason) {
+      throw new Error(
+        `[train] Explicit batch window ${start}–${end} exceeds available historical range ending ${maxSeason}.`
+      );
+    }
+    const expectedCount = end - start + 1;
+    if (expectedCount > chunkSizeNormalised) {
+      throw new Error(
+        `[train] Explicit batch window ${start}–${end} spans ${expectedCount} seasons, exceeding chunk size ${chunkSizeNormalised}.`
+      );
+    }
+    const seasonsInWindow = seasons.filter((season) => season >= start && season <= end);
+    if (!seasonsInWindow.length) {
+      throw new Error(`[train] Explicit batch window ${start}–${end} has no available seasons to train.`);
+    }
+    const seasonSet = new Set(seasonsInWindow);
+    const missing = [];
+    for (let season = start; season <= end; season += 1) {
+      if (!seasonSet.has(season)) missing.push(season);
+    }
+    if (missing.length) {
+      throw new Error(
+        `[train] Explicit batch window ${start}–${end} missing seasons: ${missing.join(", ")}.`
+      );
+    }
+    return {
+      chunkSelection: {
+        seasons: seasonsInWindow,
+        start,
+        end,
+        source: "explicit"
+      },
+      explicit: true,
+      autoCandidate
+    };
+  }
+
+  if (autoCandidate) {
+    return {
+      chunkSelection: { ...autoCandidate, source: "auto" },
+      explicit: false,
+      autoCandidate
+    };
+  }
+
+  return { chunkSelection: null, explicit: false, autoCandidate: null };
+}
+
+const CLI_ARGS = parseTrainCliArgs(process.argv.slice(2));
+
 function chunkSeasonList(seasons, size = DEFAULT_CHUNK_SPAN) {
   if (!Array.isArray(seasons) || !seasons.length) return [];
   const chunkSize = Math.max(1, Math.min(MAX_SEASONS_PER_CHUNK, Math.floor(size)));
@@ -2268,9 +2418,13 @@ async function main() {
   });
   const allowHistoricalRewrite = historicalOverride || bootstrapRequired;
 
-  const envBatchStart = normaliseSeason(process.env.BATCH_START);
-  const envBatchEnd = normaliseSeason(process.env.BATCH_END);
-  const envChunkRequested = envBatchStart !== null || envBatchEnd !== null;
+  const strictBatch = Boolean(CLI_ARGS.strictBatch);
+  const cliBatchStart = CLI_ARGS.start;
+  const cliBatchEnd = CLI_ARGS.end;
+  const explicitStart = normaliseSeason(process.env.BATCH_START ?? cliBatchStart);
+  const explicitEnd = normaliseSeason(process.env.BATCH_END ?? cliBatchEnd);
+  const explicitWindow =
+    explicitStart !== null && explicitEnd !== null ? { start: explicitStart, end: explicitEnd } : null;
 
   let seasonsInScope = [targetSeason];
   if (bootstrapRequired || allowHistoricalRewrite) {
@@ -2292,39 +2446,51 @@ async function main() {
     )
   ).sort((a, b) => a - b);
 
-  const availableChunks = chunkSeasonList(uniqueSeasons, HISTORICAL_BATCH_SIZE);
-  let chunkSelection = null;
-  if ((bootstrapRequired || historicalOverride) && uniqueSeasons.length) {
-    if (envChunkRequested) {
-      const filtered = uniqueSeasons
-        .filter((season) => (envBatchStart === null || season >= envBatchStart))
-        .filter((season) => (envBatchEnd === null || season <= envBatchEnd))
-        .slice(0, HISTORICAL_BATCH_SIZE);
-      if (filtered.length) {
-        chunkSelection = {
-          seasons: filtered,
-          start: filtered[0],
-          end: filtered[filtered.length - 1],
-          source: "env"
-        };
-      }
+  const recordedChunks = Array.isArray(state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL]?.chunks)
+    ? state.bootstraps[BOOTSTRAP_KEYS.MODEL].chunks
+    : [];
+  let chunkResolution = { chunkSelection: null, explicit: false, autoCandidate: null };
+  if ((bootstrapRequired || historicalOverride || explicitWindow) && uniqueSeasons.length) {
+    chunkResolution = resolveHistoricalChunkSelection({
+      uniqueSeasons,
+      chunkSize: HISTORICAL_BATCH_SIZE,
+      recordedChunks,
+      explicitStart,
+      explicitEnd,
+      strictBatch,
+      minSeason: MIN_SEASON,
+      maxSeason: historicalUpperBound ?? Number.POSITIVE_INFINITY
+    });
+  }
+  let chunkSelection = chunkResolution.chunkSelection;
+  if (explicitWindow) {
+    if (!chunkSelection) {
+      const label = `${explicitWindow.start}–${explicitWindow.end}`;
+      throw new Error(`[train] Explicit batch window ${label} requested but no matching seasons were resolved.`);
     }
-    if (!chunkSelection && availableChunks.length) {
-      const recordedChunks = Array.isArray(state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL]?.chunks)
-        ? state.bootstraps[BOOTSTRAP_KEYS.MODEL].chunks
-        : [];
-      const completedKeys = new Set(
-        recordedChunks
-          .map((entry) => {
-            const start = normaliseSeason(entry?.start_season ?? entry?.start);
-            const end = normaliseSeason(entry?.end_season ?? entry?.end);
-            return start !== null && end !== null ? `${start}-${end}` : null;
-          })
-          .filter(Boolean)
+    if (chunkSelection.start !== explicitWindow.start || chunkSelection.end !== explicitWindow.end) {
+      const attempted = `${chunkSelection.start}–${chunkSelection.end}`;
+      const message = `Explicit batch window ${explicitWindow.start}–${explicitWindow.end} provided but resolver attempted ${attempted}. Refusing to override.`;
+      if (strictBatch) {
+        throw new Error(message);
+      }
+      console.warn(`[train] ${message}`);
+    }
+  }
+
+  const resolvedWindowLog = formatBatchWindowLog({
+    chunkSelection,
+    explicit: Boolean(chunkResolution.explicit)
+  });
+  if (resolvedWindowLog) {
+    console.log(resolvedWindowLog);
+  }
+  if (chunkResolution.explicit && chunkResolution.autoCandidate) {
+    const { start: autoStart, end: autoEnd } = chunkResolution.autoCandidate;
+    if (autoStart !== chunkSelection.start || autoEnd !== chunkSelection.end) {
+      console.log(
+        `[train] Training state indicates next pending bootstrap chunk ${autoStart}-${autoEnd}; explicit batch window ${chunkSelection.start}-${chunkSelection.end} will be used instead.`
       );
-      chunkSelection =
-        availableChunks.find((chunk) => !completedKeys.has(`${chunk.start}-${chunk.end}`)) ??
-        availableChunks[availableChunks.length - 1];
     }
   }
 
@@ -2353,10 +2519,14 @@ async function main() {
     }
   }
 
+  const requestedRangeLabel = explicitWindow
+    ? `${explicitWindow.start}-${explicitWindow.end}`
+    : "auto";
+
   if (!activeSeasons.length) {
     if (bootstrapRequired) {
       console.log(
-        `[train] Historical bootstrap already satisfied for requested chunk range ${envChunkRequested ? `${envBatchStart ?? "*"}-${envBatchEnd ?? "*"}` : "auto"}.`
+        `[train] Historical bootstrap already satisfied for requested chunk range ${requestedRangeLabel}.`
       );
     }
     saveTrainingState(state);

@@ -391,11 +391,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     : discovered[discovered.length - 1];
 
   if (!targetEntry) {
-    throw new Error(
-      Number.isFinite(envSeason)
-        ? `No artifacts available for requested season ${envSeason}`
-        : "Unable to determine target season for hybrid calibration"
-    );
+    if (Number.isFinite(envSeason)) {
+      console.warn(
+        `[hybrid/calibration] no artifacts discovered for requested season ${envSeason}; skipping calibration`
+      );
+      process.exit(0);
+    }
+
+    throw new Error("Unable to determine target season for hybrid calibration");
   }
 
   const availableWeeks = targetEntry.weeks;

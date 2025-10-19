@@ -16,6 +16,7 @@ env:
   NODE_VERSION: 20.x
   LOG_LEVEL: warn
   CI_FAST: '1'
+  MAX_WORKERS: '2'
 
 jobs:
   bootstrap:
@@ -138,6 +139,10 @@ jobs:
           BATCH_START=${{ matrix.chunk.start }} \
           BATCH_END=${{ matrix.chunk.end }} \
           CI_FAST=1 npm run train:multi
+      - name: Pack bootstrap chunk ${{ matrix.chunk.label }}
+        run: |
+          tar -czf bootstrap_chunk.tgz -C artifacts .
+          mv bootstrap_chunk.tgz artifacts/bootstrap-${{ matrix.chunk.label }}.tgz
       - name: Upload artifacts ${{ matrix.chunk.label }}
         uses: actions/upload-artifact@v4
         with:
@@ -171,6 +176,20 @@ jobs:
         with:
           name: bootstrap-final
           path: artifacts
+      - name: Extract bootstrap cache
+        run: |
+          if ls artifacts/bootstrap-*.tgz >/dev/null 2>&1; then
+            for archive in artifacts/bootstrap-*.tgz; do
+              echo "Extracting ${archive}"
+              tar -xzf "${archive}" -C artifacts
+            done
+          fi
+      - name: Verify bootstrap cache presence
+        run: |
+          if [ ! -d artifacts/chunks ] || ! ls artifacts/chunks/model_*.done >/dev/null 2>&1; then
+            echo "::error::Missing historical bootstrap cache markers."
+            exit 1
+          fi
       - name: Ensure lockfile
         run: |
           if [ ! -f package-lock.json ]; then
@@ -262,10 +281,12 @@ jobs:
           SINCE_SEASON: ${{ env.MIN_TRAIN_SEASON }}
         run: npm run build:context
       - name: Train + Predict (auto week)
+        timeout-minutes: 25
         run: |
           echo "Training SEASON=$SEASON WEEK=$WEEK"
           CI_FAST=1 SEASON=$SEASON WEEK=$WEEK npm run train:multi
       - name: Run Hybrid v2 Calibration
+        timeout-minutes: 15
         run: node trainer/hybrid_v2.js
         env:
           SEASON: ${{ env.SEASON }}

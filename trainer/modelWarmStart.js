@@ -3,6 +3,16 @@ import path from "node:path";
 
 const ARTIFACTS_DIR = path.resolve("artifacts");
 const MODEL_REGEX = /^model_(\d{4})_W(\d{2})\.json$/;
+const MODEL_PREFIX = "model";
+
+function toWeekStamp(season, week) {
+  return `${String(season).padStart(4, "0")}_W${String(week).padStart(2, "0")}`;
+}
+
+function modelArtifactPath(season, week) {
+  const stamp = toWeekStamp(season, week);
+  return path.join(ARTIFACTS_DIR, `${MODEL_PREFIX}_${stamp}.json`);
+}
 
 function toFiniteNumber(value, fallback = 0) {
   const num = Number(value);
@@ -111,4 +121,26 @@ export async function loadLogisticWarmStart({ season, week, features } = {}) {
       totalFeatures: Array.isArray(features) ? features.length : aligned.weights.length
     }
   };
+}
+
+export async function shouldRetrain({ season, week, featureHash } = {}) {
+  const targetSeason = Number(season);
+  const targetWeek = Number(week);
+  if (!Number.isFinite(targetSeason) || !Number.isFinite(targetWeek)) return true;
+  const expectedHash = typeof featureHash === "string" && featureHash ? featureHash : null;
+  if (!expectedHash) return true;
+  try {
+    const raw = await fs.readFile(modelArtifactPath(targetSeason, targetWeek), "utf8");
+    const parsed = JSON.parse(raw);
+    const storedHash =
+      parsed?.feature_hash ?? parsed?.featureHash ?? parsed?.modelSummary?.feature_hash ?? null;
+    if (!storedHash) return true;
+    return storedHash !== expectedHash;
+  } catch (err) {
+    if (err?.code === "ENOENT") return true;
+    console.warn(
+      `[modelWarmStart] Unable to read model artifact for ${targetSeason} week ${targetWeek}: ${err?.message || err}`
+    );
+    return true;
+  }
 }

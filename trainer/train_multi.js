@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import {
   loadSchedules,
   loadTeamWeekly,
@@ -43,7 +44,7 @@ import {
   CURRENT_BOOTSTRAP_REVISION
 } from "./trainingState.js";
 import { ensureTrainingStateCurrent } from "./bootstrapState.js";
-import { loadLogisticWarmStart } from "./modelWarmStart.js";
+import { loadLogisticWarmStart, shouldRetrain } from "./modelWarmStart.js";
 import { validateArtifact } from "./schemaValidator.js";
 
 const { readFileSync, existsSync } = fs;
@@ -52,12 +53,51 @@ const HISTORICAL_BATCH_SIZE = Number.isFinite(Number(process.env.BATCH_SIZE))
   ? Math.max(1, Number(process.env.BATCH_SIZE))
   : 2;
 
+const CI_FAST = process.env.CI_FAST === "1";
+const MAX_WORKERS = Number.isFinite(Number(process.env.MAX_WORKERS))
+  ? Math.max(1, Number(process.env.MAX_WORKERS))
+  : 2;
+const MAX_SEASONS_PER_CHUNK = CI_FAST ? 2 : 3;
+const JSON_SPACE = CI_FAST ? undefined : 2;
+const ANN_BASE_CONFIG = Object.freeze({
+  seeds: Number.isFinite(Number(process.env.ANN_SEEDS))
+    ? Math.max(1, Number(process.env.ANN_SEEDS))
+    : 5,
+  maxEpochs: Number.isFinite(Number(process.env.ANN_MAX_EPOCHS))
+    ? Math.max(1, Number(process.env.ANN_MAX_EPOCHS))
+    : 250,
+  patience: 10,
+  cvSeeds: 3,
+  weightStep: 0.05,
+  gridTopN: Number.POSITIVE_INFINITY,
+  kfold: 5
+});
+const ANN_CONFIG = (() => {
+  if (CI_FAST) {
+    return {
+      ...ANN_BASE_CONFIG,
+      seeds: 1,
+      maxEpochs: Math.min(ANN_BASE_CONFIG.maxEpochs, 15),
+      patience: 3,
+      cvSeeds: 1,
+      weightStep: Math.max(ANN_BASE_CONFIG.weightStep, 0.15),
+      gridTopN: 3,
+      kfold: Math.min(3, ANN_BASE_CONFIG.kfold)
+    };
+  }
+  return { ...ANN_BASE_CONFIG };
+})();
+
 const ART_DIR = "artifacts";
+const STATUS_DIR = path.join(ART_DIR, ".status");
 const CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
 const CHUNK_FILE_PREFIX = "model";
-const DEFAULT_CHUNK_SPAN = Number.isFinite(Number(process.env.HISTORICAL_CHUNK_SPAN))
-  ? Math.max(1, Number(process.env.HISTORICAL_CHUNK_SPAN))
-  : HISTORICAL_BATCH_SIZE;
+const DEFAULT_CHUNK_SPAN = Math.min(
+  MAX_SEASONS_PER_CHUNK,
+  Number.isFinite(Number(process.env.HISTORICAL_CHUNK_SPAN))
+    ? Math.max(1, Number(process.env.HISTORICAL_CHUNK_SPAN))
+    : HISTORICAL_BATCH_SIZE
+);
 
 async function ensureArtifactsDir() {
   await fsp.mkdir(ART_DIR, { recursive: true });
@@ -102,7 +142,7 @@ async function writeChunkCache(label, payload = {}) {
     completed_at: new Date().toISOString(),
     ...payload
   };
-  await fsp.writeFile(chunkMetadataPath(label), JSON.stringify(record, null, 2));
+  await fsp.writeFile(chunkMetadataPath(label), JSON.stringify(record, null, JSON_SPACE));
   await fsp.writeFile(chunkDonePath(label), `${record.completed_at}\n`);
   return record;
 }
@@ -138,7 +178,7 @@ async function writeSeasonCache({ season, weeks }) {
     revision: CURRENT_BOOTSTRAP_REVISION,
     updated_at: new Date().toISOString()
   };
-  await fsp.writeFile(seasonMetadataPath(season), JSON.stringify(record, null, 2));
+  await fsp.writeFile(seasonMetadataPath(season), JSON.stringify(record, null, JSON_SPACE));
   await fsp.writeFile(seasonDonePath(season), `${record.updated_at}\n`);
   return record;
 }
@@ -161,7 +201,7 @@ function normaliseSeason(value) {
 
 function chunkSeasonList(seasons, size = DEFAULT_CHUNK_SPAN) {
   if (!Array.isArray(seasons) || !seasons.length) return [];
-  const chunkSize = Math.max(1, Math.floor(size));
+  const chunkSize = Math.max(1, Math.min(MAX_SEASONS_PER_CHUNK, Math.floor(size)));
   const sorted = seasons
     .map(normaliseSeason)
     .filter((season) => season !== null)
@@ -201,7 +241,8 @@ async function getSeasonDB(season) {
 }
 
 function createLimiter(maxConcurrent) {
-  const limit = Number.isFinite(maxConcurrent) && maxConcurrent > 0 ? Math.floor(maxConcurrent) : 1;
+  const requested = Number.isFinite(maxConcurrent) && maxConcurrent > 0 ? Math.floor(maxConcurrent) : 1;
+  const limit = Math.max(1, Math.min(MAX_WORKERS, requested));
   let active = 0;
   const queue = [];
 
@@ -305,6 +346,23 @@ function weekArtifactsExist(season, week) {
   return HISTORICAL_ARTIFACT_PREFIXES.every((prefix) => existsSync(artifactPath(prefix, season, week)));
 }
 
+function ensureStatusDir() {
+  fs.mkdirSync(STATUS_DIR, { recursive: true });
+}
+
+function weekStatusPath(season, week) {
+  return path.join(STATUS_DIR, `${season}-W${String(week).padStart(2, "0")}.done`);
+}
+
+function weekStatusExists(season, week) {
+  return existsSync(weekStatusPath(season, week));
+}
+
+function markWeekStatus(season, week) {
+  ensureStatusDir();
+  fs.writeFileSync(weekStatusPath(season, week), new Date().toISOString());
+}
+
 function envFlag(name) {
   const value = process.env[name];
   if (value == null) return false;
@@ -322,12 +380,19 @@ function shouldRewriteHistorical() {
   return keys.some((key) => envFlag(key));
 }
 
-const FAST_MODE = envFlag("CI_FAST") || /^true$/i.test(String(process.env.CI ?? ""));
-const DATA_FETCH_CONCURRENCY = Number.isFinite(Number(process.env.DATA_FETCH_CONCURRENCY))
-  ? Math.max(1, Number(process.env.DATA_FETCH_CONCURRENCY))
-  : FAST_MODE
-    ? 4
-    : 6;
+const FAST_MODE = CI_FAST || /^true$/i.test(String(process.env.CI ?? ""));
+const DEFAULT_FETCH_CONCURRENCY = CI_FAST ? 2 : 4;
+const DATA_FETCH_CONCURRENCY = Math.max(
+  1,
+  Math.min(
+    MAX_WORKERS,
+    Number.isFinite(Number(process.env.DATA_FETCH_CONCURRENCY))
+      ? Math.max(1, Number(process.env.DATA_FETCH_CONCURRENCY))
+      : DEFAULT_FETCH_CONCURRENCY
+  )
+);
+const SEASON_BUILD_CONCURRENCY = Math.max(1, Math.min(MAX_WORKERS, CI_FAST ? 2 : 4));
+const WEEK_TASK_CONCURRENCY = Math.max(1, Math.min(MAX_WORKERS, CI_FAST ? 2 : 4));
 
 function loadModelParamsFile() {
   try {
@@ -359,7 +424,7 @@ async function persistModelParams(updates = {}) {
   const current = loadModelParamsFile();
   const merged = deepMerge(current, updates);
   try {
-    await fsp.writeFile(MODEL_PARAMS_PATH, JSON.stringify(merged, null, 2));
+  await fsp.writeFile(MODEL_PARAMS_PATH, JSON.stringify(merged, null, JSON_SPACE));
   } catch (err) {
     console.warn(`[train] unable to persist model params: ${err?.message || err}`);
   }
@@ -565,6 +630,17 @@ function laplaceAlpha(n) {
   return Math.max(2, Math.round(10 - 2 * approxWeeks));
 }
 
+function computeFeatureHash(features, extra = {}) {
+  const payload = {
+    version: 1,
+    features: Array.isArray(features) ? [...features] : [],
+    extra
+  };
+  const hash = crypto.createHash("sha1");
+  hash.update(JSON.stringify(payload));
+  return hash.digest("hex");
+}
+
 function kfoldIndices(n, k) {
   if (n <= 1) return [[...Array(n).keys()]];
   const folds = Array.from({ length: k }, () => []);
@@ -580,7 +656,7 @@ const BT_LR_OPTIONS = [1e-3, 2.5e-3, 5e-3, 1e-2];
 const BT_L2_OPTIONS = [1e-5, 5e-5, 1e-4, 1e-3];
 
 async function tuneAnnHyperparams(trainStd, labels, folds, options = {}) {
-  if (FAST_MODE) return null;
+  if (CI_FAST) return null;
   if (!Array.isArray(folds) || !folds.length || !trainStd?.length) return null;
   const seeds = Math.max(2, Math.min(options.annSeeds ?? 5, 5));
   let best = null;
@@ -632,7 +708,7 @@ async function tuneAnnHyperparams(trainStd, labels, folds, options = {}) {
 }
 
 async function tuneBTHyperparams(btTrainRows, folds, baseSteps) {
-  if (FAST_MODE) return null;
+  if (CI_FAST) return null;
   if (!Array.isArray(folds) || !folds.length || !btTrainRows?.length) return null;
   let best = null;
   for (const lr of BT_LR_OPTIONS) {
@@ -667,10 +743,11 @@ async function tuneBTHyperparams(btTrainRows, folds, baseSteps) {
 }
 
 function enumerateWeights(step = 0.05) {
+  const stepSize = Math.max(step, ANN_CONFIG.weightStep ?? step);
   const weights = [];
-  for (let wl = 0; wl <= 1; wl += step) {
-    for (let wt = 0; wt <= 1 - wl; wt += step) {
-      for (let wb = 0; wb <= 1 - wl - wt; wb += step) {
+  for (let wl = 0; wl <= 1; wl += stepSize) {
+    for (let wt = 0; wt <= 1 - wl; wt += stepSize) {
+      for (let wb = 0; wb <= 1 - wl - wt; wb += stepSize) {
         const wa = 1 - wl - wt - wb;
         if (wa < -1e-9) continue;
         weights.push({ logistic: wl, tree: wt, bt: wb, ann: wa });
@@ -1193,6 +1270,26 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const btTrainRows = trainGames.map((g) => g.bt);
   const testRows = testGames.map((g) => g.row);
   const btTestRows = testGames.map((g) => g.bt);
+
+  const featureHash = computeFeatureHash(FEATS_ENR, {
+    trainCount: trainRowsRaw.length,
+    testCount: testRowsRaw.length
+  });
+  const retrainRequired = await shouldRetrain({
+    season: resolvedSeason,
+    week: resolvedWeek,
+    featureHash
+  });
+  if (!retrainRequired) {
+    return {
+      season: resolvedSeason,
+      week: resolvedWeek,
+      featureHash,
+      schedules,
+      skipped: true
+    };
+  }
+
   const leagueMeans = computeLeagueMeans(trainRows);
 
   const labels = trainRows.map((r) => Number(r.win));
@@ -1207,7 +1304,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   let oofTree = [];
   if (nTrain >= 2) {
     const baseK = Math.min(5, Math.max(2, Math.floor(nTrain / 6)));
-    const k = FAST_MODE ? Math.min(3, baseK) : baseK;
+    const k = Math.min(baseK, ANN_CONFIG.kfold ?? baseK);
     folds = kfoldIndices(nTrain, k);
     oofLogit = new Array(nTrain).fill(0.5);
     oofTree = new Array(nTrain).fill(0.5);
@@ -1255,7 +1352,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const modelParamsFile = loadModelParamsFile();
   const annEpochFallback =
     options.annMaxEpochs ?? modelParamsFile?.ann?.maxEpochs ?? Number(process.env.ANN_MAX_EPOCHS ?? 250);
-  const annTuning = FAST_MODE
+  const annTuning = CI_FAST
     ? null
     : await tuneAnnHyperparams(trainStd, labels, folds, {
         annSeeds: options.annCvSeeds ?? options.annSeeds,
@@ -1263,17 +1360,27 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
         annL2: options.annL2,
         annArchitecture: options.annArchitecture
       });
-  const tunedAnnEpochs = FAST_MODE
-    ? Math.min(annEpochFallback, Number(process.env.CI_FAST_ANN_EPOCHS ?? 120))
-    : annTuning?.epochs ?? annEpochFallback;
-  const tunedAnnDropout = FAST_MODE
-    ? options.annDropout ?? modelParamsFile?.ann?.dropout ?? 0.3
-    : annTuning?.dropout ?? options.annDropout ?? modelParamsFile?.ann?.dropout ?? 0.3;
+  const tunedAnnEpochs = annTuning?.epochs ?? annEpochFallback;
+  const tunedAnnDropout =
+    annTuning?.dropout ?? options.annDropout ?? modelParamsFile?.ann?.dropout ?? 0.3;
+
+  const annMaxEpochs = Math.min(tunedAnnEpochs, ANN_CONFIG.maxEpochs ?? tunedAnnEpochs);
+  const annSeedsConfigured = options.annSeeds ?? ANN_CONFIG.seeds ?? 5;
+  const annSeeds = CI_FAST ? ANN_CONFIG.seeds : annSeedsConfigured;
+  const annCvSeeds = CI_FAST
+    ? ANN_CONFIG.cvSeeds
+    : Math.max(ANN_CONFIG.cvSeeds ?? 3, Math.min(annSeeds, options.annCvSeeds ?? ANN_CONFIG.cvSeeds ?? 3));
+  const annPatience = ANN_CONFIG.patience ?? (CI_FAST ? 3 : 10);
+  const annFullPatience = CI_FAST
+    ? ANN_CONFIG.patience
+    : Math.max(ANN_CONFIG.patience ?? 10, 12);
+  const annBatchSize = options.annBatchSize ?? modelParamsFile?.ann?.batchSize ?? 32;
+  const annL2 = options.annL2 ?? 1e-4;
 
   const btStepsConfigured = Number(
     process.env.BT_GD_STEPS ?? modelParamsFile?.bt?.gd?.steps ?? 2000
   );
-  const btStepsBase = FAST_MODE
+  const btStepsBase = CI_FAST
     ? Math.min(btStepsConfigured, Number(process.env.CI_FAST_BT_STEPS ?? 1200))
     : btStepsConfigured;
   const btTuning = await tuneBTHyperparams(btTrainRows, folds, btStepsBase);
@@ -1281,16 +1388,6 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const tunedBtL2 = btTuning?.l2 ?? options.btL2 ?? modelParamsFile?.bt?.gd?.l2 ?? 1e-4;
 
   // --- BEGIN: robust ANN OOF ---
-  const annSeedsConfigured = options.annSeeds ?? Number(process.env.ANN_SEEDS ?? 5); // committee size
-  const annSeeds = FAST_MODE
-    ? Math.min(annSeedsConfigured, Number(process.env.CI_FAST_ANN_SEEDS ?? 3))
-    : annSeedsConfigured;
-  const annMaxEpochs = FAST_MODE
-    ? Math.min(tunedAnnEpochs, Number(process.env.CI_FAST_ANN_EPOCHS ?? tunedAnnEpochs))
-    : tunedAnnEpochs;
-  const annCvSeeds = FAST_MODE
-    ? Math.max(2, Math.min(annSeeds, options.annCvSeeds ?? 3))
-    : Math.max(3, Math.min(annSeeds, options.annCvSeeds ?? 5));
   const annOOF = new Array(nTrain).fill(0.5);
 
   if (nTrain >= 2) {
@@ -1311,9 +1408,12 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
         seeds: annCvSeeds,
         maxEpochs: Math.min(annMaxEpochs, options.annCvMaxEpochs ?? annMaxEpochs),
         lr: 1e-3,
-        patience: 10,
+        patience: annPatience,
         dropout: tunedAnnDropout,
-        timeLimitMs: options.annCvTimeLimit ?? 25000
+        batchSize: annBatchSize,
+        l2: annL2,
+        timeLimitMs: CI_FAST ? 12000 : options.annCvTimeLimit ?? 25000,
+        architecture: options.annArchitecture
       });
       const preds = predictANNCommittee(annModel, XvaS);
       for (let j = 0; j < iva.length; j++) annOOF[iva[j]] = safeProb(preds[j]);
@@ -1342,8 +1442,12 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     }
   }
 
-  const weightsGrid = enumerateWeights(options.weightStep ?? 0.05);
+  const weightStep = options.weightStep ?? ANN_CONFIG.weightStep ?? 0.05;
+  const weightsGrid = enumerateWeights(weightStep);
   const metrics = [];
+  const gridTopLimit = Number.isFinite(ANN_CONFIG.gridTopN)
+    ? Math.max(1, ANN_CONFIG.gridTopN)
+    : Number.POSITIVE_INFINITY;
   for (const w of weightsGrid) {
     const wLog = toFiniteNumber(w.logistic, 0);
     const wTree = toFiniteNumber(w.tree, 0);
@@ -1358,9 +1462,16 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
           wAnn * safeProb(annOOF[i])
       )
       .map(safeProb);
-    metrics.push({ weights: w, loss: logLoss(labels, blend) ?? Infinity });
+    const entry = { weights: w, loss: logLoss(labels, blend) ?? Infinity };
+    if (gridTopLimit !== Number.POSITIVE_INFINITY) {
+      metrics.push(entry);
+      metrics.sort((a, b) => a.loss - b.loss);
+      if (metrics.length > gridTopLimit) metrics.length = gridTopLimit;
+    } else {
+      metrics.push(entry);
+    }
   }
-  metrics.sort((a, b) => a.loss - b.loss);
+  if (gridTopLimit === Number.POSITIVE_INFINITY) metrics.sort((a, b) => a.loss - b.loss);
   const bestWeights = metrics[0]?.weights ?? defaultWeights();
   const clampedWeights = clampWeights(bestWeights, weeksSeen || 1);
   const oofBlendRaw = labels.map((_, i) =>
@@ -1386,12 +1497,15 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const leafStatsFull = buildLeafFreq(cartFull, trainStd, labels, laplaceAlpha(trainStd.length));
   // --- BEGIN: robust ANN full fit ---
   const annModelFull = trainANNCommittee(trainStd, labels, {
-    seeds: options.annSeeds ?? Number(process.env.ANN_SEEDS ?? 5),
+    seeds: annSeeds,
     maxEpochs: annMaxEpochs,
     lr: 1e-3,
-    patience: 12,
+    patience: annFullPatience,
     dropout: tunedAnnDropout,
-    timeLimitMs: options.annTimeLimit ?? 70000
+    batchSize: annBatchSize,
+    l2: annL2,
+    timeLimitMs: CI_FAST ? 20000 : options.annTimeLimit ?? 70000,
+    architecture: options.annArchitecture
   });
   // --- END: robust ANN full fit ---
   const btModelFull = trainBTModel(btTrainRows, {
@@ -1628,6 +1742,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     season: resolvedSeason,
     week: resolvedWeek,
     generated_at: new Date().toISOString(),
+    feature_hash: featureHash,
     logistic: {
       weights: logitModelFull.w,
       bias: logitModelFull.b,
@@ -1687,7 +1802,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     modelSummary,
     diagnostics,
     btDebug,
-    schedules
+    schedules,
+    featureHash
   };
 }
 
@@ -1695,14 +1811,17 @@ export async function writeArtifacts(result) {
   const stamp = `${result.season}_W${String(result.week).padStart(2, "0")}`;
   await ensureArtifactsDir();
   validateArtifact("predictions", result.predictions);
-  await fsp.writeFile(`${ART_DIR}/predictions_${stamp}.json`, JSON.stringify(result.predictions, null, 2));
+  await fsp.writeFile(
+    `${ART_DIR}/predictions_${stamp}.json`,
+    JSON.stringify(result.predictions, null, JSON_SPACE)
+  );
   // 1) Build & write context pack
   const context = Array.isArray(result.context)
     ? result.context
     : await buildContextForWeek(result.season, result.week);
   await fs.promises.writeFile(
     `${ART_DIR}/context_${result.season}_W${String(result.week).padStart(2, "0")}.json`,
-    JSON.stringify(context, null, 2)
+    JSON.stringify(context, null, JSON_SPACE)
   );
 
   // 2) Compute & write explanation scorecards
@@ -1716,11 +1835,17 @@ export async function writeArtifacts(result) {
     context
   });
   validateArtifact("model", result.modelSummary);
-  await fsp.writeFile(`${ART_DIR}/model_${stamp}.json`, JSON.stringify(result.modelSummary, null, 2));
+  await fsp.writeFile(`${ART_DIR}/model_${stamp}.json`, JSON.stringify(result.modelSummary, null, JSON_SPACE));
   validateArtifact("diagnostics", result.diagnostics);
-  await fsp.writeFile(`${ART_DIR}/diagnostics_${stamp}.json`, JSON.stringify(result.diagnostics, null, 2));
+  await fsp.writeFile(
+    `${ART_DIR}/diagnostics_${stamp}.json`,
+    JSON.stringify(result.diagnostics, null, JSON_SPACE)
+  );
   validateArtifact("bt_features", result.btDebug);
-  await fsp.writeFile(`${ART_DIR}/bt_features_${stamp}.json`, JSON.stringify(result.btDebug, null, 2));
+  await fsp.writeFile(
+    `${ART_DIR}/bt_features_${stamp}.json`,
+    JSON.stringify(result.btDebug, null, JSON_SPACE)
+  );
 }
 
 export async function updateHistoricalArtifacts({ season, schedules }) {
@@ -1869,7 +1994,7 @@ export async function updateHistoricalArtifacts({ season, schedules }) {
     }
 
     validateArtifact("outcomes", outcomes);
-    await fsp.writeFile(outcomesPath, JSON.stringify(outcomes, null, 2));
+    await fsp.writeFile(outcomesPath, JSON.stringify(outcomes, null, JSON_SPACE));
 
     const perModel = {
       logistic: metricBlock(labels, probBuckets.logistic),
@@ -1887,7 +2012,7 @@ export async function updateHistoricalArtifacts({ season, schedules }) {
     };
 
     validateArtifact("metrics", metricsPayload);
-    await fsp.writeFile(metricsPath, JSON.stringify(metricsPayload, null, 2));
+    await fsp.writeFile(metricsPath, JSON.stringify(metricsPayload, null, JSON_SPACE));
     weeklySummaries.push(metricsPayload);
     latestCompletedWeek = Math.max(latestCompletedWeek, week);
 
@@ -1925,7 +2050,10 @@ export async function updateHistoricalArtifacts({ season, schedules }) {
   };
 
   validateArtifact("metrics", seasonMetrics);
-  await fsp.writeFile(`${ART_DIR}/metrics_${season}.json`, JSON.stringify(seasonMetrics, null, 2));
+  await fsp.writeFile(
+    `${ART_DIR}/metrics_${season}.json`,
+    JSON.stringify(seasonMetrics, null, JSON_SPACE)
+  );
 
   const seasonIndex = {
     season,
@@ -1934,7 +2062,10 @@ export async function updateHistoricalArtifacts({ season, schedules }) {
   };
 
   validateArtifact("season_index", seasonIndex);
-  await fsp.writeFile(`${ART_DIR}/season_index_${season}.json`, JSON.stringify(seasonIndex, null, 2));
+  await fsp.writeFile(
+    `${ART_DIR}/season_index_${season}.json`,
+    JSON.stringify(seasonIndex, null, JSON_SPACE)
+  );
 
   const weeklyGameCounts = weeklySummaries.map((entry) => ({
     week: entry.week,
@@ -1953,7 +2084,10 @@ export async function updateHistoricalArtifacts({ season, schedules }) {
   };
 
   validateArtifact("season_summary", seasonSummary);
-  await fsp.writeFile(`${ART_DIR}/season_summary_${season}.json`, JSON.stringify(seasonSummary, null, 2));
+  await fsp.writeFile(
+    `${ART_DIR}/season_summary_${season}.json`,
+    JSON.stringify(seasonSummary, null, JSON_SPACE)
+  );
 }
 
 async function loadSeasonData(season) {
@@ -2258,7 +2392,7 @@ async function main() {
   const seasonWeekMax = new Map();
   let latestTargetResult = null;
 
-  const loadLimiter = createLimiter(activeSeasons.length > 10 ? 3 : 1);
+  const loadLimiter = createLimiter(SEASON_BUILD_CONCURRENCY);
   const seasonLoadPromises = new Map();
   for (const season of activeSeasons) {
     seasonLoadPromises.set(season, loadLimiter(() => loadSeasonDataCached(season)));
@@ -2267,7 +2401,7 @@ async function main() {
     await Promise.all(seasonLoadPromises.values());
   }
 
-  const weekLimiter = createLimiter(3);
+  const weekLimiter = createLimiter(WEEK_TASK_CONCURRENCY);
 
   for (const resolvedSeason of activeSeasons) {
     logDataCoverage(resolvedSeason);
@@ -2313,11 +2447,23 @@ async function main() {
     }
 
     const trainWeek = async (wk, { isTargetWeek }) => {
+      if (!historicalOverride && weekStatusExists(resolvedSeason, wk)) {
+        console.log(
+          `[train] Season ${resolvedSeason} week ${wk}: completion marker detected – skipping.`
+        );
+        return {
+          season: resolvedSeason,
+          week: wk,
+          schedules: sharedData.schedules,
+          skipped: true
+        };
+      }
       const hasArtifacts = weekArtifactsExist(resolvedSeason, wk);
       if (!historicalOverride && hasArtifacts && !isTargetWeek) {
         console.log(
           `[train] Season ${resolvedSeason} week ${wk}: cached artifacts detected – skipping retrain.`
         );
+        markWeekStatus(resolvedSeason, wk);
         return {
           season: resolvedSeason,
           week: wk,
@@ -2335,8 +2481,10 @@ async function main() {
       }
       if (result?.skipped) {
         console.log(`Skipped ensemble retrain for season ${resolvedSeason} week ${wk}`);
+        markWeekStatus(resolvedSeason, wk);
       } else {
         console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
+        markWeekStatus(resolvedSeason, wk);
       }
       return result;
     };

@@ -123,6 +123,8 @@ jobs:
       - name: Bootstrap training state (if missing)
         run: |
           if [ ! -f artifacts/training_state.json ]; then
+            BATCH_START=${{ matrix.chunk.start }} \
+            BATCH_END=${{ matrix.chunk.end }} \
             npm run bootstrap:state
           fi
       - name: Run chunked historical training ${{ matrix.chunk.label }}

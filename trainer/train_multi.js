@@ -46,6 +46,7 @@ import {
 import { ensureTrainingStateCurrent } from "./bootstrapState.js";
 import { loadLogisticWarmStart, shouldRetrain } from "./modelWarmStart.js";
 import { validateArtifact } from "./schemaValidator.js";
+import { promote } from "./promotePreviousSeason.js";
 import {
   buildSeasonCoverageFromRaw,
   mergeSeasonCoverage,
@@ -500,6 +501,17 @@ function artifactPath(prefix, season, week) {
 
 function weekArtifactsExist(season, week) {
   return HISTORICAL_ARTIFACT_PREFIXES.every((prefix) => existsSync(artifactPath(prefix, season, week)));
+}
+
+async function modelsForSeasonExist(season) {
+  const seasonDir = path.join(ART_DIR, "models", String(season));
+  try {
+    const entries = await fsp.readdir(seasonDir, { withFileTypes: true });
+    return entries.some((entry) => entry.isFile() || entry.isDirectory());
+  } catch (err) {
+    if (err?.code === "ENOENT") return false;
+    throw err;
+  }
 }
 
 function ensureStatusDir() {
@@ -2413,6 +2425,7 @@ async function main() {
   const targetSeason = Number(process.env.SEASON ?? new Date().getFullYear());
   let weekEnv = Number(process.env.WEEK ?? 6);
   if (!Number.isFinite(weekEnv) || weekEnv < 1) weekEnv = 1;
+  const targetWeek = Math.max(1, Math.floor(weekEnv));
   const historicalUpperBound = Number.isFinite(targetSeason)
     ? Math.max(targetSeason - 1, MIN_SEASON)
     : null;
@@ -2436,6 +2449,27 @@ async function main() {
     requiredThroughSeason: historicalUpperBound
   });
   const allowHistoricalRewrite = historicalOverride || bootstrapRequired;
+
+  const previousSeason = Number.isFinite(targetSeason) ? targetSeason - 1 : null;
+  const shouldPromoteSeed =
+    Number.isFinite(targetSeason) &&
+    Number.isFinite(previousSeason) &&
+    targetWeek === 1 &&
+    !historicalOverride;
+
+  if (shouldPromoteSeed) {
+    const hasModels = await modelsForSeasonExist(targetSeason);
+    if (!hasModels) {
+      const promoted = await promote({ prevSeason: previousSeason, nextSeason: targetSeason });
+      if (!promoted) {
+        throw new Error(
+          `[train] Unable to promote final ensemble from season ${previousSeason}. Expected artifacts/models/${previousSeason}/final to exist. Restore prior-season finals before running Week 1.`
+        );
+      }
+      console.log(`[train] Promoted final ensemble from ${previousSeason} → ${targetSeason}/week-00.`);
+      state = loadTrainingState();
+    }
+  }
 
   const strictBatch = Boolean(CLI_ARGS.strictBatch);
   const cliBatchStart = CLI_ARGS.start;
@@ -2490,8 +2524,8 @@ async function main() {
         saveTrainingState(state);
         stateCoverage = merged;
       } else {
-        console.warn(
-          `[train] Unable to derive raw coverage for explicit window ${explicitWindow.start}–${explicitWindow.end}; proceeding with available state.`
+        throw new Error(
+          `[train] Unable to derive raw coverage for explicit window ${explicitWindow.start}–${explicitWindow.end}. Ensure raw schedules/outcomes are available for the requested seasons.`
         );
       }
     }
@@ -2499,6 +2533,9 @@ async function main() {
       .map((entry) => Number.parseInt(entry?.season, 10))
       .filter((season) => Number.isFinite(season));
     const coverageSet = new Set(uniqueSeasons);
+    for (let season = explicitWindow.start; season <= explicitWindow.end; season += 1) {
+      coverageSet.add(season);
+    }
     for (const season of coverageSeasons) {
       if (season >= explicitWindow.start && season <= explicitWindow.end && !coverageSet.has(season)) {
         coverageSet.add(season);
@@ -2531,11 +2568,9 @@ async function main() {
     }
     if (chunkSelection.start !== explicitWindow.start || chunkSelection.end !== explicitWindow.end) {
       const attempted = `${chunkSelection.start}–${chunkSelection.end}`;
-      const message = `Explicit batch window ${explicitWindow.start}–${explicitWindow.end} provided but resolver attempted ${attempted}. Refusing to override.`;
-      if (strictBatch) {
-        throw new Error(message);
-      }
-      console.warn(`[train] ${message}`);
+      throw new Error(
+        `Explicit batch window ${explicitWindow.start}–${explicitWindow.end} provided but resolver attempted ${attempted}. Refusing to override.`
+      );
     }
   }
 

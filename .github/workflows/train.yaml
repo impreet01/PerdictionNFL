@@ -202,15 +202,10 @@ jobs:
           fi
       - name: Install deps
         run: npm ci || npm install --no-audit --no-fund
-      - name: Bootstrap training state (if missing)
-        run: |
-          if [ ! -f artifacts/training_state.json ]; then
-            npm run bootstrap:state
-          fi
       - name: Verify cached training state
         run: |
           if [ ! -f artifacts/training_state.json ]; then
-            echo "::error::artifacts/training_state.json is missing. Use npm run bootstrap:state or restore the cached bootstrap before running the trainer to avoid replaying every season."
+            echo "::error::artifacts/training_state.json is missing. Restore the cached bootstrap artifacts before running the trainer to avoid replaying historical seasons."
             exit 1
           fi
       - name: Guard against historical override flags

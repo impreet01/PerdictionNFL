@@ -178,18 +178,22 @@ async function main() {
 
   const rawCoverage = await resolveRawCoverage();
   let modelSeasons = mergeSeasonCoverage(rawCoverage, artifactSeasons);
-  const bootstrapSource = artifactSeasons.length ? "artifact-scan" : "raw-bootstrap";
+  const bootstrapSource = artifactSeasons.length ? "artifact-scan" : "cold-start";
 
   if (!artifactSeasons.length && !rawCoverage.length) {
-    console.warn(
-      `[bootstrap] No prediction artifacts found and unable to derive raw coverage; training_state.json will remain unchanged.`
+    const explicitStart = normaliseSeason(process.env.BATCH_START ?? CLI_ARGS.start);
+    const explicitEnd = normaliseSeason(process.env.BATCH_END ?? CLI_ARGS.end);
+    const rangeLabel =
+      explicitStart != null && explicitEnd != null
+        ? `${explicitStart}–${explicitEnd}`
+        : "available season range";
+    throw new Error(
+      `[bootstrap] Unable to derive raw coverage for ${rangeLabel}. Ensure schedules/outcomes datasets are available before bootstrapping training state.`
     );
-    saveTrainingState(state);
-    return;
   }
 
   if (!artifactSeasons.length) {
-    console.log("[bootstrap] Building training_state from raw sources (no predictions present).");
+    console.log("[bootstrap] Building training_state from raw sources (cold start).");
   }
 
   if (stateExisted) {

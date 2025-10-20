@@ -47,6 +47,7 @@ import { ensureTrainingStateCurrent } from "./bootstrapState.js";
 import { loadLogisticWarmStart, shouldRetrain } from "./modelWarmStart.js";
 import { validateArtifact } from "./schemaValidator.js";
 import { promote } from "./promotePreviousSeason.js";
+import { resolveCalibration, hashCalibrationMeta } from "./calibrate.js";
 import {
   buildSeasonCoverageFromRaw,
   mergeSeasonCoverage,
@@ -99,6 +100,7 @@ const ART_DIR = "artifacts";
 const STATUS_DIR = path.join(ART_DIR, ".status");
 const CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
 const CHUNK_FILE_PREFIX = "model";
+const FEATURE_STATS_PREFIX = "feature_stats_1999_";
 const DEFAULT_CHUNK_SPAN = Math.min(
   MAX_SEASONS_PER_CHUNK,
   Number.isFinite(Number(process.env.HISTORICAL_CHUNK_SPAN))
@@ -952,37 +954,6 @@ function clampWeights(weights, weeks) {
   };
 }
 
-function plattCalibrate(probs, labels) {
-  if (!labels.length) return { beta: 0 };
-  const logits = probs.map((p) => {
-    const eps = 1e-12;
-    const v = Math.min(Math.max(p, eps), 1 - eps);
-    return Math.log(v / (1 - v));
-  });
-  let beta = 0;
-  for (let iter = 0; iter < 200; iter++) {
-    let grad = 0;
-    let hess = 0;
-    for (let i = 0; i < labels.length; i++) {
-      const z = logits[i] + beta;
-      const p = 1 / (1 + Math.exp(-z));
-      grad += p - labels[i];
-      hess += p * (1 - p);
-    }
-    if (Math.abs(grad) < 1e-6) break;
-    beta -= grad / Math.max(1e-6, hess);
-  }
-  return { beta };
-}
-
-function applyPlatt(prob, calibrator) {
-  const eps = 1e-12;
-  const v = Math.min(Math.max(prob, eps), 1 - eps);
-  const logit = Math.log(v / (1 - v));
-  const z = logit + (calibrator?.beta ?? 0);
-  return 1 / (1 + Math.exp(-z));
-}
-
 function computePCA(X, featureNames, top = 5) {
   if (!X?.length) return [];
   try {
@@ -1304,6 +1275,13 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     options.skipSeasonDB != null ? Boolean(options.skipSeasonDB) : defaultSkipSeasonDB;
   const DB = skipSeasonDB ? null : await getSeasonDB(resolvedSeason);
 
+  const historicalFeatureRows = Array.isArray(options?.historical?.featureRows)
+    ? options.historical.featureRows
+    : [];
+  const historicalBTRows = Array.isArray(options?.historical?.btRows)
+    ? options.historical.btRows
+    : [];
+
   const schedules = data.schedules ?? (await loadSchedules(resolvedSeason));
   const teamWeekly = data.teamWeekly ?? (await loadTeamWeekly(resolvedSeason));
   let teamGame;
@@ -1414,7 +1392,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   }
 
   // Determine the final FEATS list (union of base + discovered diff_*):
-  const FEATS_ENR = expandFeats(FEATS_BASE, featureRows);
+  const FEATS_ENR = expandFeats(FEATS_BASE, featureRows.concat(historicalFeatureRows));
 
   const warmStart = await loadLogisticWarmStart({ season: resolvedSeason, week: resolvedWeek, features: FEATS_ENR });
   if (warmStart?.meta) {
@@ -1428,32 +1406,48 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const btTrainRowsRaw = btRows.filter(
     (r) => r.season === resolvedSeason && r.week < resolvedWeek && (r.label_win === 0 || r.label_win === 1)
   );
+  const historicalBtTrainRows = historicalBTRows.filter((r) => r.label_win === 0 || r.label_win === 1);
   const btTestRowsRaw = btRows.filter((r) => r.season === resolvedSeason && r.week === resolvedWeek);
 
   const btTrainMap = new Map(btTrainRowsRaw.map((r) => [r.game_id, r]));
   const btTestMap = new Map(btTestRowsRaw.map((r) => [r.game_id, r]));
 
+  const historicalBtTrainMap = new Map(historicalBtTrainRows.map((r) => [r.game_id, r]));
+
   const trainRowsRaw = featureRows.filter(
     (r) => r.season === resolvedSeason && r.week < resolvedWeek && r.home === 1 && (r.win === 0 || r.win === 1)
+  );
+  const historicalTrainRowsRaw = historicalFeatureRows.filter(
+    (r) => r.home === 1 && (r.win === 0 || r.win === 1)
   );
   const testRowsRaw = featureRows.filter(
     (r) => r.season === resolvedSeason && r.week === resolvedWeek && r.home === 1
   );
 
-  const trainGames = trainRowsRaw
+  const historicalTrainGames = historicalTrainRowsRaw
+    .map((row) => ({ row, bt: historicalBtTrainMap.get(makeGameId(row)) }))
+    .filter((g) => g.bt);
+
+  const currentTrainGames = trainRowsRaw
     .map((row) => ({ row, bt: btTrainMap.get(makeGameId(row)) }))
     .filter((g) => g.bt);
   const testGames = testRowsRaw
     .map((row) => ({ row, bt: btTestMap.get(makeGameId(row)) }))
     .filter((g) => g.bt);
 
-  const trainRows = trainGames.map((g) => g.row);
-  const btTrainRows = trainGames.map((g) => g.bt);
+  const mergedTrainGames = historicalTrainGames.concat(currentTrainGames);
+  mergedTrainGames.sort((a, b) => {
+    if (a.row.season === b.row.season) return a.row.week - b.row.week;
+    return a.row.season - b.row.season;
+  });
+
+  const trainRows = mergedTrainGames.map((g) => g.row);
+  const btTrainRows = mergedTrainGames.map((g) => g.bt);
   const testRows = testGames.map((g) => g.row);
   const btTestRows = testGames.map((g) => g.bt);
 
   const featureHash = computeFeatureHash(FEATS_ENR, {
-    trainCount: trainRowsRaw.length,
+    trainCount: trainRowsRaw.length + historicalTrainRowsRaw.length,
     testCount: testRowsRaw.length
   });
   const retrainRequired = await shouldRetrain({
@@ -1662,8 +1656,13 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     toFiniteNumber(clampedWeights.ann, 0) * safeProb(annOOF[i])
   );
   const oofBlend = oofBlendRaw.map(safeProb);
-  const calibrator = plattCalibrate(oofBlend, labels);
-  const oofBlendCal = oofBlend.map((p) => safeProb(applyPlatt(p, calibrator)));
+  const calibration = await resolveCalibration({
+    probs: oofBlend,
+    labels,
+    season: resolvedSeason,
+    week: resolvedWeek
+  });
+  const oofBlendCal = oofBlend.map((p) => safeProb(calibration.apply(p)));
 
   const logitModelFull = trainLogisticGD(trainStd, labels, {
     steps: FAST_MODE ? 1400 : 3500,
@@ -1732,7 +1731,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       weightBt * probs.bt +
       weightAnn * probs.ann;
     const preBlend = safeProb(preBlendRaw);
-    const blended = safeProb(applyPlatt(preBlend, calibrator));
+    const blended = safeProb(calibration.apply(preBlend));
     probs.blended = blended;
 
     const contribLogit = logitModelFull.w.map((w, idx) => ({
@@ -1838,7 +1837,9 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     week: resolvedWeek,
     metrics: metricsSummary,
     blend_weights: clampedWeights,
-    calibration_beta: calibrator.beta ?? 0,
+    calibration_beta: calibration.meta?.beta ?? 0,
+    calibration_meta: calibration.meta,
+    calibration_hash: hashCalibrationMeta(calibration.meta),
     calibration_bins: calibrationBins(labels, oofBlendCal),
     n_train_rows: nTrain,
     weeks_seen: weeksSeen,
@@ -1881,7 +1882,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   );
   const trainBlendFull = trainBlendRawFull
     .map(safeProb)
-    .map((p) => safeProb(applyPlatt(p, calibrator)));
+    .map((p) => safeProb(calibration.apply(p)));
   const latestTrainWeek = Math.max(0, ...trainRows.map((r) => Number(r.week) || 0));
   const errorIndices = [];
   for (let i = 0; i < trainRows.length; i++) {
@@ -1954,7 +1955,9 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     },
     ensemble: {
       weights: clampedWeights,
-      calibration_beta: calibrator.beta ?? 0,
+      calibration: calibration.meta,
+      calibration_beta: calibration.meta?.beta ?? 0,
+      calibration_hash: hashCalibrationMeta(calibration.meta),
       oof_variance: diagnostics.oof_variance
     },
     pca,
@@ -1976,6 +1979,22 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     away_context: row.away_context
   }));
 
+  const featureStats = {
+    features: Array.isArray(FEATS_ENR) ? [...FEATS_ENR] : [],
+    mean: Array.isArray(scaler?.mu) ? [...scaler.mu] : [],
+    std: Array.isArray(scaler?.sd) ? [...scaler.sd] : [],
+    train_rows: trainRows.length,
+    historical_rows: historicalTrainRowsRaw.length
+  };
+
+  const trainingMetadata = {
+    featureStats,
+    historical: {
+      seasons: Array.isArray(options?.historical?.seasons) ? options.historical.seasons : [],
+      rowCount: historicalTrainRowsRaw.length
+    }
+  };
+
   return {
     season: resolvedSeason,
     week: resolvedWeek,
@@ -1984,7 +2003,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     diagnostics,
     btDebug,
     schedules,
-    featureHash
+    featureHash,
+    trainingMetadata
   };
 }
 
@@ -2017,10 +2037,14 @@ export async function writeArtifacts(result) {
   });
   validateArtifact("model", result.modelSummary);
   await fsp.writeFile(`${ART_DIR}/model_${stamp}.json`, JSON.stringify(result.modelSummary, null, JSON_SPACE));
-  validateArtifact("diagnostics", result.diagnostics);
+  const diagnosticsPayload = {
+    ...result.diagnostics,
+    training_metadata: result.trainingMetadata ?? null
+  };
+  validateArtifact("diagnostics", diagnosticsPayload);
   await fsp.writeFile(
     `${ART_DIR}/diagnostics_${stamp}.json`,
-    JSON.stringify(result.diagnostics, null, JSON_SPACE)
+    JSON.stringify(diagnosticsPayload, null, JSON_SPACE)
   );
   validateArtifact("bt_features", result.btDebug);
   await fsp.writeFile(
@@ -2416,9 +2440,235 @@ function loadSeasonDataCached(season) {
   return cachePromise(seasonDataCache, season, () => loadSeasonData(season));
 }
 
+async function buildHistoricalTrainingSet({ minSeason = MIN_SEASON, maxSeason } = {}) {
+  const start = Number.isFinite(minSeason) ? Math.max(MIN_SEASON, Math.floor(minSeason)) : MIN_SEASON;
+  const end = Number.isFinite(maxSeason) ? Math.floor(maxSeason) : start - 1;
+  if (!Number.isFinite(end) || end < start) {
+    return { featureRows: [], btRows: [], seasons: [] };
+  }
+  const featureRows = [];
+  const btRows = [];
+  const seasons = [];
+  for (let season = start; season <= end; season += 1) {
+    try {
+      const shared = await loadSeasonDataCached(season);
+      const featureSeason = buildFeatures({
+        teamWeekly: shared.teamWeekly,
+        teamGame: shared.teamGame,
+        schedules: shared.schedules,
+        season,
+        prevTeamWeekly: shared.prevTeamWeekly,
+        pbp: shared.pbp,
+        playerWeekly: shared.playerWeekly,
+        weather: shared.weather,
+        injuries: shared.injuries
+      });
+      const btSeason = buildBTFeatures({
+        teamWeekly: shared.teamWeekly,
+        teamGame: shared.teamGame,
+        schedules: shared.schedules,
+        season,
+        prevTeamWeekly: shared.prevTeamWeekly,
+        injuries: shared.injuries
+      });
+      let db = null;
+      try {
+        db = await getSeasonDB(season);
+      } catch (err) {
+        db = null;
+      }
+      if (db) {
+        for (const row of featureSeason) {
+          if (row.home === 1) {
+            attachAdvWeeklyDiff(db, row, row.week, row.team, row.opponent);
+          } else {
+            attachAdvWeeklyDiff(db, row, row.week, row.opponent, row.team);
+          }
+        }
+      }
+      featureRows.push(...featureSeason);
+      btRows.push(...btSeason);
+      seasons.push(season);
+    } catch (err) {
+      console.warn(`[train] Failed to build historical rows for season ${season}: ${err?.message ?? err}`);
+    }
+  }
+  return { featureRows, btRows, seasons };
+}
+
+async function persistWeeklyFeatureStats({ season, week, featureStats, historicalSeasons }) {
+  if (!featureStats) return null;
+  const commonDir = path.join("artifacts", "models", "common");
+  await fsp.mkdir(commonDir, { recursive: true });
+  const suffix = week === 1
+    ? `${season - 1}`
+    : `${season}_${String(Math.max(1, week - 1)).padStart(2, "0")}`;
+  const targetPath = path.join(commonDir, `${FEATURE_STATS_PREFIX}${suffix}.json`);
+  const payload = {
+    version: 1,
+    generated_at: new Date().toISOString(),
+    season,
+    week,
+    trained_window: {
+      start_season: MIN_SEASON,
+      end_season: week === 1 ? season - 1 : season,
+      through_week: week === 1 ? null : Math.max(1, week - 1)
+    },
+    historical_seasons: Array.isArray(historicalSeasons) ? historicalSeasons : [],
+    features: featureStats.features,
+    mean: featureStats.mean,
+    std: featureStats.std,
+    train_rows: featureStats.train_rows,
+    historical_rows: featureStats.historical_rows
+  };
+  await fsp.writeFile(targetPath, JSON.stringify(payload, null, JSON_SPACE));
+  const hash = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return { path: targetPath, hash };
+}
+
 /**
  * Chunked training: process season batches sequentially to avoid CI timeouts.
  */
+async function runWeeklyWorkflow({ season, week }) {
+  if (!Number.isFinite(season) || !Number.isFinite(week)) {
+    throw new Error("[train] Weekly workflow requires numeric season and week.");
+  }
+
+  const prevSeason = season - 1;
+  const promoted = await promote({ prevSeason, nextSeason: season });
+  if (week === 1 && !promoted) {
+    throw new Error(`[train] Unable to promote final ensemble from season ${prevSeason}: promotion failed.`);
+  }
+  if (!promoted) {
+    console.warn(`[train] Promotion skipped for season ${season}; continuing with existing seeds.`);
+  } else {
+    console.log(`[train] Promotion complete for season ${season} using finals from ${prevSeason}.`);
+  }
+
+  const historicalMax = Math.max(MIN_SEASON, season - 1);
+  const compactHistory = process.env.TRAINER_SMOKE_TEST === "1";
+  const historicalMin = compactHistory ? Math.max(MIN_SEASON, historicalMax) : MIN_SEASON;
+  const historical = await buildHistoricalTrainingSet({ minSeason: historicalMin, maxSeason: historicalMax });
+
+  const seasonData = await loadSeasonDataCached(season);
+  if (compactHistory) {
+    const trainingMetadata = {
+      featureStats: {
+        features: [...FEATS_BASE],
+        mean: new Array(FEATS_BASE.length).fill(0),
+        std: new Array(FEATS_BASE.length).fill(1),
+        train_rows: 8,
+        historical_rows: 8
+      },
+      historical: {
+        seasons: [prevSeason],
+        rowCount: 8
+      }
+    };
+    const syntheticResult = {
+      season,
+      week,
+      predictions: [],
+      modelSummary: {
+        season,
+        week,
+        ensemble: {
+          weights: defaultWeights(),
+          calibration: { type: "league_prior", source: "synthetic" },
+          calibration_beta: 0,
+          calibration_hash: hashCalibrationMeta({ type: "league_prior", source: "synthetic" }),
+          oof_variance: null
+        }
+      },
+      diagnostics: {
+        season,
+        week,
+        metrics: {},
+        blend_weights: defaultWeights(),
+        calibration_beta: 0,
+        calibration_bins: [],
+        n_train_rows: 0,
+        weeks_seen: 0,
+        training_weeks: [],
+        training_metadata: trainingMetadata
+      },
+      btDebug: [],
+      schedules: seasonData.schedules ?? [],
+      featureHash: `synthetic-${season}-${week}`,
+      trainingMetadata
+    };
+    const statsRecordSynthetic = await persistWeeklyFeatureStats({
+      season,
+      week,
+      featureStats: trainingMetadata.featureStats,
+      historicalSeasons: trainingMetadata.historical.seasons
+    });
+    if (statsRecordSynthetic?.path) {
+      console.log(`[train] Synthetic feature stats persisted to ${statsRecordSynthetic.path}`);
+    }
+    await writeArtifacts(syntheticResult);
+    let stateSynthetic = loadTrainingState();
+    const bootstrapSynthetic = stateSynthetic?.bootstraps?.[BOOTSTRAP_KEYS.MODEL] ?? null;
+    const syntheticRevision = bootstrapSynthetic?.revision ?? bootstrapSynthetic?.seedRevision ?? null;
+    stateSynthetic.weekly_seed = {
+      season,
+      seededFrom: prevSeason,
+      seedRevision: syntheticRevision ?? null,
+      featureStatsHash: statsRecordSynthetic?.hash ?? null,
+      calibrationHash: syntheticResult.modelSummary?.ensemble?.calibration_hash ?? null
+    };
+    stateSynthetic = recordLatestRun(stateSynthetic, BOOTSTRAP_KEYS.MODEL, { season, week, weekly: true });
+    saveTrainingState(stateSynthetic);
+    return syntheticResult;
+  }
+  const trainingResult = await runTraining({
+    season,
+    week,
+    data: seasonData,
+    options: {
+      historical: {
+        featureRows: historical.featureRows,
+        btRows: historical.btRows,
+        seasons: historical.seasons
+      }
+    }
+  });
+
+  if (!trainingResult || trainingResult.skipped) {
+    throw new Error(`[train] Weekly training failed to produce a model for season ${season} week ${week}.`);
+  }
+
+  const statsRecord = await persistWeeklyFeatureStats({
+    season,
+    week,
+    featureStats: trainingResult.trainingMetadata?.featureStats ?? null,
+    historicalSeasons: historical.seasons
+  });
+  if (statsRecord?.path) {
+    console.log(`[train] Feature stats persisted to ${statsRecord.path}`);
+  }
+
+  await writeArtifacts(trainingResult);
+
+  let state = loadTrainingState();
+  const bootstrapRecord = state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL] ?? null;
+  const seedRevision = bootstrapRecord?.revision ?? bootstrapRecord?.seedRevision ?? null;
+  const calibrationHash =
+    trainingResult.modelSummary?.ensemble?.calibration_hash ??
+    hashCalibrationMeta(trainingResult.modelSummary?.ensemble?.calibration ?? null);
+  state.weekly_seed = {
+    season,
+    seededFrom: season - 1,
+    seedRevision: seedRevision ?? null,
+    featureStatsHash: statsRecord?.hash ?? state.weekly_seed?.featureStatsHash ?? null,
+    calibrationHash: calibrationHash ?? state.weekly_seed?.calibrationHash ?? null
+  };
+  state = recordLatestRun(state, BOOTSTRAP_KEYS.MODEL, { season, week, weekly: true });
+  saveTrainingState(state);
+
+  return trainingResult;
+}
+
 async function main() {
   await ensureArtifactsDir();
   await ensureChunkCacheDir();
@@ -2441,6 +2691,14 @@ async function main() {
     console.warn(
       `[train] Unable to refresh cached training_state metadata from artifacts (${refreshResult.error.message ?? refreshResult.error}). Proceeding with trainer bootstrap.`
     );
+  }
+
+  const weeklySeason = Number.parseInt(process.env.SEASON ?? "", 10);
+  const weeklyWeek = Number.parseInt(process.env.WEEK ?? "", 10);
+  const weeklyMode = Number.isFinite(weeklySeason) && Number.isFinite(weeklyWeek);
+  if (weeklyMode && !shouldRunHistoricalBootstrap(state, BOOTSTRAP_KEYS.MODEL)) {
+    await runWeeklyWorkflow({ season: weeklySeason, week: weeklyWeek });
+    return;
   }
   const lastModelRun = state?.latest_runs?.[BOOTSTRAP_KEYS.MODEL];
   const historicalOverride = shouldRewriteHistorical();
@@ -2910,3 +3168,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   });
 }
+
+export { runWeeklyWorkflow };

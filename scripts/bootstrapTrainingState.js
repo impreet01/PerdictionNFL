@@ -12,7 +12,8 @@ import { getArtifactsDir, getTrainingStatePath } from "../trainer/bootstrapState
 import {
   buildSeasonCoverageFromRaw,
   discoverSeasonRange,
-  mergeSeasonCoverage
+  mergeSeasonCoverage,
+  MIN_SEASON
 } from "../trainer/stateBuilder.js";
 
 const ARTIFACTS_DIR = getArtifactsDir();
@@ -21,6 +22,10 @@ const STATE_PATH = getTrainingStatePath();
 function normaliseSeason(value) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normaliseWeek(value) {
+  return normaliseSeason(value);
 }
 
 function parseCliArgs(argv = []) {
@@ -150,6 +155,78 @@ function hasCurrentRevision(state, key) {
   return record.revision === CURRENT_BOOTSTRAP_REVISION;
 }
 
+function hasBootstrapBundleRestored() {
+  const bundlePath = path.join(ARTIFACTS_DIR, "historical_bootstrap.tgz");
+  if (fs.existsSync(bundlePath)) return true;
+  const candidates = ["models", "outcomes", "predictions", "chunks"].map((name) =>
+    path.join(ARTIFACTS_DIR, name)
+  );
+  return candidates.some((candidate) => fs.existsSync(candidate));
+}
+
+function serialiseColdStartEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const season = normaliseSeason(entry.season);
+  if (season == null) return null;
+  const weeks = Array.isArray(entry.weeks)
+    ? entry.weeks
+        .map(normaliseWeek)
+        .filter((wk) => wk != null)
+        .sort((a, b) => a - b)
+    : [];
+  if (!weeks.length) return null;
+  return { season, weeks };
+}
+
+async function maybeColdStartWeeklyState({ stateExisted, bootstrapBundlePresent }) {
+  if (stateExisted) return false;
+  if (bootstrapBundlePresent) return false;
+  const targetSeason = normaliseSeason(process.env.SEASON);
+  const targetWeek = normaliseWeek(process.env.WEEK);
+  if (targetSeason == null || targetWeek == null) return false;
+
+  const coverage = await buildSeasonCoverageFromRaw({
+    startSeason: MIN_SEASON,
+    endSeason: targetSeason
+  }).catch(() => []);
+
+  if (!Array.isArray(coverage) || !coverage.length) return false;
+
+  const trimmed = [];
+  for (const entry of coverage) {
+    const serialised = serialiseColdStartEntry(entry);
+    if (!serialised) continue;
+    if (serialised.season > targetSeason) continue;
+    if (serialised.season === targetSeason) {
+      if (targetWeek <= 1) continue;
+      const weeks = serialised.weeks.filter((wk) => wk < targetWeek);
+      if (!weeks.length) continue;
+      trimmed.push({ season: serialised.season, weeks });
+      continue;
+    }
+    trimmed.push(serialised);
+  }
+
+  if (!trimmed.length) return false;
+
+  trimmed.sort((a, b) => a.season - b.season);
+
+  const state = loadTrainingState();
+  markBootstrapCompleted(state, BOOTSTRAP_KEYS.MODEL, {
+    seasons: trimmed,
+    bootstrap_source: "weekly-cold-start"
+  });
+
+  const latestModel = selectLatestRun(trimmed);
+  if (latestModel) {
+    recordLatestRun(state, BOOTSTRAP_KEYS.MODEL, latestModel);
+  }
+
+  saveTrainingState(state);
+  console.log("[bootstrap] Cold-started training_state for weekly run");
+  return true;
+}
+
 async function resolveRawCoverage({
   explicitStart = null,
   explicitEnd = null
@@ -166,6 +243,11 @@ async function resolveRawCoverage({
 async function main() {
   ensureArtifactsDir();
   const stateExisted = fs.existsSync(STATE_PATH);
+  const bootstrapBundlePresent = hasBootstrapBundleRestored();
+
+  if (await maybeColdStartWeeklyState({ stateExisted, bootstrapBundlePresent })) {
+    return;
+  }
 
   let state = loadTrainingState();
 

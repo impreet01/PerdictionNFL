@@ -5,13 +5,13 @@
     "away_team": "KC",
     "season": 2022,
     "week": 22,
-    "forecast": 0.559,
+    "forecast": 0.603,
     "probs": {
-      "logistic": 0.474,
+      "logistic": 0.521,
       "tree": 0.893,
-      "bt": 0.694,
-      "ann": 0.823,
-      "blended": 0.559
+      "bt": 0.696,
+      "ann": 0.803,
+      "blended": 0.603
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -20,33 +20,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.509,
-      "post": 0.559
+      "pre": 0.549,
+      "post": 0.603
     },
     "ci": {
       "bt90": [
-        0.694,
-        0.694
+        0.696,
+        0.696
       ]
     },
-    "natural_language": "PHI vs KC: logistic 47.415%, tree 89.286%, BT 69.424%, ANN 82.322%, blended 55.898%. Key differentials: Turnovers deficit 157.32 (needs attention); Total yards deficit 20.32 (needs attention); Penalty yards deficit 9.58 (favorable).",
+    "natural_language": "PHI vs KC: logistic 52.061%, tree 89.286%, BT 69.581%, ANN 80.334%, blended 60.281%. Key differentials: Turnovers deficit 157.32 (needs attention); Total yards deficit 20.32 (needs attention); Penalty yards deficit 9.58 (favorable).",
     "top_drivers": [
       {
         "feature": "defensive success rate allowed (3wk)",
         "direction": "positive",
-        "magnitude": 4.301360207836701,
+        "magnitude": 4.342455058499413,
         "source": "logit"
       },
       {
         "feature": "elo_pre",
         "direction": "negative",
-        "magnitude": 4.238918571834278,
+        "magnitude": 4.249647121772871,
         "source": "logit"
       },
       {
         "feature": "losses_s2d",
         "direction": "positive",
-        "magnitude": 0.9080507237929317,
+        "magnitude": 0.9110929519218026,
         "source": "logit"
       },
       {
@@ -58,29 +58,29 @@
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.17251970864842742,
+        "magnitude": 0.17260340859445727,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "negative",
-        "magnitude": 0.11639138669466778,
+        "magnitude": 0.1148310632845256,
         "source": "bt"
-      },
-      {
-        "feature": "def_pass_yds_s2d",
-        "direction": "positive",
-        "magnitude": 0.006773823689039602,
-        "source": "ann"
       },
       {
         "feature": "Weather extreme flag",
         "direction": "positive",
-        "magnitude": 0.006533984089785148,
+        "magnitude": 0.008160537845850397,
+        "source": "ann"
+      },
+      {
+        "feature": "defensive success rate allowed (3wk)",
+        "direction": "negative",
+        "magnitude": 0.007668844778911578,
         "source": "ann"
       }
     ],
     "actual": 0,
-    "forecast_hybrid_v2": 0.6583086809525642
+    "forecast_hybrid_v2": 0.6633244143678736
   }
 ]

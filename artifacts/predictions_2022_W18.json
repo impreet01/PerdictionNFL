@@ -5,13 +5,13 @@
     "away_team": "KC",
     "season": 2022,
     "week": 18,
-    "forecast": 0.062,
+    "forecast": 0.061,
     "probs": {
       "logistic": 0.042,
       "tree": 0.087,
-      "bt": 0.468,
-      "ann": 0.171,
-      "blended": 0.062
+      "bt": 0.467,
+      "ann": 0.162,
+      "blended": 0.061
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -20,33 +20,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.055,
-      "post": 0.062
+      "pre": 0.054,
+      "post": 0.061
     },
     "ci": {
       "bt90": [
-        0.468,
-        0.468
+        0.467,
+        0.467
       ]
     },
-    "natural_language": "LV vs KC: logistic 4.211%, tree 8.696%, BT 46.776%, ANN 17.142%, blended 6.173%. Key differentials: Turnovers edge +236.25 (favorable); Total yards deficit 57.94 (needs attention); Penalty yards edge +5.63 (needs attention).",
+    "natural_language": "LV vs KC: logistic 4.18%, tree 8.696%, BT 46.715%, ANN 16.195%, blended 6.147%. Key differentials: Turnovers edge +236.25 (favorable); Total yards deficit 57.94 (needs attention); Penalty yards edge +5.63 (needs attention).",
     "top_drivers": [
       {
         "feature": "losses_s2d",
         "direction": "negative",
-        "magnitude": 2.854571525921602,
+        "magnitude": 2.8638392819790206,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 2.23568821064461,
+        "magnitude": 2.224263488967187,
         "source": "logit"
       },
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 1.5301200302112548,
+        "magnitude": 1.5346156972319736,
         "source": "logit"
       },
       {
@@ -58,30 +58,30 @@
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.31234035628417844,
+        "magnitude": 0.3120815995091294,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "negative",
-        "magnitude": 0.0569817605917625,
+        "magnitude": 0.05737497208503504,
         "source": "bt"
       },
       {
         "feature": "diff_def_def_times_hitqb",
         "direction": "positive",
-        "magnitude": 0.010017230510955455,
+        "magnitude": 0.010118205935030902,
         "source": "ann"
       },
       {
-        "feature": "RB rush share (S2D)",
-        "direction": "positive",
-        "magnitude": 0.008403187918892555,
+        "feature": "off_pass_att_s2d",
+        "direction": "negative",
+        "magnitude": 0.009338571528390181,
         "source": "ann"
       }
     ],
     "actual": 0,
-    "forecast_hybrid_v2": 0.4980758325073415
+    "forecast_hybrid_v2": 0.49893420951838335
   },
   {
     "game_id": "2022-W18-JAC-TEN",
@@ -89,13 +89,13 @@
     "away_team": "TEN",
     "season": 2022,
     "week": 18,
-    "forecast": 0.955,
+    "forecast": 0.962,
     "probs": {
       "logistic": 0.999,
       "tree": 0.809,
-      "bt": 0.534,
-      "ann": 0.499,
-      "blended": 0.955
+      "bt": 0.535,
+      "ann": 0.57,
+      "blended": 0.962
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -104,33 +104,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.949,
-      "post": 0.955
+      "pre": 0.956,
+      "post": 0.962
     },
     "ci": {
       "bt90": [
-        0.534,
-        0.534
+        0.535,
+        0.535
       ]
     },
-    "natural_language": "JAC vs TEN: logistic 99.901%, tree 80.909%, BT 53.439%, ANN 49.938%, blended 95.463%. Key differentials: Total yards edge +62.56 (favorable); Turnovers deficit 56.06 (needs attention); Penalty yards deficit 16.69 (favorable).",
+    "natural_language": "JAC vs TEN: logistic 99.898%, tree 80.909%, BT 53.51%, ANN 57.034%, blended 96.167%. Key differentials: Total yards edge +62.56 (favorable); Turnovers deficit 56.06 (needs attention); Penalty yards deficit 16.69 (favorable).",
     "top_drivers": [
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 3.109921776785392,
+        "magnitude": 3.0940295827982505,
         "source": "logit"
       },
       {
         "feature": "defensive EPA/play allowed (3wk)",
         "direction": "positive",
-        "magnitude": 1.2810965339740348,
+        "magnitude": 1.2704765129717326,
         "source": "logit"
       },
       {
         "feature": "losses_s2d",
         "direction": "positive",
-        "magnitude": 1.0040567700258527,
+        "magnitude": 1.0073165773657284,
         "source": "logit"
       },
       {
@@ -142,30 +142,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.33977786936215876,
+        "magnitude": 0.33949638211934724,
         "source": "bt"
       },
       {
         "feature": "penalty yards differential",
         "direction": "positive",
-        "magnitude": 0.04740401467499759,
+        "magnitude": 0.045507757516001376,
         "source": "bt"
       },
       {
-        "feature": "elo_diff",
+        "feature": "sim_winrate_same_loc_s2d",
         "direction": "positive",
-        "magnitude": 0.04488370566768409,
+        "magnitude": 0.03634829559559372,
         "source": "ann"
       },
       {
-        "feature": "QB sack rate (3wk)",
+        "feature": "offensive EPA/play (exp)",
         "direction": "positive",
-        "magnitude": 0.041833659438745466,
+        "magnitude": 0.03391948781199553,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.7269112525515656
+    "forecast_hybrid_v2": 0.7271632979746947
   },
   {
     "game_id": "2022-W18-ATL-TB",
@@ -173,13 +173,13 @@
     "away_team": "TB",
     "season": 2022,
     "week": 18,
-    "forecast": 0.308,
+    "forecast": 0.318,
     "probs": {
-      "logistic": 0.29,
+      "logistic": 0.296,
       "tree": 0.809,
-      "bt": 0.527,
-      "ann": 0.216,
-      "blended": 0.308
+      "bt": 0.528,
+      "ann": 0.214,
+      "blended": 0.318
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -188,33 +188,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.283,
-      "post": 0.308
+      "pre": 0.288,
+      "post": 0.318
     },
     "ci": {
       "bt90": [
-        0.527,
-        0.527
+        0.528,
+        0.528
       ]
     },
-    "natural_language": "ATL vs TB: logistic 29.035%, tree 80.909%, BT 52.735%, ANN 21.625%, blended 30.829%. Key differentials: Turnovers deficit 56.31 (needs attention); Total yards deficit 36.56 (needs attention); Penalty yards deficit 11.69 (favorable).",
+    "natural_language": "ATL vs TB: logistic 29.601%, tree 80.909%, BT 52.822%, ANN 21.433%, blended 31.761%. Key differentials: Turnovers deficit 56.31 (needs attention); Total yards deficit 36.56 (needs attention); Penalty yards deficit 11.69 (favorable).",
     "top_drivers": [
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 1.5680349930317357,
+        "magnitude": 1.5726420585339973,
         "source": "logit"
       },
       {
         "feature": "diff_pass_passing_bad_throws",
         "direction": "negative",
-        "magnitude": 1.3059752699431477,
+        "magnitude": 1.3372215633380864,
         "source": "logit"
       },
       {
         "feature": "diff_pass_times_blitzed",
         "direction": "positive",
-        "magnitude": 0.8725179124510017,
+        "magnitude": 0.8864569743844458,
         "source": "logit"
       },
       {
@@ -226,30 +226,30 @@
       {
         "feature": "r-ratio differential",
         "direction": "negative",
-        "magnitude": 0.23643993852487522,
+        "magnitude": 0.23807152906070841,
         "source": "bt"
       },
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.1966637830626809,
+        "magnitude": 0.19650085795470046,
         "source": "bt"
       },
       {
-        "feature": "elo_diff",
-        "direction": "positive",
-        "magnitude": 0.01680204562920437,
+        "feature": "QB sack rate (S2D)",
+        "direction": "negative",
+        "magnitude": 0.013092601589460573,
         "source": "ann"
       },
       {
-        "feature": "off_pass_yds_s2d",
-        "direction": "positive",
-        "magnitude": 0.014554573323880618,
+        "feature": "defensive EPA/play allowed (3wk)",
+        "direction": "negative",
+        "magnitude": 0.012790734767095996,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.5656479640766628
+    "forecast_hybrid_v2": 0.5687041058299984
   },
   {
     "game_id": "2022-W18-BUF-NE",
@@ -257,13 +257,13 @@
     "away_team": "NE",
     "season": 2022,
     "week": 18,
-    "forecast": 0.174,
+    "forecast": 0.164,
     "probs": {
-      "logistic": 0.115,
+      "logistic": 0.11,
       "tree": 0.809,
-      "bt": 0.599,
-      "ann": 0.532,
-      "blended": 0.174
+      "bt": 0.597,
+      "ann": 0.466,
+      "blended": 0.164
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -272,33 +272,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.157,
-      "post": 0.174
+      "pre": 0.146,
+      "post": 0.164
     },
     "ci": {
       "bt90": [
-        0.599,
-        0.599
+        0.597,
+        0.597
       ]
     },
-    "natural_language": "BUF vs NE: logistic 11.514%, tree 80.909%, BT 59.905%, ANN 53.223%, blended 17.363%. Key differentials: Turnovers edge +206.14 (favorable); Total yards edge +82.12 (favorable); Penalty yards deficit 5.38 (favorable).",
+    "natural_language": "BUF vs NE: logistic 11.003%, tree 80.909%, BT 59.658%, ANN 46.596%, blended 16.407%. Key differentials: Turnovers edge +206.14 (favorable); Total yards edge +82.12 (favorable); Penalty yards deficit 5.38 (favorable).",
     "top_drivers": [
       {
         "feature": "elo_pre",
         "direction": "negative",
-        "magnitude": 3.5250031798078822,
+        "magnitude": 3.5353600408583206,
         "source": "logit"
       },
       {
         "feature": "losses_s2d",
         "direction": "positive",
-        "magnitude": 1.6471614860170953,
+        "magnitude": 1.6525092205898533,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "negative",
-        "magnitude": 1.2612460539185202,
+        "magnitude": 1.2548008863570685,
         "source": "logit"
       },
       {
@@ -310,30 +310,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.44562306131180973,
+        "magnitude": 0.44525388715959857,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "negative",
-        "magnitude": 0.018671191308786958,
+        "magnitude": 0.018800034765701253,
         "source": "bt"
       },
       {
         "feature": "diff_def_def_pressures",
         "direction": "positive",
-        "magnitude": 0.023222921661267756,
+        "magnitude": 0.02127675651891075,
         "source": "ann"
       },
       {
-        "feature": "diff_def_def_completions_allowed",
-        "direction": "negative",
-        "magnitude": 0.0229341337041638,
+        "feature": "offensive success rate (5wk)",
+        "direction": "positive",
+        "magnitude": 0.016985495693488426,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.5289813974215434
+    "forecast_hybrid_v2": 0.5270453269520983
   },
   {
     "game_id": "2022-W18-CHI-MIN",
@@ -341,13 +341,13 @@
     "away_team": "MIN",
     "season": 2022,
     "week": 18,
-    "forecast": 0.052,
+    "forecast": 0.046,
     "probs": {
-      "logistic": 0.023,
+      "logistic": 0.022,
       "tree": 0.059,
-      "bt": 0.683,
-      "ann": 0.256,
-      "blended": 0.052
+      "bt": 0.681,
+      "ann": 0.197,
+      "blended": 0.046
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -356,33 +356,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.046,
-      "post": 0.052
+      "pre": 0.04,
+      "post": 0.046
     },
     "ci": {
       "bt90": [
-        0.683,
-        0.683
+        0.681,
+        0.681
       ]
     },
-    "natural_language": "CHI vs MIN: logistic 2.271%, tree 5.882%, BT 68.297%, ANN 25.613%, blended 5.171%. Key differentials: Turnovers deficit 60.13 (needs attention); Total yards deficit 40.63 (needs attention); Penalty yards edge +5.38 (needs attention).",
+    "natural_language": "CHI vs MIN: logistic 2.229%, tree 5.882%, BT 68.15%, ANN 19.719%, blended 4.554%. Key differentials: Turnovers deficit 60.13 (needs attention); Total yards deficit 40.63 (needs attention); Penalty yards edge +5.38 (needs attention).",
     "top_drivers": [
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 3.879055162765611,
+        "magnitude": 3.890452268889623,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "negative",
-        "magnitude": 2.1354796200593027,
+        "magnitude": 2.124566980188132,
         "source": "logit"
       },
       {
         "feature": "diff_rush_rushing_yards_after_contact_avg",
         "direction": "positive",
-        "magnitude": 1.8281081408071527,
+        "magnitude": 1.8039278053954535,
         "source": "logit"
       },
       {
@@ -394,30 +394,30 @@
       {
         "feature": "r-ratio differential",
         "direction": "negative",
-        "magnitude": 0.24754404002387664,
+        "magnitude": 0.24925225613755314,
         "source": "bt"
       },
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.21864909668664972,
+        "magnitude": 0.2184679579577352,
         "source": "bt"
       },
       {
-        "feature": "rest advantage",
-        "direction": "negative",
-        "magnitude": 0.009729684045849311,
+        "feature": "diff_def_def_times_hitqb",
+        "direction": "positive",
+        "magnitude": 0.006181444601135187,
         "source": "ann"
       },
       {
-        "feature": "off_pass_yds_s2d",
-        "direction": "positive",
-        "magnitude": 0.009381098426745218,
+        "feature": "defensive success rate allowed (3wk)",
+        "direction": "negative",
+        "magnitude": 0.005517687023539402,
         "source": "ann"
       }
     ],
     "actual": 0,
-    "forecast_hybrid_v2": 0.49531363023447106
+    "forecast_hybrid_v2": 0.4948366911842121
   },
   {
     "game_id": "2022-W18-CIN-BAL",
@@ -425,13 +425,13 @@
     "away_team": "BAL",
     "season": 2022,
     "week": 18,
-    "forecast": 0.812,
+    "forecast": 0.807,
     "probs": {
-      "logistic": 0.825,
+      "logistic": 0.824,
       "tree": 0.809,
       "bt": 0.861,
-      "ann": 0.507,
-      "blended": 0.812
+      "ann": 0.428,
+      "blended": 0.807
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -440,8 +440,8 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.793,
-      "post": 0.812
+      "pre": 0.784,
+      "post": 0.807
     },
     "ci": {
       "bt90": [
@@ -449,24 +449,24 @@
         0.861
       ]
     },
-    "natural_language": "CIN vs BAL: logistic 82.496%, tree 80.909%, BT 86.071%, ANN 50.706%, blended 81.244%. Key differentials: Turnovers edge +93.90 (favorable); Total yards edge +39.82 (favorable); Penalty yards deficit 1.80 (favorable).",
+    "natural_language": "CIN vs BAL: logistic 82.363%, tree 80.909%, BT 86.059%, ANN 42.85%, blended 80.705%. Key differentials: Turnovers edge +93.90 (favorable); Total yards edge +39.82 (favorable); Penalty yards deficit 1.80 (favorable).",
     "top_drivers": [
       {
         "feature": "elo_pre",
         "direction": "negative",
-        "magnitude": 2.7769853548108205,
+        "magnitude": 2.7851444542475607,
         "source": "logit"
       },
       {
         "feature": "losses_s2d",
         "direction": "positive",
-        "magnitude": 1.6471614860170953,
+        "magnitude": 1.6525092205898533,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "negative",
-        "magnitude": 1.2612460539185202,
+        "magnitude": 1.2548008863570685,
         "source": "logit"
       },
       {
@@ -478,30 +478,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.21672776018677617,
+        "magnitude": 0.21654821317928505,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "positive",
-        "magnitude": 0.18973908459612313,
+        "magnitude": 0.19104840863264635,
         "source": "bt"
+      },
+      {
+        "feature": "diff_def_def_pressures",
+        "direction": "positive",
+        "magnitude": 0.02792312268537705,
+        "source": "ann"
       },
       {
         "feature": "elo_diff",
         "direction": "positive",
-        "magnitude": 0.02811742133163707,
-        "source": "ann"
-      },
-      {
-        "feature": "QB sack rate (3wk)",
-        "direction": "positive",
-        "magnitude": 0.025554194606557605,
+        "magnitude": 0.025118633260661313,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.6944490581601294
+    "forecast_hybrid_v2": 0.6923025348701604
   },
   {
     "game_id": "2022-W18-IND-HOU",
@@ -509,13 +509,13 @@
     "away_team": "HOU",
     "season": 2022,
     "week": 18,
-    "forecast": 0.163,
+    "forecast": 0.175,
     "probs": {
-      "logistic": 0.137,
+      "logistic": 0.142,
       "tree": 0.059,
-      "bt": 0.45,
-      "ann": 0.243,
-      "blended": 0.163
+      "bt": 0.452,
+      "ann": 0.274,
+      "blended": 0.175
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -524,33 +524,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.147,
-      "post": 0.163
+      "pre": 0.156,
+      "post": 0.175
     },
     "ci": {
       "bt90": [
         0.391,
-        0.51
+        0.512
       ]
     },
-    "natural_language": "IND vs HOU: logistic 13.691%, tree 5.882%, BT 45.008%, ANN 24.277%, blended 16.348%. Key differentials: Turnovers edge +76.38 (favorable); Total yards edge +35.50 (favorable); Penalty yards edge +11.31 (needs attention).",
+    "natural_language": "IND vs HOU: logistic 14.234%, tree 5.882%, BT 45.192%, ANN 27.439%, blended 17.499%. Key differentials: Turnovers edge +76.38 (favorable); Total yards edge +35.50 (favorable); Penalty yards edge +11.31 (needs attention).",
     "top_drivers": [
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 2.3370662712101686,
+        "magnitude": 2.343932838246261,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "negative",
-        "magnitude": 2.1354796200593027,
+        "magnitude": 2.124566980188132,
         "source": "logit"
       },
       {
         "feature": "diff_pass_passing_bad_throws",
         "direction": "negative",
-        "magnitude": 1.8506100116392186,
+        "magnitude": 1.894887039477431,
         "source": "logit"
       },
       {
@@ -562,30 +562,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.19332185706710478,
+        "magnitude": 0.19316170056066964,
         "source": "bt"
       },
       {
         "feature": "penalty yards differential",
         "direction": "negative",
-        "magnitude": 0.030502803974165365,
+        "magnitude": 0.02928262967454056,
         "source": "bt"
       },
       {
-        "feature": "yards allowed",
+        "feature": "defensive EPA/play allowed (5wk)",
         "direction": "negative",
-        "magnitude": 0.015496434051033542,
+        "magnitude": 0.01629548010086882,
         "source": "ann"
       },
       {
         "feature": "defensive success rate allowed (S2D)",
         "direction": "negative",
-        "magnitude": 0.014086165631252735,
+        "magnitude": 0.01601755947976532,
         "source": "ann"
       }
     ],
     "actual": 0,
-    "forecast_hybrid_v2": 0.5259520132267302
+    "forecast_hybrid_v2": 0.5300405054392461
   },
   {
     "game_id": "2022-W18-MIA-NYJ",
@@ -593,13 +593,13 @@
     "away_team": "NYJ",
     "season": 2022,
     "week": 18,
-    "forecast": 0.082,
+    "forecast": 0.074,
     "probs": {
-      "logistic": 0.034,
+      "logistic": 0.035,
       "tree": 0.941,
-      "bt": 0.639,
-      "ann": 0.423,
-      "blended": 0.082
+      "bt": 0.637,
+      "ann": 0.34,
+      "blended": 0.074
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -608,33 +608,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.073,
-      "post": 0.082
+      "pre": 0.065,
+      "post": 0.074
     },
     "ci": {
       "bt90": [
-        0.626,
-        0.651
+        0.625,
+        0.649
       ]
     },
-    "natural_language": "MIA vs NYJ: logistic 3.431%, tree 94.118%, BT 63.856%, ANN 42.336%, blended 8.192%. Key differentials: Turnovers edge +68.50 (favorable); Total yards edge +37.38 (favorable); Penalty yards edge +1.38 (needs attention).",
+    "natural_language": "MIA vs NYJ: logistic 3.465%, tree 94.118%, BT 63.724%, ANN 34.013%, blended 7.435%. Key differentials: Turnovers edge +68.50 (favorable); Total yards edge +37.38 (favorable); Penalty yards edge +1.38 (needs attention).",
     "top_drivers": [
       {
         "feature": "losses_s2d",
         "direction": "negative",
-        "magnitude": 1.568362093939117,
+        "magnitude": 1.573453995530771,
         "source": "logit"
       },
       {
         "feature": "diff_pass_times_blitzed",
         "direction": "negative",
-        "magnitude": 1.280655002117437,
+        "magnitude": 1.3011143292385778,
         "source": "logit"
       },
       {
         "feature": "diff_pass_passing_bad_throws",
         "direction": "positive",
-        "magnitude": 0.6910187829424456,
+        "magnitude": 0.7075518491728445,
         "source": "logit"
       },
       {
@@ -646,30 +646,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.20346892489355195,
+        "magnitude": 0.20330036210053185,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "positive",
-        "magnitude": 0.04426122331112701,
+        "magnitude": 0.04456665476026959,
         "source": "bt"
       },
       {
-        "feature": "Outdoor roof flag",
+        "feature": "elo_diff",
         "direction": "positive",
-        "magnitude": 0.046099116438678436,
+        "magnitude": 0.04016504198404682,
         "source": "ann"
       },
       {
-        "feature": "QB sack rate (3wk)",
+        "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 0.0406726757751786,
+        "magnitude": 0.0336909720209047,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.5036004207988115
+    "forecast_hybrid_v2": 0.5024855276629486
   },
   {
     "game_id": "2022-W18-NO-CAR",
@@ -682,7 +682,7 @@
       "logistic": 0.99,
       "tree": 0.809,
       "bt": 0.593,
-      "ann": 0.324,
+      "ann": 0.312,
       "blended": 0.932
     },
     "blend_weights": {
@@ -692,33 +692,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.923,
+      "pre": 0.922,
       "post": 0.932
     },
     "ci": {
       "bt90": [
-        0.503,
-        0.678
+        0.502,
+        0.676
       ]
     },
-    "natural_language": "NO vs CAR: logistic 99.004%, tree 80.909%, BT 59.344%, ANN 32.373%, blended 93.159%. Key differentials: Turnovers edge +201.25 (favorable); Total yards edge +24.69 (favorable); Penalty yards deficit 1.00 (favorable).",
+    "natural_language": "NO vs CAR: logistic 98.985%, tree 80.909%, BT 59.302%, ANN 31.193%, blended 93.162%. Key differentials: Turnovers edge +201.25 (favorable); Total yards edge +24.69 (favorable); Penalty yards deficit 1.00 (favorable).",
     "top_drivers": [
       {
         "feature": "defensive EPA/play allowed (3wk)",
         "direction": "positive",
-        "magnitude": 1.2012129716566653,
+        "magnitude": 1.1912551685958306,
         "source": "logit"
       },
       {
         "feature": "losses_s2d",
         "direction": "positive",
-        "magnitude": 1.0040567700258527,
+        "magnitude": 1.0073165773657284,
         "source": "logit"
       },
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 0.7316787351787377,
+        "magnitude": 0.7338284906845526,
         "source": "logit"
       },
       {
@@ -730,30 +730,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.1348070992679262,
+        "magnitude": 0.13469541901413104,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "positive",
-        "magnitude": 0.05597281887814806,
+        "magnitude": 0.056359068012347885,
         "source": "bt"
       },
       {
-        "feature": "diff_rec_receiving_drop",
-        "direction": "negative",
-        "magnitude": 0.028911386443768967,
+        "feature": "sim_pointdiff_same_loc_s2d",
+        "direction": "positive",
+        "magnitude": 0.028419668917386745,
         "source": "ann"
       },
       {
-        "feature": "diff_rush_rushing_yards_before_contact_avg",
-        "direction": "negative",
-        "magnitude": 0.025191802856655503,
+        "feature": "off_yds_for_3g",
+        "direction": "positive",
+        "magnitude": 0.024330896146912803,
         "source": "ann"
       }
     ],
     "actual": 0,
-    "forecast_hybrid_v2": 0.7218374130303654
+    "forecast_hybrid_v2": 0.7206113275024427
   },
   {
     "game_id": "2022-W18-PIT-CLE",
@@ -761,13 +761,13 @@
     "away_team": "CLE",
     "season": 2022,
     "week": 18,
-    "forecast": 0.945,
+    "forecast": 0.946,
     "probs": {
-      "logistic": 0.993,
+      "logistic": 0.992,
       "tree": 0.809,
-      "bt": 0.699,
-      "ann": 0.443,
-      "blended": 0.945
+      "bt": 0.701,
+      "ann": 0.455,
+      "blended": 0.946
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -777,32 +777,32 @@
     },
     "calibration": {
       "pre": 0.938,
-      "post": 0.945
+      "post": 0.946
     },
     "ci": {
       "bt90": [
-        0.699,
-        0.699
+        0.701,
+        0.701
       ]
     },
-    "natural_language": "PIT vs CLE: logistic 99.282%, tree 80.909%, BT 69.853%, ANN 44.322%, blended 94.459%. Key differentials: Turnovers edge +235.50 (favorable); Total yards deficit 27.56 (needs attention); Penalty yards deficit 6.81 (favorable).",
+    "natural_language": "PIT vs CLE: logistic 99.207%, tree 80.909%, BT 70.078%, ANN 45.477%, blended 94.602%. Key differentials: Turnovers edge +235.50 (favorable); Total yards deficit 27.56 (needs attention); Penalty yards deficit 6.81 (favorable).",
     "top_drivers": [
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 3.984155342926175,
+        "magnitude": 3.9637956766293145,
         "source": "logit"
       },
       {
         "feature": "diff_pass_times_sacked",
         "direction": "positive",
-        "magnitude": 1.283922944470044,
+        "magnitude": 1.2628430200945404,
         "source": "logit"
       },
       {
         "feature": "diff_pass_passing_bad_throws",
         "direction": "negative",
-        "magnitude": 0.9428854421457671,
+        "magnitude": 0.9654445792451899,
         "source": "logit"
       },
       {
@@ -814,30 +814,30 @@
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.14795785749573453,
+        "magnitude": 0.14783528256336195,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "positive",
-        "magnitude": 0.041623894065949005,
+        "magnitude": 0.04191112621482465,
         "source": "bt"
-      },
-      {
-        "feature": "Outdoor roof flag",
-        "direction": "positive",
-        "magnitude": 0.032322269045302325,
-        "source": "ann"
       },
       {
         "feature": "elo_diff",
         "direction": "positive",
-        "magnitude": 0.03170257754754062,
+        "magnitude": 0.03629546608973164,
+        "source": "ann"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 0.03512411263113598,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.7247123470908351
+    "forecast_hybrid_v2": 0.7236808805840144
   },
   {
     "game_id": "2022-W18-DEN-LAC",
@@ -845,13 +845,13 @@
     "away_team": "LAC",
     "season": 2022,
     "week": 18,
-    "forecast": 0.047,
+    "forecast": 0.045,
     "probs": {
-      "logistic": 0.022,
+      "logistic": 0.024,
       "tree": 0.364,
-      "bt": 0.454,
-      "ann": 0.214,
-      "blended": 0.047
+      "bt": 0.453,
+      "ann": 0.177,
+      "blended": 0.045
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -860,33 +860,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.042,
-      "post": 0.047
+      "pre": 0.039,
+      "post": 0.045
     },
     "ci": {
       "bt90": [
-        0.454,
-        0.454
+        0.453,
+        0.453
       ]
     },
-    "natural_language": "DEN vs LAC: logistic 2.245%, tree 36.364%, BT 45.355%, ANN 21.372%, blended 4.671%. Key differentials: Turnovers edge +261.25 (favorable); Total yards deficit 31.50 (needs attention); Penalty yards edge +20.81 (needs attention).",
+    "natural_language": "DEN vs LAC: logistic 2.354%, tree 36.364%, BT 45.33%, ANN 17.73%, blended 4.456%. Key differentials: Turnovers edge +261.25 (favorable); Total yards deficit 31.50 (needs attention); Penalty yards edge +20.81 (needs attention).",
     "top_drivers": [
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 3.107456954488987,
+        "magnitude": 3.116587017146013,
         "source": "logit"
       },
       {
         "feature": "losses_s2d",
         "direction": "negative",
-        "magnitude": 2.854571525921602,
+        "magnitude": 2.8638392819790206,
         "source": "logit"
       },
       {
         "feature": "defensive EPA/play allowed (3wk)",
         "direction": "negative",
-        "magnitude": 1.005068780440977,
+        "magnitude": 0.9967369714992024,
         "source": "logit"
       },
       {
@@ -898,30 +898,30 @@
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.16926669993127355,
+        "magnitude": 0.16912647179707252,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "negative",
-        "magnitude": 0.059977075305972676,
+        "magnitude": 0.06039095643386802,
         "source": "bt"
       },
       {
         "feature": "Outdoor roof flag",
         "direction": "positive",
-        "magnitude": 0.01897596723690775,
+        "magnitude": 0.014887250365957118,
         "source": "ann"
       },
       {
-        "feature": "sim_count_same_loc_s2d",
-        "direction": "positive",
-        "magnitude": 0.014489748391734267,
+        "feature": "diff_def_def_missed_tackles",
+        "direction": "negative",
+        "magnitude": 0.011132426699781667,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.49393262582947545
+    "forecast_hybrid_v2": 0.4945635418662681
   },
   {
     "game_id": "2022-W18-PHI-NYG",
@@ -929,13 +929,13 @@
     "away_team": "NYG",
     "season": 2022,
     "week": 18,
-    "forecast": 0.709,
+    "forecast": 0.713,
     "probs": {
       "logistic": 0.713,
       "tree": 0.25,
       "bt": 0.691,
-      "ann": 0.415,
-      "blended": 0.709
+      "ann": 0.422,
+      "blended": 0.713
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -945,32 +945,32 @@
     },
     "calibration": {
       "pre": 0.683,
-      "post": 0.709
+      "post": 0.713
     },
     "ci": {
       "bt90": [
         0.637,
-        0.744
+        0.743
       ]
     },
-    "natural_language": "PHI vs NYG: logistic 71.33%, tree 25%, BT 69.143%, ANN 41.471%, blended 70.919%. Key differentials: Turnovers edge +132.44 (favorable); Total yards edge +53.50 (favorable); Penalty yards deficit 6.81 (favorable).",
+    "natural_language": "PHI vs NYG: logistic 71.25%, tree 25%, BT 69.07%, ANN 42.201%, blended 71.317%. Key differentials: Turnovers edge +132.44 (favorable); Total yards edge +53.50 (favorable); Penalty yards deficit 6.81 (favorable).",
     "top_drivers": [
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 4.858388909066957,
+        "magnitude": 4.833561770460379,
         "source": "logit"
       },
       {
         "feature": "elo_pre",
         "direction": "negative",
-        "magnitude": 3.841571664222555,
+        "magnitude": 3.8528586395562403,
         "source": "logit"
       },
       {
         "feature": "diff_pass_times_blitzed",
         "direction": "positive",
-        "magnitude": 1.2469827671585563,
+        "magnitude": 1.2669041576232325,
         "source": "logit"
       },
       {
@@ -982,30 +982,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.2907337082009975,
+        "magnitude": 0.2904928513433467,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "positive",
-        "magnitude": 0.0519266156855283,
+        "magnitude": 0.052284943365864096,
         "source": "bt"
-      },
-      {
-        "feature": "Outdoor roof flag",
-        "direction": "positive",
-        "magnitude": 0.02411463922263513,
-        "source": "ann"
       },
       {
         "feature": "elo_diff",
         "direction": "positive",
-        "magnitude": 0.023884017229013906,
+        "magnitude": 0.0280272988259871,
+        "source": "ann"
+      },
+      {
+        "feature": "RB rush share (S2D)",
+        "direction": "positive",
+        "magnitude": 0.023617419705583575,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.6697809062938123
+    "forecast_hybrid_v2": 0.6700011630669581
   },
   {
     "game_id": "2022-W18-SEA-LAR",
@@ -1013,13 +1013,13 @@
     "away_team": "LAR",
     "season": 2022,
     "week": 18,
-    "forecast": 0.461,
+    "forecast": 0.457,
     "probs": {
-      "logistic": 0.432,
+      "logistic": 0.425,
       "tree": 0.111,
-      "bt": 0.331,
-      "ann": 0.422,
-      "blended": 0.461
+      "bt": 0.33,
+      "ann": 0.397,
+      "blended": 0.457
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -1028,33 +1028,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.431,
-      "post": 0.461
+      "pre": 0.422,
+      "post": 0.457
     },
     "ci": {
       "bt90": [
-        0.331,
-        0.331
+        0.33,
+        0.33
       ]
     },
-    "natural_language": "SEA vs LAR: logistic 43.171%, tree 11.111%, BT 33.06%, ANN 42.227%, blended 46.085%. Key differentials: Turnovers deficit 242.06 (needs attention); Total yards edge +65.00 (favorable); Penalty yards edge +13.38 (needs attention).",
+    "natural_language": "SEA vs LAR: logistic 42.504%, tree 11.111%, BT 32.962%, ANN 39.688%, blended 45.697%. Key differentials: Turnovers deficit 242.06 (needs attention); Total yards edge +65.00 (favorable); Penalty yards edge +13.38 (needs attention).",
     "top_drivers": [
       {
         "feature": "losses_s2d",
         "direction": "negative",
-        "magnitude": 0.9252573779478745,
+        "magnitude": 0.9282613523066461,
         "source": "logit"
       },
       {
         "feature": "defensive EPA/play allowed (3wk)",
         "direction": "positive",
-        "magnitude": 0.6963233976681378,
+        "magnitude": 0.6905510230566084,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 0.4872210783630446,
+        "magnitude": 0.48473130130505915,
         "source": "logit"
       },
       {
@@ -1066,30 +1066,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.35296905753654007,
+        "magnitude": 0.35267664212116806,
         "source": "bt"
       },
       {
         "feature": "penalty yards differential",
         "direction": "negative",
-        "magnitude": 0.036241475883590314,
+        "magnitude": 0.03479174301670101,
         "source": "bt"
       },
       {
         "feature": "Outdoor roof flag",
         "direction": "positive",
-        "magnitude": 0.059928892005166594,
+        "magnitude": 0.04855084679775063,
         "source": "ann"
       },
       {
-        "feature": "elo_diff",
+        "feature": "QB sack rate (3wk)",
         "direction": "positive",
-        "magnitude": 0.049447467192782736,
+        "magnitude": 0.04380901854229856,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.606630657799218
+    "forecast_hybrid_v2": 0.6055044327594603
   },
   {
     "game_id": "2022-W18-SF-ARI",
@@ -1097,13 +1097,13 @@
     "away_team": "ARI",
     "season": 2022,
     "week": 18,
-    "forecast": 0.966,
+    "forecast": 0.968,
     "probs": {
       "logistic": 1,
       "tree": 0.809,
-      "bt": 0.634,
-      "ann": 0.622,
-      "blended": 0.966
+      "bt": 0.635,
+      "ann": 0.632,
+      "blended": 0.968
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -1112,33 +1112,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.962,
-      "post": 0.966
+      "pre": 0.963,
+      "post": 0.968
     },
     "ci": {
       "bt90": [
-        0.634,
-        0.634
+        0.635,
+        0.635
       ]
     },
-    "natural_language": "SF vs ARI: logistic 100%, tree 80.909%, BT 63.4%, ANN 62.154%, blended 96.635%. Key differentials: Turnovers deficit 311.25 (needs attention); Total yards edge +30.81 (favorable); Penalty yards deficit 9.13 (favorable).",
+    "natural_language": "SF vs ARI: logistic 100%, tree 80.909%, BT 63.512%, ANN 63.186%, blended 96.787%. Key differentials: Turnovers deficit 311.25 (needs attention); Total yards edge +30.81 (favorable); Penalty yards deficit 9.13 (favorable).",
     "top_drivers": [
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 5.732622475207739,
+        "magnitude": 5.703327864291442,
         "source": "logit"
       },
       {
         "feature": "elo_pre",
         "direction": "negative",
-        "magnitude": 3.1675860096181148,
+        "magnitude": 3.1768927382913965,
         "source": "logit"
       },
       {
         "feature": "diff_def_def_ints",
         "direction": "positive",
-        "magnitude": 1.963431378973867,
+        "magnitude": 1.9034436807383814,
         "source": "logit"
       },
       {
@@ -1150,30 +1150,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.1679541875009869,
+        "magnitude": 0.1678150467110142,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "negative",
-        "magnitude": 0.029484918158433616,
+        "magnitude": 0.02968838341780246,
         "source": "bt"
-      },
-      {
-        "feature": "Outdoor roof flag",
-        "direction": "positive",
-        "magnitude": 0.03438680779274859,
-        "source": "ann"
       },
       {
         "feature": "diff_rec_receiving_drop",
         "direction": "negative",
-        "magnitude": 0.03010431614606248,
+        "magnitude": 0.02508149193150858,
+        "source": "ann"
+      },
+      {
+        "feature": "offensive success rate (5wk)",
+        "direction": "positive",
+        "magnitude": 0.021299621900241476,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.7293173432596936
+    "forecast_hybrid_v2": 0.7284621121556996
   },
   {
     "game_id": "2022-W18-WAS-DAL",
@@ -1186,7 +1186,7 @@
       "logistic": 0.041,
       "tree": 0.111,
       "bt": 0.583,
-      "ann": 0.349,
+      "ann": 0.337,
       "blended": 0.081
     },
     "blend_weights": {
@@ -1196,7 +1196,7 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.072,
+      "pre": 0.071,
       "post": 0.081
     },
     "ci": {
@@ -1205,24 +1205,24 @@
         0.583
       ]
     },
-    "natural_language": "WAS vs DAL: logistic 4.142%, tree 11.111%, BT 58.341%, ANN 34.861%, blended 8.072%. Key differentials: Turnovers deficit 125.88 (needs attention); Total yards deficit 25.69 (needs attention); Penalty yards edge +1.69 (needs attention).",
+    "natural_language": "WAS vs DAL: logistic 4.116%, tree 11.111%, BT 58.253%, ANN 33.723%, blended 8.063%. Key differentials: Turnovers deficit 125.88 (needs attention); Total yards deficit 25.69 (needs attention); Penalty yards edge +1.69 (needs attention).",
     "top_drivers": [
       {
         "feature": "wins_s2d",
         "direction": "negative",
-        "magnitude": 1.2612460539185202,
+        "magnitude": 1.2548008863570685,
         "source": "logit"
       },
       {
         "feature": "diff_pass_times_pressured_pct",
         "direction": "negative",
-        "magnitude": 1.1711543288907347,
+        "magnitude": 1.1132444559325134,
         "source": "logit"
       },
       {
-        "feature": "diff_pass_passing_bad_throw_pct",
-        "direction": "positive",
-        "magnitude": 0.9591140939976099,
+        "feature": "def_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 0.9647631427652748,
         "source": "logit"
       },
       {
@@ -1234,30 +1234,30 @@
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.1378107896692874,
+        "magnitude": 0.13769662102349975,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "positive",
-        "magnitude": 0.015500963662376445,
+        "magnitude": 0.015607930470799834,
         "source": "bt"
       },
       {
-        "feature": "off_pass_yds_s2d",
+        "feature": "sim_pointdiff_same_loc_s2d",
         "direction": "positive",
-        "magnitude": 0.034886088676168645,
+        "magnitude": 0.029681837288877418,
         "source": "ann"
       },
       {
-        "feature": "diff_def_def_times_hurried",
+        "feature": "elo_diff",
         "direction": "positive",
-        "magnitude": 0.032441015531174296,
+        "magnitude": 0.026793550489265693,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.5033242010502138
+    "forecast_hybrid_v2": 0.5043976948566415
   },
   {
     "game_id": "2022-W18-GB-DET",
@@ -1265,13 +1265,13 @@
     "away_team": "DET",
     "season": 2022,
     "week": 18,
-    "forecast": 0.855,
+    "forecast": 0.857,
     "probs": {
       "logistic": 0.894,
       "tree": 0.809,
       "bt": 0.348,
-      "ann": 0.34,
-      "blended": 0.855
+      "ann": 0.343,
+      "blended": 0.857
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -1281,7 +1281,7 @@
     },
     "calibration": {
       "pre": 0.839,
-      "post": 0.855
+      "post": 0.857
     },
     "ci": {
       "bt90": [
@@ -1289,24 +1289,24 @@
         0.348
       ]
     },
-    "natural_language": "GB vs DET: logistic 89.419%, tree 80.909%, BT 34.785%, ANN 34.016%, blended 85.459%. Key differentials: Turnovers edge +250.56 (favorable); Total yards deficit 37.50 (needs attention); Penalty yards edge +0.88 (needs attention).",
+    "natural_language": "GB vs DET: logistic 89.445%, tree 80.909%, BT 34.828%, ANN 34.314%, blended 85.746%. Key differentials: Turnovers edge +250.56 (favorable); Total yards deficit 37.50 (needs attention); Penalty yards edge +0.88 (needs attention).",
     "top_drivers": [
       {
         "feature": "off_total_yds_s2d_minus_opp",
         "direction": "negative",
-        "magnitude": 1.0628804177372362,
+        "magnitude": 1.0309278165786693,
         "source": "logit"
       },
       {
         "feature": "losses_s2d",
         "direction": "positive",
-        "magnitude": 1.0040567700258527,
+        "magnitude": 1.0073165773657284,
         "source": "logit"
       },
       {
         "feature": "def_total_yds_s2d_minus_opp",
         "direction": "positive",
-        "magnitude": 0.9936865719545341,
+        "magnitude": 1.0001064486953652,
         "source": "logit"
       },
       {
@@ -1318,29 +1318,29 @@
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.20173731697590447,
+        "magnitude": 0.20157018872463156,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "negative",
-        "magnitude": 0.018460737640452,
+        "magnitude": 0.01858812882912587,
         "source": "bt"
       },
       {
         "feature": "off_pass_yds_s2d",
         "direction": "positive",
-        "magnitude": 0.025732649633139645,
+        "magnitude": 0.021372448219453673,
         "source": "ann"
       },
       {
-        "feature": "QB sack rate (3wk)",
-        "direction": "positive",
-        "magnitude": 0.021877381306528675,
+        "feature": "defensive EPA/play allowed (exp)",
+        "direction": "negative",
+        "magnitude": 0.020037384568323317,
         "source": "ann"
       }
     ],
     "actual": 0,
-    "forecast_hybrid_v2": 0.7044364756157665
+    "forecast_hybrid_v2": 0.7038172367992093
   }
 ]

@@ -1,0 +1,170 @@
+[
+  {
+    "game_id": "2022-W21-PHI-SF",
+    "home_team": "PHI",
+    "away_team": "SF",
+    "season": 2022,
+    "week": 21,
+    "forecast": 0.108,
+    "probs": {
+      "logistic": 0.014,
+      "tree": 0.944,
+      "bt": 0.839,
+      "ann": 0.795,
+      "blended": 0.108
+    },
+    "blend_weights": {
+      "logistic": 0.9,
+      "tree": 0,
+      "bt": 0,
+      "ann": 0.1
+    },
+    "calibration": {
+      "pre": 0.092,
+      "post": 0.108
+    },
+    "ci": {
+      "bt90": [
+        0.839,
+        0.839
+      ]
+    },
+    "natural_language": "PHI vs SF: logistic 1.374%, tree 94.393%, BT 83.909%, ANN 79.454%, blended 10.797%. Key differentials: Total yards edge +23.75 (favorable); Turnovers edge +17.63 (favorable); Penalty yards deficit 2.20 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 4.007451994079586,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "positive",
+        "magnitude": 1.5320699608693853,
+        "source": "logit"
+      },
+      {
+        "feature": "def_turnovers_s2d_minus_opp",
+        "direction": "negative",
+        "magnitude": 1.2110440866739716,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLRLRL",
+        "direction": "positive",
+        "magnitude": 0.4439252336448598,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.17075159088603456,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.01402648766331191,
+        "source": "bt"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 0.029189846542279324,
+        "source": "ann"
+      },
+      {
+        "feature": "defensive EPA/play allowed (exp)",
+        "direction": "negative",
+        "magnitude": 0.022211869820782153,
+        "source": "ann"
+      }
+    ],
+    "actual": 1,
+    "forecast_hybrid_v2": 0.5641203915319577
+  },
+  {
+    "game_id": "2022-W21-KC-CIN",
+    "home_team": "KC",
+    "away_team": "CIN",
+    "season": 2022,
+    "week": 21,
+    "forecast": 0.446,
+    "probs": {
+      "logistic": 0.349,
+      "tree": 0.944,
+      "bt": 0.499,
+      "ann": 0.875,
+      "blended": 0.446
+    },
+    "blend_weights": {
+      "logistic": 0.9,
+      "tree": 0,
+      "bt": 0,
+      "ann": 0.1
+    },
+    "calibration": {
+      "pre": 0.402,
+      "post": 0.446
+    },
+    "ci": {
+      "bt90": [
+        0.499,
+        0.499
+      ]
+    },
+    "natural_language": "KC vs CIN: logistic 34.912%, tree 94.393%, BT 49.907%, ANN 87.527%, blended 44.563%. Key differentials: Total yards edge +47.78 (favorable); Turnovers edge +11.50 (favorable); Penalty yards edge +10.78 (needs attention).",
+    "top_drivers": [
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 4.028734083344905,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "positive",
+        "magnitude": 1.5320699608693853,
+        "source": "logit"
+      },
+      {
+        "feature": "offensive EPA/play (3wk)",
+        "direction": "positive",
+        "magnitude": 0.9154221044716927,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RLRLRL",
+        "direction": "positive",
+        "magnitude": 0.4439252336448598,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "positive",
+        "magnitude": 0.353346997976392,
+        "source": "bt"
+      },
+      {
+        "feature": "penalty yards differential",
+        "direction": "negative",
+        "magnitude": 0.05307649507326723,
+        "source": "bt"
+      },
+      {
+        "feature": "defensive success rate allowed (exp)",
+        "direction": "negative",
+        "magnitude": 0.006725508597636631,
+        "source": "ann"
+      },
+      {
+        "feature": "defensive success rate allowed (S2D)",
+        "direction": "negative",
+        "magnitude": 0.0056390049842182256,
+        "source": "ann"
+      }
+    ],
+    "actual": 1,
+    "forecast_hybrid_v2": 0.6241968051600002
+  }
+]

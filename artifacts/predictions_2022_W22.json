@@ -1,0 +1,86 @@
+[
+  {
+    "game_id": "2022-W22-PHI-KC",
+    "home_team": "PHI",
+    "away_team": "KC",
+    "season": 2022,
+    "week": 22,
+    "forecast": 0.559,
+    "probs": {
+      "logistic": 0.474,
+      "tree": 0.893,
+      "bt": 0.694,
+      "ann": 0.823,
+      "blended": 0.559
+    },
+    "blend_weights": {
+      "logistic": 0.9,
+      "tree": 0,
+      "bt": 0,
+      "ann": 0.1
+    },
+    "calibration": {
+      "pre": 0.509,
+      "post": 0.559
+    },
+    "ci": {
+      "bt90": [
+        0.694,
+        0.694
+      ]
+    },
+    "natural_language": "PHI vs KC: logistic 47.415%, tree 89.286%, BT 69.424%, ANN 82.322%, blended 55.898%. Key differentials: Turnovers deficit 157.32 (needs attention); Total yards deficit 20.32 (needs attention); Penalty yards deficit 9.58 (favorable).",
+    "top_drivers": [
+      {
+        "feature": "defensive success rate allowed (3wk)",
+        "direction": "positive",
+        "magnitude": 4.301360207836701,
+        "source": "logit"
+      },
+      {
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 4.238918571834278,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "positive",
+        "magnitude": 0.9080507237929317,
+        "source": "logit"
+      },
+      {
+        "feature": "CART leaf RRLRLR",
+        "direction": "positive",
+        "magnitude": 0.3928571428571429,
+        "source": "tree"
+      },
+      {
+        "feature": "total yards differential",
+        "direction": "negative",
+        "magnitude": 0.17251970864842742,
+        "source": "bt"
+      },
+      {
+        "feature": "r-ratio differential",
+        "direction": "negative",
+        "magnitude": 0.11639138669466778,
+        "source": "bt"
+      },
+      {
+        "feature": "def_pass_yds_s2d",
+        "direction": "positive",
+        "magnitude": 0.006773823689039602,
+        "source": "ann"
+      },
+      {
+        "feature": "Weather extreme flag",
+        "direction": "positive",
+        "magnitude": 0.006533984089785148,
+        "source": "ann"
+      }
+    ],
+    "actual": 0,
+    "forecast_hybrid_v2": 0.6583086809525642
+  }
+]

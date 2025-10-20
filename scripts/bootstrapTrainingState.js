@@ -45,6 +45,29 @@ function parseCliArgs(argv = []) {
 
 const CLI_ARGS = parseCliArgs(process.argv.slice(2));
 
+function parseExplicitChunkRange() {
+  const rawStart = process.env.BATCH_START ?? (CLI_ARGS.start ?? null);
+  const rawEnd = process.env.BATCH_END ?? (CLI_ARGS.end ?? null);
+  const start = rawStart == null ? Number.NaN : Number(rawStart);
+  const end = rawEnd == null ? Number.NaN : Number(rawEnd);
+  if (Number.isFinite(start) && Number.isFinite(end)) {
+    const lower = Math.min(start, end);
+    const upper = Math.max(start, end);
+    return { start: lower, end: upper };
+  }
+  return null;
+}
+
+function filterSeasonsByRange(seasons, range) {
+  if (!Array.isArray(seasons) || !range) return seasons;
+  return seasons.filter((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const value = Number(entry.season);
+    if (!Number.isFinite(value)) return false;
+    return value >= range.start && value <= range.end;
+  });
+}
+
 function ensureArtifactsDir() {
   if (fs.existsSync(ARTIFACTS_DIR)) {
     return true;
@@ -227,17 +250,18 @@ async function maybeColdStartWeeklyState({ stateExisted, bootstrapBundlePresent 
   return true;
 }
 
-async function resolveRawCoverage({
-  explicitStart = null,
-  explicitEnd = null
-} = {}) {
-  const start = normaliseSeason(process.env.BATCH_START ?? explicitStart ?? CLI_ARGS.start);
-  const end = normaliseSeason(process.env.BATCH_END ?? explicitEnd ?? CLI_ARGS.end);
-  if (start != null || end != null) {
-    return buildSeasonCoverageFromRaw({ startSeason: start ?? end, endSeason: end ?? start });
+async function resolveRawCoverage({ chunkRange = null } = {}) {
+  if (chunkRange) {
+    const coverage = await buildSeasonCoverageFromRaw({
+      startSeason: chunkRange.start,
+      endSeason: chunkRange.end
+    });
+    return { coverage, range: chunkRange, mode: "chunk" };
   }
+
   const range = await discoverSeasonRange();
-  return buildSeasonCoverageFromRaw({ startSeason: range.start, endSeason: range.end });
+  const coverage = await buildSeasonCoverageFromRaw({ startSeason: range.start, endSeason: range.end });
+  return { coverage, range, mode: "full" };
 }
 
 async function main() {
@@ -258,17 +282,24 @@ async function main() {
   const modelMap = buildSeasonWeekMap(entries, predictionPattern);
   const artifactSeasons = serialiseSeasonMap(modelMap);
 
-  const rawCoverage = await resolveRawCoverage();
+  const chunkRange = parseExplicitChunkRange();
+  const { coverage: rawCoverage, range: targetRange, mode } = await resolveRawCoverage({ chunkRange });
+
+  if (mode === "chunk") {
+    console.log(`[bootstrap] Building training_state (chunk) ${targetRange.start}–${targetRange.end}`);
+  } else {
+    const currentSeason = targetRange?.end ?? new Date().getFullYear();
+    console.log(`[bootstrap] Building training_state (full) ${MIN_SEASON}–${currentSeason}`);
+  }
+
   let modelSeasons = mergeSeasonCoverage(rawCoverage, artifactSeasons);
+  if (mode === "chunk") {
+    modelSeasons = filterSeasonsByRange(modelSeasons, targetRange);
+  }
   const bootstrapSource = artifactSeasons.length ? "artifact-scan" : "cold-start";
 
   if (!artifactSeasons.length && !rawCoverage.length) {
-    const explicitStart = normaliseSeason(process.env.BATCH_START ?? CLI_ARGS.start);
-    const explicitEnd = normaliseSeason(process.env.BATCH_END ?? CLI_ARGS.end);
-    const rangeLabel =
-      explicitStart != null && explicitEnd != null
-        ? `${explicitStart}–${explicitEnd}`
-        : "available season range";
+    const rangeLabel = mode === "chunk" ? `${targetRange.start}–${targetRange.end}` : "available season range";
     throw new Error(
       `[bootstrap] Unable to derive raw coverage for ${rangeLabel}. Ensure schedules/outcomes datasets are available before bootstrapping training state.`
     );
@@ -306,13 +337,23 @@ async function main() {
     recordLatestRun(state, BOOTSTRAP_KEYS.MODEL, latestModel);
   }
 
-  const hybridSeasons = serialiseSeasonMap(hybridMap);
+  let hybridSeasons = serialiseSeasonMap(hybridMap);
+  if (mode === "chunk") {
+    hybridSeasons = filterSeasonsByRange(hybridSeasons, targetRange);
+  }
   if (hybridSeasons.length) {
     markBootstrapCompleted(state, BOOTSTRAP_KEYS.HYBRID, { seasons: hybridSeasons, bootstrap_source: "artifact-scan" });
   }
 
   const hybridLatestFromLog = discoverHybridLatestFromLog();
-  const hybridLatest = hybridLatestFromLog || selectLatestRun(hybridSeasons);
+  const hybridLatestInRange =
+    mode === "chunk" && hybridLatestFromLog
+      ? Number(hybridLatestFromLog.season) >= targetRange.start &&
+        Number(hybridLatestFromLog.season) <= targetRange.end
+        ? hybridLatestFromLog
+        : null
+      : hybridLatestFromLog;
+  const hybridLatest = hybridLatestInRange || selectLatestRun(hybridSeasons);
   if (hybridLatest) {
     recordLatestRun(state, BOOTSTRAP_KEYS.HYBRID, hybridLatest);
   }

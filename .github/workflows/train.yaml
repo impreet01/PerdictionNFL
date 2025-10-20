@@ -125,7 +125,7 @@ jobs:
           if [ ! -f artifacts/training_state.json ]; then
             BATCH_START=${{ matrix.chunk.start }} \
             BATCH_END=${{ matrix.chunk.end }} \
-            npm run bootstrap:state
+            npm run bootstrap:state -- --start ${{ matrix.chunk.start }} --end ${{ matrix.chunk.end }}
           fi
       - name: Run chunked historical training ${{ matrix.chunk.label }}
         env:

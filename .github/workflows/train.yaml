@@ -277,6 +277,11 @@ jobs:
           WEEK: ${{ steps.resolve.outputs.WEEK }}
           SINCE_SEASON: ${{ env.MIN_TRAIN_SEASON }}
         run: npm run build:context
+      - name: Promote prior season ensemble
+        env:
+          SEASON: ${{ env.SEASON }}
+        run: |
+          node --input-type=module -e "const season = Number(process.env.SEASON); if (!Number.isFinite(season)) { console.log('No season resolved; skipping promotion.'); process.exit(0); } const prev = season - 1; (async () => { const { promote } = await import('./trainer/promotePreviousSeason.js'); const ok = await promote({ prevSeason: prev, nextSeason: season }); if (!ok) { console.error('Unable to promote final ensemble from prior season.'); process.exit(1); } console.log(`Promoted finals from ${prev} → ${season}`); })().catch((err) => { console.error(err); process.exit(1); });"
       - name: Train + Predict (auto week)
         timeout-minutes: 25
         run: |
@@ -306,7 +311,35 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-          git add artifacts/*.json || true
+          pad_week=$(printf '%02d' "$WEEK")
+          stamp="${SEASON}_W${pad_week}"
+          targets=(
+            "artifacts/predictions_${stamp}.json"
+            "artifacts/model_${stamp}.json"
+            "artifacts/bt_features_${stamp}.json"
+            "artifacts/diagnostics_${stamp}.json"
+            "artifacts/context_${SEASON}_W${pad_week}.json"
+          )
+          for file in "${targets[@]}"; do
+            if [ -f "$file" ]; then
+              git add "$file"
+            fi
+          done
+          meta_targets=(
+            "artifacts/training_state.json"
+          )
+          for file in "${meta_targets[@]}"; do
+            if [ -f "$file" ]; then
+              git add "$file"
+            fi
+          done
+          find artifacts -maxdepth 1 -name '*_current.json' -print0 2>/dev/null | xargs -0 -r git add
+          find artifacts -maxdepth 1 -name 'season_index_*.json' -print0 2>/dev/null | xargs -0 -r git add
+          find artifacts -maxdepth 1 -name 'season_summary_*.json' -print0 2>/dev/null | xargs -0 -r git add
+          find artifacts/models/common -maxdepth 1 -name 'feature_stats_1999_*' -print0 2>/dev/null | xargs -0 -r git add
+          if [ -d "artifacts/models/${SEASON}/week-00" ]; then
+            find "artifacts/models/${SEASON}/week-00" -maxdepth 2 -type f -name '*.json' -print0 2>/dev/null | xargs -0 -r git add
+          fi
           if git diff --cached --quiet; then
             echo "no_changes=true" >> $GITHUB_OUTPUT
             echo "No artifact changes to commit."

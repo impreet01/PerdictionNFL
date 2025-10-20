@@ -78,6 +78,33 @@ function readTrainingState() {
   assert(fs.existsSync(promotedEnsemble), "Promoted ensemble.json missing");
   assert(fs.existsSync(promotedSub), "Promoted submodel weights missing");
 
+  const predictionsPath = path.join(artifactsDir, "predictions_2025_W01.json");
+  if (fs.existsSync(predictionsPath)) {
+    const predictions = JSON.parse(fs.readFileSync(predictionsPath, "utf8"));
+    const predictionRows = Array.isArray(predictions)
+      ? predictions
+      : Array.isArray(predictions.games)
+        ? predictions.games
+        : [];
+    const forecastValues = predictionRows.map((row) => Number(row.forecast ?? row.probs?.blended ?? 0.5));
+    if (forecastValues.length) {
+      const uniqueForecasts = new Set(forecastValues.map((v) => v.toFixed(3)));
+      assert(
+        uniqueForecasts.size > 1 || (uniqueForecasts.size === 1 && [...uniqueForecasts][0] !== "0.500"),
+        "Week-1 forecasts should not all collapse to 0.500"
+      );
+    }
+  }
+
+  const diagnosticsPath = path.join(artifactsDir, "diagnostics_2025_W01.json");
+  const trainingMeta = fs.existsSync(diagnosticsPath)
+    ? JSON.parse(fs.readFileSync(diagnosticsPath, "utf8"))?.training_metadata ?? {}
+    : {};
+  if (trainingMeta && Object.keys(trainingMeta).length > 0) {
+    assert(trainingMeta?.historical?.rowCount > 0, "Week-1 training should include historical rows");
+    assert(trainingMeta?.featureStats?.historical_rows > 0, "Historical row count should be reflected in feature stats");
+  }
+
   const state = readTrainingState();
   const modelRecord = state?.bootstraps?.model_training ?? {};
   assert.equal(modelRecord.seededFrom, 2024, "training_state should record seed season");
@@ -89,6 +116,13 @@ function readTrainingState() {
   const seedFiles = Array.isArray(modelRecord.seedFiles) ? modelRecord.seedFiles : [];
   assert(seedFiles.includes("2025/week-00/ensemble.json"), "seedFiles should include promoted ensemble");
   assert(seedFiles.includes("2025/week-00/components/weights.json"), "seedFiles should include promoted components");
+
+  const historicalSeasons = Array.isArray(trainingMeta?.historical?.seasons)
+    ? trainingMeta.historical.seasons.map((s) => Number(s)).sort((a, b) => a - b)
+    : [];
+  if (historicalSeasons.length) {
+    assert(historicalSeasons.includes(2024), "Historical seasons should include the prior year for warm start");
+  }
 
   // Negative scenario: promotion should fail clearly when prior finals are absent.
   fs.rmSync(artifactsDir, { recursive: true, force: true });

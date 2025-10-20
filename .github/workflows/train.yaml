@@ -249,7 +249,7 @@ jobs:
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
-      - name: Guard: training_state available
+      - name: "Guard: training_state available"
         run: |
           [[ -f artifacts/training_state.json ]] || { echo "::error::training_state.json missing after restore"; exit 1; }
       - name: Guard against historical override flags
@@ -315,7 +315,7 @@ jobs:
           for f in artifacts/season_index_*.json artifacts/season_summary_*.json; do
             [ -f "$f" ] && echo "--- $f ---" && cat "$f"
           done
-      - name: Guard: weekly artifacts generated
+      - name: "Guard: weekly artifacts generated"
         run: |
           pad_week=$(printf '%02d' "$WEEK")
           stamp="${SEASON}_W${pad_week}"

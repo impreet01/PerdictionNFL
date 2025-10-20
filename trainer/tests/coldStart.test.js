@@ -40,7 +40,7 @@ function readTrainingState() {
 (function runColdStartSuite() {
   fs.rmSync(artifactsDir, { recursive: true, force: true });
 
-  runCommand("npm", ["run", "bootstrap:state"], {
+  runCommand("npm", ["run", "bootstrap:state", "--", "--start", "1999", "--end", "2000"], {
     env: {
       BATCH_START: "1999",
       BATCH_END: "2000",

@@ -90,7 +90,7 @@ jobs:
             start: 2023
             end: 2024
             artifact_in: 'bootstrap-2021-2022'
-            artifact_out: 'bootstrap-final'
+            artifact_out: 'historical_bootstrap'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -141,10 +141,19 @@ jobs:
           BATCH_START=${{ matrix.chunk.start }} \
           BATCH_END=${{ matrix.chunk.end }} \
           CI_FAST=1 npm run train:multi
+      - name: Verify chunk markers present ${{ matrix.chunk.label }}
+        run: |
+          if [ ! -d artifacts/chunks ] || ! ls artifacts/chunks/model_*.done >/dev/null 2>&1; then
+            echo "::error::Missing historical bootstrap cache markers."
+            exit 1
+          fi
       - name: Pack bootstrap chunk ${{ matrix.chunk.label }}
         run: |
           tar -czf bootstrap_chunk.tgz -C artifacts .
           mv bootstrap_chunk.tgz artifacts/bootstrap-${{ matrix.chunk.label }}.tgz
+          if [ "${{ matrix.chunk.artifact_out }}" = "historical_bootstrap" ]; then
+            cp artifacts/bootstrap-${{ matrix.chunk.label }}.tgz artifacts/historical_bootstrap.tgz
+          fi
       - name: Upload artifacts ${{ matrix.chunk.label }}
         uses: actions/upload-artifact@v4
         with:
@@ -173,25 +182,29 @@ jobs:
         run: |
           rm -rf artifacts
           mkdir -p artifacts
-      - name: Restore bootstrap artifacts
+      - name: Resolve bootstrap revision
+        run: |
+          REVISION=$(node --input-type=module -e "import('./trainer/trainingState.js').then((m) => process.stdout.write(m.CURRENT_BOOTSTRAP_REVISION))")
+          echo "CURRENT_BOOTSTRAP_REVISION=$REVISION" >> $GITHUB_ENV
+      - name: Restore historical cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            artifacts/models
+            artifacts/outcomes
+            artifacts/predictions
+            artifacts/training_state.json
+          key: historical-${{ hashFiles('trainer/trainingState.js') }}-${{ env.CURRENT_BOOTSTRAP_REVISION }}
+      - name: Download merged historical (fallback)
+        if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/download-artifact@v4
         with:
-          name: bootstrap-final
+          name: historical_bootstrap
           path: artifacts
-      - name: Extract bootstrap cache
-        run: |
-          if ls artifacts/bootstrap-*.tgz >/dev/null 2>&1; then
-            for archive in artifacts/bootstrap-*.tgz; do
-              echo "Extracting ${archive}"
-              tar -xzf "${archive}" -C artifacts
-            done
-          fi
-      - name: Verify bootstrap cache presence
-        run: |
-          if [ ! -d artifacts/chunks ] || ! ls artifacts/chunks/model_*.done >/dev/null 2>&1; then
-            echo "::error::Missing historical bootstrap cache markers."
-            exit 1
-          fi
+      - name: Extract merged historical
+        if: steps.cache.outputs.cache-hit != 'true' && hashFiles('artifacts/historical_bootstrap.tgz') != ''
+        run: tar -xzf artifacts/historical_bootstrap.tgz -C artifacts
       - name: Ensure lockfile
         run: |
           if [ ! -f package-lock.json ]; then
@@ -202,40 +215,14 @@ jobs:
           fi
       - name: Install deps
         run: npm ci || npm install --no-audit --no-fund
-      - name: Verify cached training state
-        run: |
-          if [ ! -f artifacts/training_state.json ]; then
-            echo "::error::artifacts/training_state.json is missing. Restore the cached bootstrap artifacts before running the trainer to avoid replaying historical seasons."
-            exit 1
-          fi
-      - name: Guard against historical override flags
-        run: |
-          flags=(
-            REWRITE_HISTORICAL
-            OVERWRITE_HISTORICAL
-            REBUILD_HISTORICAL
-            REGENERATE_HISTORICAL
-            REGEN_HISTORICAL
-            FORCE_HISTORICAL_BOOTSTRAP
-          )
-          tripped=()
-          for flag in "${flags[@]}"; do
-            value="${!flag}"
-            if [ -n "${value}" ]; then
-              tripped+=("${flag}")
-            fi
-          done
-          if [ "${#tripped[@]}" -gt 0 ]; then
-            echo "::error::Historical override flags detected: ${tripped[*]}. Unset them for routine runs so cached bootstraps remain valid."
-            exit 1
-          fi
       - name: Resolve season (auto unless override)
         run: |
           if [ -n "${{ github.event.inputs.season }}" ]; then
-            echo "SEASON=${{ github.event.inputs.season }}" >> $GITHUB_ENV
+            SEASON="${{ github.event.inputs.season }}"
           else
-            echo "SEASON=$(node -e 'console.log(new Date().getFullYear())')" >> $GITHUB_ENV
+            SEASON=$(node -e 'console.log(new Date().getFullYear())')
           fi
+          echo "SEASON=$SEASON" >> $GITHUB_ENV
           echo "Resolved SEASON=$SEASON"
       - name: Resolve week (auto unless override)
         id: resolve
@@ -250,7 +237,31 @@ jobs:
             echo "WEEK=$WEEK" >> $GITHUB_ENV
             echo "Resolved WEEK=$WEEK (auto)"
           fi
+          PADDED=$(printf '%02d' "$WEEK")
+          echo "PAD_WEEK=$PADDED" >> $GITHUB_ENV
           echo "WEEK=$WEEK" >> $GITHUB_OUTPUT
+      - name: Cold-start training state (if missing)
+        run: |
+          if [ ! -f artifacts/training_state.json ]; then
+            echo "training_state.json missing – synthesising minimal weekly state."
+            npm run bootstrap:state
+          fi
+        env:
+          SEASON: ${{ env.SEASON }}
+          WEEK: ${{ steps.resolve.outputs.WEEK }}
+      - name: Guard: training_state available
+        run: |
+          [[ -f artifacts/training_state.json ]] || { echo "::error::training_state.json missing after restore"; exit 1; }
+      - name: Guard against historical override flags
+        run: |
+          bad=()
+          for k in REWRITE_HISTORICAL OVERWRITE_HISTORICAL REBUILD_HISTORICAL REGENERATE_HISTORICAL REGEN_HISTORICAL FORCE_HISTORICAL_BOOTSTRAP; do
+            v="${!k-}"
+            if [[ -n "$v" ]]; then bad+=("$k"); fi
+          done
+          if (( ${#bad[@]} )); then
+            echo "::error::Historical override flags detected: ${bad[*]}"; exit 1;
+          fi
       - name: Run unit tests
         run: npm test
       - name: Fetch Rotowire injuries
@@ -304,6 +315,27 @@ jobs:
           for f in artifacts/season_index_*.json artifacts/season_summary_*.json; do
             [ -f "$f" ] && echo "--- $f ---" && cat "$f"
           done
+      - name: Guard: weekly artifacts generated
+        run: |
+          pad_week=$(printf '%02d' "$WEEK")
+          stamp="${SEASON}_W${pad_week}"
+          required=(
+            "artifacts/predictions_${stamp}.json"
+            "artifacts/model_${stamp}.json"
+            "artifacts/bt_features_${stamp}.json"
+            "artifacts/diagnostics_${stamp}.json"
+            "artifacts/context_${SEASON}_W${pad_week}.json"
+          )
+          missing=()
+          for file in "${required[@]}"; do
+            if [ ! -f "$file" ]; then
+              missing+=("$file")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing required weekly artifacts: ${missing[*]}"
+            exit 1
+          fi
       - name: Commit artifacts (try main)
         id: commit_main
         continue-on-error: true
@@ -359,4 +391,14 @@ jobs:
           body: "Automated artifacts update. Merge to publish."
           branch: "bot/artifacts-S${{ env.SEASON }}-W${{ env.WEEK }}"
           add-paths: |
-            artifacts/*.json
+            artifacts/predictions_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json
+            artifacts/model_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json
+            artifacts/bt_features_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json
+            artifacts/diagnostics_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json
+            artifacts/context_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json
+            artifacts/training_state.json
+            artifacts/*_current.json
+            artifacts/season_index_*.json
+            artifacts/season_summary_*.json
+            artifacts/models/common/feature_stats_1999_*
+            artifacts/models/${{ env.SEASON }}/week-00/**/*.json

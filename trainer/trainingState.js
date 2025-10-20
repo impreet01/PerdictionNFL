@@ -161,6 +161,11 @@ function hasCoverageForRange(entries, { minSeason, maxSeason }) {
 }
 
 export function shouldRunHistoricalBootstrap(state, key, { minSeason = DEFAULT_MIN_BOOTSTRAP_SEASON, requiredThroughSeason = null } = {}) {
+  const envSeason = Number.parseInt(process.env.SEASON ?? "", 10);
+  const envWeek = Number.parseInt(process.env.WEEK ?? "", 10);
+  if (Number.isFinite(envSeason) && Number.isFinite(envWeek)) {
+    return false;
+  }
   if (shouldForceBootstrap()) return true;
   if (key === BOOTSTRAP_KEYS.MODEL && !hasModelArtifactsOnDisk()) return true;
   const record = state?.bootstraps?.[key];

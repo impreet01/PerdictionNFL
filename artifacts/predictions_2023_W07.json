@@ -5,13 +5,13 @@
     "away_team": "JAC",
     "season": 2023,
     "week": 7,
-    "forecast": 0.806,
+    "forecast": 0.814,
     "probs": {
-      "logistic": 0.853,
+      "logistic": 0.843,
       "tree": 0.872,
-      "bt": 0.354,
-      "ann": 0.542,
-      "blended": 0.806
+      "bt": 0.352,
+      "ann": 0.675,
+      "blended": 0.814
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -20,33 +20,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.822,
-      "post": 0.806
+      "pre": 0.826,
+      "post": 0.814
     },
     "ci": {
       "bt90": [
-        0.346,
-        0.359
+        0.345,
+        0.357
       ]
     },
-    "natural_language": "NO vs JAC: logistic 85.321%, tree 87.234%, BT 35.403%, ANN 54.235%, blended 80.616%. Key differentials: Turnovers edge +164.83 (favorable); Penalty yards edge +32.67 (needs attention); Total yards deficit 21.33 (needs attention).",
+    "natural_language": "NO vs JAC: logistic 84.323%, tree 87.234%, BT 35.242%, ANN 67.533%, blended 81.438%. Key differentials: Turnovers edge +164.83 (favorable); Penalty yards edge +32.67 (needs attention); Total yards deficit 21.33 (needs attention).",
     "top_drivers": [
       {
         "feature": "losses_s2d",
         "direction": "negative",
-        "magnitude": 3.2631445041635,
+        "magnitude": 3.2012493138539146,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 1.8839333291539972,
+        "magnitude": 1.9007787469565534,
         "source": "logit"
       },
       {
         "feature": "defensive EPA/play allowed (3wk)",
         "direction": "positive",
-        "magnitude": 0.8617455500631837,
+        "magnitude": 0.8512582490881385,
         "source": "logit"
       },
       {
@@ -58,30 +58,30 @@
       {
         "feature": "penalty yards differential",
         "direction": "negative",
-        "magnitude": 0.2954612360106049,
+        "magnitude": 0.29732306155358634,
         "source": "bt"
       },
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.05905066760518466,
+        "magnitude": 0.05976848900830621,
         "source": "bt"
+      },
+      {
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 0.028808666072813037,
+        "source": "ann"
       },
       {
         "feature": "diff_rush_rushing_broken_tackles",
         "direction": "negative",
-        "magnitude": 0.020899223924955242,
-        "source": "ann"
-      },
-      {
-        "feature": "off_yds_for_5g",
-        "direction": "positive",
-        "magnitude": 0.018910174846912944,
+        "magnitude": 0.027869369227560562,
         "source": "ann"
       }
     ],
     "actual": 0,
-    "forecast_hybrid_v2": 0.6769810131671932
+    "forecast_hybrid_v2": 0.681631016674516
   },
   {
     "game_id": "2023-W07-BAL-DET",
@@ -89,13 +89,13 @@
     "away_team": "DET",
     "season": 2023,
     "week": 7,
-    "forecast": 0.933,
+    "forecast": 0.948,
     "probs": {
       "logistic": 0.993,
       "tree": 0.872,
-      "bt": 0.617,
-      "ann": 0.451,
-      "blended": 0.933
+      "bt": 0.618,
+      "ann": 0.582,
+      "blended": 0.948
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -104,33 +104,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.939,
-      "post": 0.933
+      "pre": 0.952,
+      "post": 0.948
     },
     "ci": {
       "bt90": [
         0.542,
-        0.689
+        0.69
       ]
     },
-    "natural_language": "BAL vs DET: logistic 99.348%, tree 87.234%, BT 61.718%, ANN 45.073%, blended 93.289%. Key differentials: Total yards deficit 40.17 (needs attention); Penalty yards edge +3.50 (needs attention); Turnovers edge +0.50 (favorable).",
+    "natural_language": "BAL vs DET: logistic 99.32%, tree 87.234%, BT 61.804%, ANN 58.152%, blended 94.815%. Key differentials: Total yards deficit 40.17 (needs attention); Penalty yards edge +3.50 (needs attention); Turnovers edge +0.50 (favorable).",
     "top_drivers": [
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 4.687226122935145,
+        "magnitude": 4.729137522427904,
         "source": "logit"
       },
       {
         "feature": "elo_pre",
         "direction": "negative",
-        "magnitude": 2.202184597818591,
+        "magnitude": 2.21849656888935,
         "source": "logit"
       },
       {
-        "feature": "diff_pass_times_sacked",
+        "feature": "diff_pass_passing_bad_throws",
         "direction": "positive",
-        "magnitude": 1.182739303442889,
+        "magnitude": 1.1647228514094208,
         "source": "logit"
       },
       {
@@ -142,30 +142,30 @@
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.1055674401699269,
+        "magnitude": 0.10685072063228146,
         "source": "bt"
       },
       {
         "feature": "penalty yards differential",
         "direction": "negative",
-        "magnitude": 0.03517644891971053,
+        "magnitude": 0.03539811052241142,
         "source": "bt"
+      },
+      {
+        "feature": "defensive EPA/play allowed (5wk)",
+        "direction": "negative",
+        "magnitude": 0.0327962166135716,
+        "source": "ann"
       },
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 0.01944865589890037,
-        "source": "ann"
-      },
-      {
-        "feature": "offensive EPA/play (exp)",
-        "direction": "positive",
-        "magnitude": 0.018714370420637193,
+        "magnitude": 0.02938588073778697,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.7000154088395557
+    "forecast_hybrid_v2": 0.7062471222056295
   },
   {
     "game_id": "2023-W07-CHI-LV",
@@ -173,13 +173,13 @@
     "away_team": "LV",
     "season": 2023,
     "week": 7,
-    "forecast": 0.852,
+    "forecast": 0.864,
     "probs": {
-      "logistic": 0.896,
+      "logistic": 0.914,
       "tree": 0.872,
       "bt": 0.477,
-      "ann": 0.581,
-      "blended": 0.852
+      "ann": 0.508,
+      "blended": 0.864
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -188,8 +188,8 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.865,
-      "post": 0.852
+      "pre": 0.873,
+      "post": 0.864
     },
     "ci": {
       "bt90": [
@@ -197,24 +197,24 @@
         0.517
       ]
     },
-    "natural_language": "CHI vs LV: logistic 89.643%, tree 87.234%, BT 47.73%, ANN 58.108%, blended 85.208%. Key differentials: Turnovers deficit 348.17 (needs attention); Total yards edge +40.00 (favorable); Penalty yards deficit 10.17 (favorable).",
+    "natural_language": "CHI vs LV: logistic 91.41%, tree 87.234%, BT 47.698%, ANN 50.786%, blended 86.415%. Key differentials: Turnovers deficit 348.17 (needs attention); Total yards edge +40.00 (favorable); Penalty yards deficit 10.17 (favorable).",
     "top_drivers": [
-      {
-        "feature": "losses_s2d",
-        "direction": "negative",
-        "magnitude": 4.636322960666692,
-        "source": "logit"
-      },
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 4.583731421214412,
+        "magnitude": 4.617683931105291,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 4.548381378054883,
         "source": "logit"
       },
       {
         "feature": "off_turnovers_s2d_minus_opp",
         "direction": "positive",
-        "magnitude": 0.7336806636949988,
+        "magnitude": 0.7511752798058099,
         "source": "logit"
       },
       {
@@ -226,30 +226,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.09243758287114473,
+        "magnitude": 0.0935612564573838,
         "source": "bt"
       },
       {
         "feature": "penalty yards differential",
         "direction": "positive",
-        "magnitude": 0.08678556560287996,
+        "magnitude": 0.08733243796076764,
         "source": "bt"
       },
       {
-        "feature": "diff_pass_passing_drop_pct",
-        "direction": "negative",
-        "magnitude": 0.021981969529697817,
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 0.04034128714434742,
         "source": "ann"
       },
       {
-        "feature": "diff_rec_receiving_broken_tackles",
-        "direction": "positive",
-        "magnitude": 0.021366629580940277,
+        "feature": "diff_pass_times_hit",
+        "direction": "negative",
+        "magnitude": 0.03090176975958819,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.6854315795562717
+    "forecast_hybrid_v2": 0.6909452111863487
   },
   {
     "game_id": "2023-W07-IND-CLE",
@@ -257,13 +257,13 @@
     "away_team": "CLE",
     "season": 2023,
     "week": 7,
-    "forecast": 0.742,
+    "forecast": 0.737,
     "probs": {
-      "logistic": 0.784,
+      "logistic": 0.761,
       "tree": 0.872,
       "bt": 0.511,
-      "ann": 0.559,
-      "blended": 0.742
+      "ann": 0.675,
+      "blended": 0.737
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -272,33 +272,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.762,
-      "post": 0.742
+      "pre": 0.752,
+      "post": 0.737
     },
     "ci": {
       "bt90": [
         0.476,
-        0.537
+        0.538
       ]
     },
-    "natural_language": "IND vs CLE: logistic 78.405%, tree 87.234%, BT 51.059%, ANN 55.888%, blended 74.184%. Key differentials: Turnovers deficit 742.37 (needs attention); Penalty yards deficit 18.03 (favorable); Total yards edge +14.63 (favorable).",
+    "natural_language": "IND vs CLE: logistic 76.096%, tree 87.234%, BT 51.097%, ANN 67.517%, blended 73.681%. Key differentials: Turnovers deficit 742.37 (needs attention); Penalty yards deficit 18.03 (favorable); Total yards edge +14.63 (favorable).",
     "top_drivers": [
       {
         "feature": "losses_s2d",
         "direction": "negative",
-        "magnitude": 3.2631445041635,
+        "magnitude": 3.2012493138539146,
         "source": "logit"
       },
       {
         "feature": "off_total_yds_s2d_minus_opp",
         "direction": "positive",
-        "magnitude": 2.442975407082975,
+        "magnitude": 2.4335206251558588,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 1.8839333291539972,
+        "magnitude": 1.9007787469565534,
         "source": "logit"
       },
       {
@@ -310,30 +310,30 @@
       {
         "feature": "penalty yards differential",
         "direction": "positive",
-        "magnitude": 0.15698809103539552,
+        "magnitude": 0.1579773390388903,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "positive",
-        "magnitude": 0.034528101613001703,
+        "magnitude": 0.03494202772169294,
         "source": "bt"
       },
       {
-        "feature": "diff_pass_times_sacked",
+        "feature": "def_1st_down_s2d",
         "direction": "positive",
-        "magnitude": 0.0211568177431813,
+        "magnitude": 0.021421626121883024,
         "source": "ann"
       },
       {
-        "feature": "def_turnovers_s2d_minus_opp",
-        "direction": "positive",
-        "magnitude": 0.016870682008772498,
+        "feature": "offensive turnovers",
+        "direction": "negative",
+        "magnitude": 0.020395197541484375,
         "source": "ann"
       }
     ],
     "actual": 0,
-    "forecast_hybrid_v2": 0.6650296436085154
+    "forecast_hybrid_v2": 0.6670005632629806
   },
   {
     "game_id": "2023-W07-NE-BUF",
@@ -341,13 +341,13 @@
     "away_team": "BUF",
     "season": 2023,
     "week": 7,
-    "forecast": 0.5,
+    "forecast": 0.466,
     "probs": {
-      "logistic": 0.527,
+      "logistic": 0.48,
       "tree": 0.6,
       "bt": 0.539,
-      "ann": 0.519,
-      "blended": 0.5
+      "ann": 0.543,
+      "blended": 0.466
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -356,8 +356,8 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.527,
-      "post": 0.5
+      "pre": 0.486,
+      "post": 0.466
     },
     "ci": {
       "bt90": [
@@ -365,24 +365,24 @@
         0.539
       ]
     },
-    "natural_language": "NE vs BUF: logistic 52.741%, tree 60%, BT 53.893%, ANN 51.898%, blended 50.021%. Key differentials: Turnovers edge +166.83 (favorable); Total yards deficit 82.67 (needs attention); Penalty yards edge +0.33 (needs attention).",
+    "natural_language": "NE vs BUF: logistic 47.988%, tree 60%, BT 53.932%, ANN 54.341%, blended 46.581%. Key differentials: Turnovers edge +166.83 (favorable); Total yards deficit 82.67 (needs attention); Penalty yards edge +0.33 (needs attention).",
     "top_drivers": [
-      {
-        "feature": "losses_s2d",
-        "direction": "negative",
-        "magnitude": 4.636322960666692,
-        "source": "logit"
-      },
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 4.575836861201155,
+        "magnitude": 4.609730894688794,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 4.548381378054883,
         "source": "logit"
       },
       {
         "feature": "diff_rush_rushing_yards_after_contact_avg",
         "direction": "positive",
-        "magnitude": 1.284297543794133,
+        "magnitude": 1.2215700306046773,
         "source": "logit"
       },
       {
@@ -394,30 +394,30 @@
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.21053891808151382,
+        "magnitude": 0.21309823447399598,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "positive",
-        "magnitude": 0.009901450379561864,
+        "magnitude": 0.01002014989197491,
         "source": "bt"
       },
       {
-        "feature": "diff_rec_receiving_int",
-        "direction": "negative",
-        "magnitude": 0.020388339320838757,
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 0.034585751793821735,
         "source": "ann"
       },
       {
-        "feature": "diff_pass_times_pressured",
+        "feature": "net_yds_3g",
         "direction": "negative",
-        "magnitude": 0.017932422631274394,
+        "magnitude": 0.030751295817631606,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.6179988732359306
+    "forecast_hybrid_v2": 0.61305128268725
   },
   {
     "game_id": "2023-W07-NYG-WAS",
@@ -425,13 +425,13 @@
     "away_team": "WAS",
     "season": 2023,
     "week": 7,
-    "forecast": 0.893,
+    "forecast": 0.907,
     "probs": {
-      "logistic": 0.94,
+      "logistic": 0.942,
       "tree": 0.444,
-      "bt": 0.531,
-      "ann": 0.569,
-      "blended": 0.893
+      "bt": 0.532,
+      "ann": 0.654,
+      "blended": 0.907
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -440,33 +440,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.903,
-      "post": 0.893
+      "pre": 0.913,
+      "post": 0.907
     },
     "ci": {
       "bt90": [
-        0.531,
-        0.531
+        0.532,
+        0.532
       ]
     },
-    "natural_language": "NYG vs WAS: logistic 94.008%, tree 44.444%, BT 53.068%, ANN 56.884%, blended 89.33%. Key differentials: Total yards deficit 43.00 (needs attention); Turnovers deficit 18.33 (needs attention); Penalty yards edge +15.83 (needs attention).",
+    "natural_language": "NYG vs WAS: logistic 94.222%, tree 44.444%, BT 53.154%, ANN 65.394%, blended 90.669%. Key differentials: Total yards deficit 43.00 (needs attention); Turnovers deficit 18.33 (needs attention); Penalty yards edge +15.83 (needs attention).",
     "top_drivers": [
-      {
-        "feature": "losses_s2d",
-        "direction": "negative",
-        "magnitude": 4.636322960666692,
-        "source": "logit"
-      },
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 4.567476308652329,
+        "magnitude": 4.601308414047542,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 4.548381378054883,
         "source": "logit"
       },
       {
         "feature": "diff_pass_times_blitzed",
         "direction": "negative",
-        "magnitude": 0.8730052253033822,
+        "magnitude": 0.8532076421182391,
         "source": "logit"
       },
       {
@@ -478,30 +478,30 @@
       {
         "feature": "penalty yards differential",
         "direction": "negative",
-        "magnitude": 0.14523973031814583,
+        "magnitude": 0.14615494695845105,
         "source": "bt"
       },
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.11256553869736613,
+        "magnitude": 0.1139338882217292,
         "source": "bt"
       },
       {
-        "feature": "defensive success rate allowed (S2D)",
-        "direction": "negative",
-        "magnitude": 0.02043648101774836,
+        "feature": "def_1st_down_s2d",
+        "direction": "positive",
+        "magnitude": 0.02316685974046975,
         "source": "ann"
       },
       {
-        "feature": "QB sack rate (S2D)",
+        "feature": "defensive EPA/play allowed (5wk)",
         "direction": "negative",
-        "magnitude": 0.01878473478981521,
+        "magnitude": 0.02144018191527788,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.6928616719917413
+    "forecast_hybrid_v2": 0.6988335409772946
   },
   {
     "game_id": "2023-W07-TB-ATL",
@@ -509,13 +509,13 @@
     "away_team": "ATL",
     "season": 2023,
     "week": 7,
-    "forecast": 0.084,
+    "forecast": 0.078,
     "probs": {
-      "logistic": 0.055,
+      "logistic": 0.046,
       "tree": 0.138,
       "bt": 0.571,
-      "ann": 0.432,
-      "blended": 0.084
+      "ann": 0.428,
+      "blended": 0.078
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -524,33 +524,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.092,
-      "post": 0.084
+      "pre": 0.084,
+      "post": 0.078
     },
     "ci": {
       "bt90": [
         0.541,
-        0.604
+        0.605
       ]
     },
-    "natural_language": "TB vs ATL: logistic 5.462%, tree 13.793%, BT 57.115%, ANN 43.206%, blended 8.389%. Key differentials: Turnovers deficit 416.67 (needs attention); Total yards deficit 56.27 (needs attention); Penalty yards deficit 8.77 (favorable).",
+    "natural_language": "TB vs ATL: logistic 4.555%, tree 13.793%, BT 57.132%, ANN 42.834%, blended 7.775%. Key differentials: Turnovers deficit 416.67 (needs attention); Total yards deficit 56.27 (needs attention); Penalty yards deficit 8.77 (favorable).",
     "top_drivers": [
       {
         "feature": "off_total_yds_s2d_minus_opp",
         "direction": "negative",
-        "magnitude": 2.382004751661241,
+        "magnitude": 2.3727859378283163,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "negative",
-        "magnitude": 2.321005861517725,
+        "magnitude": 2.3417594162504742,
         "source": "logit"
       },
       {
         "feature": "off_turnovers_s2d_minus_opp",
         "direction": "positive",
-        "magnitude": 1.8740265840263306,
+        "magnitude": 1.9187127496721306,
         "source": "logit"
       },
       {
@@ -562,30 +562,30 @@
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.14533310591996354,
+        "magnitude": 0.14709977881702527,
         "source": "bt"
       },
       {
         "feature": "penalty yards differential",
         "direction": "positive",
-        "magnitude": 0.07429189582251704,
+        "magnitude": 0.07476004031127126,
         "source": "bt"
       },
       {
-        "feature": "WR target share (5wk)",
-        "direction": "negative",
-        "magnitude": 0.021194650770352482,
+        "feature": "off_total_yds_s2d_minus_opp",
+        "direction": "positive",
+        "magnitude": 0.026100768382937768,
         "source": "ann"
       },
       {
         "feature": "defensive EPA/play allowed (5wk)",
         "direction": "negative",
-        "magnitude": 0.018954958997289707,
+        "magnitude": 0.0258498265075794,
         "source": "ann"
       }
     ],
     "actual": 0,
-    "forecast_hybrid_v2": 0.5322393420432393
+    "forecast_hybrid_v2": 0.5310658778183337
   },
   {
     "game_id": "2023-W07-LAR-PIT",
@@ -593,13 +593,13 @@
     "away_team": "PIT",
     "season": 2023,
     "week": 7,
-    "forecast": 0.724,
+    "forecast": 0.715,
     "probs": {
-      "logistic": 0.764,
+      "logistic": 0.727,
       "tree": 0.872,
-      "bt": 0.544,
-      "ann": 0.567,
-      "blended": 0.724
+      "bt": 0.546,
+      "ann": 0.772,
+      "blended": 0.715
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -608,33 +608,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.745,
-      "post": 0.724
+      "pre": 0.731,
+      "post": 0.715
     },
     "ci": {
       "bt90": [
-        0.544,
-        0.544
+        0.546,
+        0.546
       ]
     },
-    "natural_language": "LAR vs PIT: logistic 76.436%, tree 87.234%, BT 54.428%, ANN 56.726%, blended 72.407%. Key differentials: Total yards edge +98.27 (favorable); Turnovers edge +31.33 (favorable); Penalty yards edge +17.87 (needs attention).",
+    "natural_language": "LAR vs PIT: logistic 72.693%, tree 87.234%, BT 54.56%, ANN 77.163%, blended 71.501%. Key differentials: Total yards edge +98.27 (favorable); Turnovers edge +31.33 (favorable); Penalty yards edge +17.87 (needs attention).",
     "top_drivers": [
       {
         "feature": "losses_s2d",
         "direction": "negative",
-        "magnitude": 3.2631445041635,
+        "magnitude": 3.2012493138539146,
         "source": "logit"
       },
       {
         "feature": "off_total_yds_s2d_minus_opp",
         "direction": "positive",
-        "magnitude": 2.9777486232649744,
+        "magnitude": 2.9662241667415428,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 1.8839333291539972,
+        "magnitude": 1.9007787469565534,
         "source": "logit"
       },
       {
@@ -646,30 +646,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.23635142082365768,
+        "magnitude": 0.23922451464978936,
         "source": "bt"
       },
       {
         "feature": "penalty yards differential",
         "direction": "negative",
-        "magnitude": 0.1633852983324825,
+        "magnitude": 0.1644148578303387,
         "source": "bt"
       },
       {
-        "feature": "wins_s2d",
-        "direction": "positive",
-        "magnitude": 0.016488675227409287,
+        "feature": "defensive EPA/play allowed (5wk)",
+        "direction": "negative",
+        "magnitude": 0.015072815875645537,
         "source": "ann"
       },
       {
-        "feature": "diff_pass_times_sacked",
-        "direction": "positive",
-        "magnitude": 0.015294179143221787,
+        "feature": "defensive EPA/play allowed (S2D)",
+        "direction": "negative",
+        "magnitude": 0.014880540688716101,
         "source": "ann"
       }
     ],
     "actual": 0,
-    "forecast_hybrid_v2": 0.6616289858477917
+    "forecast_hybrid_v2": 0.6627590198233535
   },
   {
     "game_id": "2023-W07-SEA-ARI",
@@ -677,13 +677,13 @@
     "away_team": "ARI",
     "season": 2023,
     "week": 7,
-    "forecast": 0.755,
+    "forecast": 0.766,
     "probs": {
-      "logistic": 0.8,
+      "logistic": 0.809,
       "tree": 0.872,
-      "bt": 0.473,
-      "ann": 0.543,
-      "blended": 0.755
+      "bt": 0.472,
+      "ann": 0.521,
+      "blended": 0.766
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -692,33 +692,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.774,
-      "post": 0.755
+      "pre": 0.78,
+      "post": 0.766
     },
     "ci": {
       "bt90": [
-        0.434,
+        0.433,
         0.508
       ]
     },
-    "natural_language": "SEA vs ARI: logistic 79.964%, tree 87.234%, BT 47.274%, ANN 54.262%, blended 75.494%. Key differentials: Turnovers edge +82.83 (favorable); Penalty yards edge +11.83 (needs attention); Total yards edge +7.70 (favorable).",
+    "natural_language": "SEA vs ARI: logistic 80.881%, tree 87.234%, BT 47.212%, ANN 52.095%, blended 76.565%. Key differentials: Turnovers edge +82.83 (favorable); Penalty yards edge +11.83 (needs attention); Total yards edge +7.70 (favorable).",
     "top_drivers": [
       {
         "feature": "off_total_yds_s2d_minus_opp",
         "direction": "negative",
-        "magnitude": 1.975803960899152,
+        "magnitude": 1.968157221792867,
         "source": "logit"
       },
       {
         "feature": "def_total_yds_s2d_minus_opp",
         "direction": "positive",
-        "magnitude": 1.707098480067992,
+        "magnitude": 1.7534414658168327,
         "source": "logit"
       },
       {
-        "feature": "diff_rush_carries",
-        "direction": "positive",
-        "magnitude": 1.0813406487917376,
+        "feature": "elo_pre",
+        "direction": "negative",
+        "magnitude": 1.0804738085333014,
         "source": "logit"
       },
       {
@@ -730,30 +730,30 @@
       {
         "feature": "penalty yards differential",
         "direction": "negative",
-        "magnitude": 0.10954353094568035,
+        "magnitude": 0.11023381081703282,
         "source": "bt"
       },
       {
         "feature": "r-ratio differential",
         "direction": "positive",
-        "magnitude": 0.038693551373181354,
+        "magnitude": 0.03915741328284727,
         "source": "bt"
       },
       {
-        "feature": "off_rush_yds_s2d",
+        "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 0.018736008639330393,
+        "magnitude": 0.029982723823186244,
         "source": "ann"
       },
       {
-        "feature": "qb_ypa_3g",
+        "feature": "diff_def_def_missed_tackles",
         "direction": "negative",
-        "magnitude": 0.01765662549260819,
+        "magnitude": 0.029344943990882458,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.6674750866593102
+    "forecast_hybrid_v2": 0.672550533861163
   },
   {
     "game_id": "2023-W07-DEN-GB",
@@ -761,13 +761,13 @@
     "away_team": "GB",
     "season": 2023,
     "week": 7,
-    "forecast": 0.207,
+    "forecast": 0.185,
     "probs": {
-      "logistic": 0.206,
+      "logistic": 0.18,
       "tree": 0.636,
-      "bt": 0.462,
-      "ann": 0.4,
-      "blended": 0.207
+      "bt": 0.461,
+      "ann": 0.356,
+      "blended": 0.185
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -776,33 +776,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.225,
-      "post": 0.207
+      "pre": 0.197,
+      "post": 0.185
     },
     "ci": {
       "bt90": [
         0.428,
-        0.494
+        0.493
       ]
     },
-    "natural_language": "DEN vs GB: logistic 20.59%, tree 63.636%, BT 46.237%, ANN 39.951%, blended 20.738%. Key differentials: Turnovers deficit 511.33 (needs attention); Total yards edge +25.30 (favorable); Penalty yards deficit 5.30 (favorable).",
+    "natural_language": "DEN vs GB: logistic 17.967%, tree 63.636%, BT 46.124%, ANN 35.561%, blended 18.462%. Key differentials: Turnovers deficit 511.33 (needs attention); Total yards edge +25.30 (favorable); Penalty yards deficit 5.30 (favorable).",
     "top_drivers": [
-      {
-        "feature": "losses_s2d",
-        "direction": "negative",
-        "magnitude": 4.636322960666692,
-        "source": "logit"
-      },
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 4.567566433452958,
+        "magnitude": 4.601399206418521,
+        "source": "logit"
+      },
+      {
+        "feature": "losses_s2d",
+        "direction": "negative",
+        "magnitude": 4.548381378054883,
         "source": "logit"
       },
       {
         "feature": "off_total_yds_s2d_minus_opp",
         "direction": "positive",
-        "magnitude": 2.4496835596249236,
+        "magnitude": 2.440202815864858,
         "source": "logit"
       },
       {
@@ -814,30 +814,30 @@
       {
         "feature": "total yards differential",
         "direction": "positive",
-        "magnitude": 0.05612980109937236,
+        "magnitude": 0.056812116375661414,
         "source": "bt"
       },
       {
         "feature": "penalty yards differential",
         "direction": "positive",
-        "magnitude": 0.043355189699713574,
+        "magnitude": 0.043628388988708744,
         "source": "bt"
       },
       {
-        "feature": "diff_def_def_missed_tackle_pct",
+        "feature": "Dome roof flag",
         "direction": "positive",
-        "magnitude": 0.013339299685742578,
+        "magnitude": 0.020452448226181516,
         "source": "ann"
       },
       {
-        "feature": "diff_rush_rushing_broken_tackles",
+        "feature": "diff_pass_passing_drop_pct",
         "direction": "negative",
-        "magnitude": 0.012467379642226283,
+        "magnitude": 0.020158917028287242,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.5580351832008958
+    "forecast_hybrid_v2": 0.5540405487533853
   },
   {
     "game_id": "2023-W07-KC-LAC",
@@ -845,13 +845,13 @@
     "away_team": "LAC",
     "season": 2023,
     "week": 7,
-    "forecast": 0.93,
+    "forecast": 0.949,
     "probs": {
-      "logistic": 0.98,
+      "logistic": 0.974,
       "tree": 0.872,
-      "bt": 0.42,
-      "ann": 0.549,
-      "blended": 0.93
+      "bt": 0.419,
+      "ann": 0.766,
+      "blended": 0.949
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -860,33 +860,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.937,
-      "post": 0.93
+      "pre": 0.953,
+      "post": 0.949
     },
     "ci": {
       "bt90": [
-        0.42,
-        0.42
+        0.419,
+        0.419
       ]
     },
-    "natural_language": "KC vs LAC: logistic 97.995%, tree 87.234%, BT 41.989%, ANN 54.89%, blended 93.03%. Key differentials: Turnovers edge +766.33 (favorable); Total yards edge +6.37 (favorable); Penalty yards deficit 5.67 (favorable).",
+    "natural_language": "KC vs LAC: logistic 97.396%, tree 87.234%, BT 41.895%, ANN 76.627%, blended 94.94%. Key differentials: Turnovers edge +766.33 (favorable); Total yards edge +6.37 (favorable); Penalty yards deficit 5.67 (favorable).",
     "top_drivers": [
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 6.088872519825719,
+        "magnitude": 6.1433169101635805,
         "source": "logit"
       },
       {
         "feature": "elo_pre",
         "direction": "negative",
-        "magnitude": 4.469540039278559,
+        "magnitude": 4.502646713393223,
         "source": "logit"
       },
       {
         "feature": "off_total_yds_s2d_minus_opp",
         "direction": "positive",
-        "magnitude": 2.699414863250751,
+        "magnitude": 2.6889676115965364,
         "source": "logit"
       },
       {
@@ -898,30 +898,30 @@
       {
         "feature": "penalty yards differential",
         "direction": "positive",
-        "magnitude": 0.04662734130885625,
+        "magnitude": 0.04692115980167209,
         "source": "bt"
       },
       {
         "feature": "turnover differential",
         "direction": "negative",
-        "magnitude": 0.012706518570071537,
+        "magnitude": 0.014408210368690817,
         "source": "bt"
       },
       {
-        "feature": "QB sack rate (S2D)",
-        "direction": "negative",
-        "magnitude": 0.020198991094348487,
+        "feature": "def_yds_against_3g",
+        "direction": "positive",
+        "magnitude": 0.01818500687591438,
         "source": "ann"
       },
       {
-        "feature": "offensive success rate (3wk)",
+        "feature": "defensive EPA/play allowed (5wk)",
         "direction": "negative",
-        "magnitude": 0.018140336147054924,
+        "magnitude": 0.017493360100901374,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.699482188408244
+    "forecast_hybrid_v2": 0.7064266051276215
   },
   {
     "game_id": "2023-W07-PHI-MIA",
@@ -929,13 +929,13 @@
     "away_team": "MIA",
     "season": 2023,
     "week": 7,
-    "forecast": 0.932,
+    "forecast": 0.946,
     "probs": {
-      "logistic": 0.983,
+      "logistic": 0.981,
       "tree": 0.872,
       "bt": 0.576,
-      "ann": 0.529,
-      "blended": 0.932
+      "ann": 0.672,
+      "blended": 0.946
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -944,8 +944,8 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.938,
-      "post": 0.932
+      "pre": 0.95,
+      "post": 0.946
     },
     "ci": {
       "bt90": [
@@ -953,24 +953,24 @@
         0.576
       ]
     },
-    "natural_language": "PHI vs MIA: logistic 98.347%, tree 87.234%, BT 57.636%, ANN 52.893%, blended 93.159%. Key differentials: Turnovers edge +135.00 (favorable); Total yards deficit 98.67 (needs attention); Penalty yards deficit 4.83 (favorable).",
+    "natural_language": "PHI vs MIA: logistic 98.136%, tree 87.234%, BT 57.565%, ANN 67.154%, blended 94.637%. Key differentials: Turnovers edge +135.00 (favorable); Total yards deficit 98.67 (needs attention); Penalty yards deficit 4.83 (favorable).",
     "top_drivers": [
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 6.088872519825719,
+        "magnitude": 6.1433169101635805,
         "source": "logit"
       },
       {
         "feature": "elo_pre",
         "direction": "negative",
-        "magnitude": 4.4612661027946645,
+        "magnitude": 4.494311490397425,
         "source": "logit"
       },
       {
         "feature": "diff_rush_carries",
         "direction": "positive",
-        "magnitude": 1.517629934421376,
+        "magnitude": 1.5008324148860663,
         "source": "logit"
       },
       {
@@ -982,30 +982,30 @@
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.25005759211881723,
+        "magnitude": 0.2530972985085239,
         "source": "bt"
       },
       {
         "feature": "penalty yards differential",
         "direction": "positive",
-        "magnitude": 0.03919063310625931,
+        "magnitude": 0.039437589772209986,
         "source": "bt"
       },
       {
         "feature": "defensive EPA/play allowed (5wk)",
         "direction": "negative",
-        "magnitude": 0.01793208763183836,
+        "magnitude": 0.02740447530647654,
         "source": "ann"
       },
       {
-        "feature": "diff_rush_rushing_broken_tackles",
-        "direction": "negative",
-        "magnitude": 0.017370640127879422,
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 0.024978240197208488,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.6998377287714268
+    "forecast_hybrid_v2": 0.70588796417324
   },
   {
     "game_id": "2023-W07-MIN-SF",
@@ -1013,13 +1013,13 @@
     "away_team": "SF",
     "season": 2023,
     "week": 7,
-    "forecast": 0.515,
+    "forecast": 0.476,
     "probs": {
-      "logistic": 0.55,
+      "logistic": 0.504,
       "tree": 0.872,
       "bt": 0.54,
-      "ann": 0.463,
-      "blended": 0.515
+      "ann": 0.43,
+      "blended": 0.476
     },
     "blend_weights": {
       "logistic": 0.9,
@@ -1028,33 +1028,33 @@
       "ann": 0.1
     },
     "calibration": {
-      "pre": 0.541,
-      "post": 0.515
+      "pre": 0.496,
+      "post": 0.476
     },
     "ci": {
       "bt90": [
-        0.491,
+        0.49,
         0.596
       ]
     },
-    "natural_language": "MIN vs SF: logistic 55.002%, tree 87.234%, BT 54.024%, ANN 46.272%, blended 51.5%. Key differentials: Turnovers edge +522.00 (favorable); Total yards deficit 26.33 (needs attention); Penalty yards deficit 21.33 (favorable).",
+    "natural_language": "MIN vs SF: logistic 50.383%, tree 87.234%, BT 54.018%, ANN 42.977%, blended 47.597%. Key differentials: Turnovers edge +522.00 (favorable); Total yards deficit 26.33 (needs attention); Penalty yards deficit 21.33 (favorable).",
     "top_drivers": [
       {
         "feature": "losses_s2d",
         "direction": "negative",
-        "magnitude": 3.2631445041635,
+        "magnitude": 3.2012493138539146,
         "source": "logit"
       },
       {
         "feature": "elo_pre",
         "direction": "positive",
-        "magnitude": 2.308104807690406,
+        "magnitude": 2.3252013485020253,
         "source": "logit"
       },
       {
         "feature": "wins_s2d",
         "direction": "positive",
-        "magnitude": 1.8839333291539972,
+        "magnitude": 1.9007787469565534,
         "source": "logit"
       },
       {
@@ -1066,29 +1066,29 @@
       {
         "feature": "penalty yards differential",
         "direction": "positive",
-        "magnitude": 0.1864374555176795,
+        "magnitude": 0.18761227635556033,
         "source": "bt"
       },
       {
         "feature": "total yards differential",
         "direction": "negative",
-        "magnitude": 0.07140025324184195,
+        "magnitude": 0.07226819651909616,
         "source": "bt"
       },
       {
-        "feature": "def_total_yds_s2d_minus_opp",
-        "direction": "negative",
-        "magnitude": 0.020289279256274974,
+        "feature": "wins_s2d",
+        "direction": "positive",
+        "magnitude": 0.03883503734519183,
         "source": "ann"
       },
       {
-        "feature": "Weather impact score",
+        "feature": "diff_def_def_times_blitzed",
         "direction": "positive",
-        "magnitude": 0.01761259865825229,
+        "magnitude": 0.027412045848182312,
         "source": "ann"
       }
     ],
     "actual": 1,
-    "forecast_hybrid_v2": 0.6209900815140322
+    "forecast_hybrid_v2": 0.6151019004603113
   }
 ]

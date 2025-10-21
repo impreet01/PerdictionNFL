@@ -2907,8 +2907,35 @@ async function main() {
 
   if (activeChunkLabel && !historicalOverride) {
     const cachedChunk = await loadChunkCache(activeChunkLabel);
-    if (cachedChunk?.seasons?.length) {
-      markSeasonStatusBatch(cachedChunk.seasons);
+    if (cachedChunk) {
+      if (cachedChunk?.seasons?.length) {
+        markSeasonStatusBatch(cachedChunk.seasons);
+      }
+      try {
+        const normalizedSeasons = new Set();
+        if (Array.isArray(cachedChunk?.seasons)) {
+          for (const entry of cachedChunk.seasons) {
+            const season = normaliseSeasonValue(entry);
+            if (Number.isFinite(season)) {
+              normalizedSeasons.add(season);
+            }
+          }
+        }
+        if (!normalizedSeasons.size && chunkSelection?.start != null && chunkSelection?.end != null) {
+          for (let season = chunkSelection.start; season <= chunkSelection.end; season += 1) {
+            if (Number.isFinite(season)) {
+              normalizedSeasons.add(season);
+            }
+          }
+        }
+        for (const season of normalizedSeasons) {
+          markSeasonStatus(season);
+        }
+      } catch (err) {
+        console.warn(
+          `[train] Unable to update cached chunk status markers: ${err?.message || err}`
+        );
+      }
       console.log(
         `[train] Historical bootstrap chunk ${chunkSelection.start}-${chunkSelection.end} already cached – skipping.`
       );

@@ -1,5 +1,5 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import {
   BOOTSTRAP_KEYS,
   CURRENT_BOOTSTRAP_REVISION,
@@ -19,40 +19,37 @@ import {
 const ARTIFACTS_DIR = getArtifactsDir();
 const STATE_PATH = getTrainingStatePath();
 
-function normaliseSeason(value) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function normaliseWeek(value) {
-  return normaliseSeason(value);
-}
-
 function parseCliArgs(argv = []) {
-  const args = { start: null, end: null };
+  const args = { start: undefined, end: undefined, reset: false };
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === "--start" && i + 1 < argv.length) {
-      args.start = normaliseSeason(argv[i + 1]);
+      args.start = argv[i + 1];
       i += 1;
     } else if (token === "--end" && i + 1 < argv.length) {
-      args.end = normaliseSeason(argv[i + 1]);
+      args.end = argv[i + 1];
       i += 1;
+    } else if (token === "--reset") {
+      args.reset = true;
+    } else if (token.startsWith("--reset=")) {
+      const [, value] = token.split("=", 2);
+      if (value != null) {
+        args.reset = /^(1|true|yes|on)$/i.test(value);
+      }
     }
   }
   return args;
 }
 
 const CLI_ARGS = parseCliArgs(process.argv.slice(2));
+const START = Number(process.env.BATCH_START ?? CLI_ARGS.start);
+const END = Number(process.env.BATCH_END ?? CLI_ARGS.end);
+const RESET = process.env.BOOTSTRAP_RESET === "1" || CLI_ARGS.reset === true;
 
 function parseExplicitChunkRange() {
-  const rawStart = process.env.BATCH_START ?? (CLI_ARGS.start ?? null);
-  const rawEnd = process.env.BATCH_END ?? (CLI_ARGS.end ?? null);
-  const start = rawStart == null ? Number.NaN : Number(rawStart);
-  const end = rawEnd == null ? Number.NaN : Number(rawEnd);
-  if (Number.isFinite(start) && Number.isFinite(end)) {
-    const lower = Math.min(start, end);
-    const upper = Math.max(start, end);
+  if (Number.isFinite(START) && Number.isFinite(END)) {
+    const lower = Math.min(START, END);
+    const upper = Math.max(START, END);
     return { start: lower, end: upper };
   }
   return null;
@@ -178,78 +175,6 @@ function hasCurrentRevision(state, key) {
   return record.revision === CURRENT_BOOTSTRAP_REVISION;
 }
 
-function hasBootstrapBundleRestored() {
-  const bundlePath = path.join(ARTIFACTS_DIR, "historical_bootstrap.tgz");
-  if (fs.existsSync(bundlePath)) return true;
-  const candidates = ["models", "outcomes", "predictions", "chunks"].map((name) =>
-    path.join(ARTIFACTS_DIR, name)
-  );
-  return candidates.some((candidate) => fs.existsSync(candidate));
-}
-
-function serialiseColdStartEntry(entry) {
-  if (!entry || typeof entry !== "object") return null;
-  const season = normaliseSeason(entry.season);
-  if (season == null) return null;
-  const weeks = Array.isArray(entry.weeks)
-    ? entry.weeks
-        .map(normaliseWeek)
-        .filter((wk) => wk != null)
-        .sort((a, b) => a - b)
-    : [];
-  if (!weeks.length) return null;
-  return { season, weeks };
-}
-
-async function maybeColdStartWeeklyState({ stateExisted, bootstrapBundlePresent }) {
-  if (stateExisted) return false;
-  if (bootstrapBundlePresent) return false;
-  const targetSeason = normaliseSeason(process.env.SEASON);
-  const targetWeek = normaliseWeek(process.env.WEEK);
-  if (targetSeason == null || targetWeek == null) return false;
-
-  const coverage = await buildSeasonCoverageFromRaw({
-    startSeason: MIN_SEASON,
-    endSeason: targetSeason
-  }).catch(() => []);
-
-  if (!Array.isArray(coverage) || !coverage.length) return false;
-
-  const trimmed = [];
-  for (const entry of coverage) {
-    const serialised = serialiseColdStartEntry(entry);
-    if (!serialised) continue;
-    if (serialised.season > targetSeason) continue;
-    if (serialised.season === targetSeason) {
-      if (targetWeek <= 1) continue;
-      const weeks = serialised.weeks.filter((wk) => wk < targetWeek);
-      if (!weeks.length) continue;
-      trimmed.push({ season: serialised.season, weeks });
-      continue;
-    }
-    trimmed.push(serialised);
-  }
-
-  if (!trimmed.length) return false;
-
-  trimmed.sort((a, b) => a.season - b.season);
-
-  const state = loadTrainingState();
-  markBootstrapCompleted(state, BOOTSTRAP_KEYS.MODEL, {
-    seasons: trimmed,
-    bootstrap_source: "weekly-cold-start"
-  });
-
-  const latestModel = selectLatestRun(trimmed);
-  if (latestModel) {
-    recordLatestRun(state, BOOTSTRAP_KEYS.MODEL, latestModel);
-  }
-
-  saveTrainingState(state);
-  console.log("[bootstrap] Cold-started training_state for weekly run");
-  return true;
-}
-
 async function resolveRawCoverage({ chunkRange = null } = {}) {
   if (chunkRange) {
     const coverage = await buildSeasonCoverageFromRaw({
@@ -266,12 +191,11 @@ async function resolveRawCoverage({ chunkRange = null } = {}) {
 
 async function main() {
   ensureArtifactsDir();
-  const stateExisted = fs.existsSync(STATE_PATH);
-  const bootstrapBundlePresent = hasBootstrapBundleRestored();
-
-  if (await maybeColdStartWeeklyState({ stateExisted, bootstrapBundlePresent })) {
-    return;
+  const statePreviouslyExisted = fs.existsSync(STATE_PATH);
+  if (RESET && statePreviouslyExisted) {
+    fs.rmSync(STATE_PATH, { force: true });
   }
+  const stateExisted = !RESET && statePreviouslyExisted;
 
   let state = loadTrainingState();
 
@@ -288,7 +212,7 @@ async function main() {
   if (mode === "chunk") {
     console.log(`[bootstrap] Building training_state (chunk) ${targetRange.start}–${targetRange.end}`);
   } else {
-    const currentSeason = targetRange?.end ?? new Date().getFullYear();
+    const currentSeason = new Date().getFullYear();
     console.log(`[bootstrap] Building training_state (full) ${MIN_SEASON}–${currentSeason}`);
   }
 

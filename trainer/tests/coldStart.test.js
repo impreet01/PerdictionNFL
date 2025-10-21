@@ -1,17 +1,38 @@
 import assert from "assert/strict";
-import fs from "fs";
-import path from "path";
-import { spawnSync } from "child_process";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
-const artifactsDir = path.join(repoRoot, "artifacts");
 const fixturePath = path.join(repoRoot, "trainer", "tests", "mocks", "stateFixture.js");
+const tmp = path.join(repoRoot, ".test_artifacts", `coldStart-${process.pid}-${Date.now()}`);
+
+const originalEnv = {
+  ARTIFACTS_DIR: process.env.ARTIFACTS_DIR,
+  BATCH_START: process.env.BATCH_START,
+  BATCH_END: process.env.BATCH_END,
+  BOOTSTRAP_RESET: process.env.BOOTSTRAP_RESET
+};
+
+const baseEnv = {
+  ARTIFACTS_DIR: tmp,
+  BATCH_START: "1999",
+  BATCH_END: "2000",
+  BOOTSTRAP_RESET: "1"
+};
+
+fs.rmSync(tmp, { recursive: true, force: true });
+fs.mkdirSync(tmp, { recursive: true });
+process.env.ARTIFACTS_DIR = tmp;
+process.env.BATCH_START = baseEnv.BATCH_START;
+process.env.BATCH_END = baseEnv.BATCH_END;
+process.env.BOOTSTRAP_RESET = baseEnv.BOOTSTRAP_RESET;
 
 function runCommand(command, args = [], { env: envOverrides = {}, cwd = repoRoot } = {}) {
-  const env = { ...process.env, ...envOverrides };
+  const env = { ...process.env, ...baseEnv, ...envOverrides };
   const result = spawnSync(command, args, {
     cwd,
     env,
@@ -32,51 +53,54 @@ function runCommand(command, args = [], { env: envOverrides = {}, cwd = repoRoot
 }
 
 function readTrainingState() {
-  const statePath = path.join(artifactsDir, "training_state.json");
+  const statePath = path.join(tmp, "training_state.json");
   const raw = fs.readFileSync(statePath, "utf8");
   return JSON.parse(raw);
 }
 
+function cleanup() {
+  fs.rmSync(tmp, { recursive: true, force: true });
+  for (const [key, value] of Object.entries(originalEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
 (function runColdStartSuite() {
-  fs.rmSync(artifactsDir, { recursive: true, force: true });
+  try {
+    runCommand("npm", ["run", "bootstrap:state", "--", "--start", "1999", "--end", "2000", "--reset"], {
+      env: { NODE_OPTIONS: `--import=${fixturePath}` }
+    });
 
-  runCommand("npm", ["run", "bootstrap:state", "--", "--start", "1999", "--end", "2000"], {
-    env: {
-      BATCH_START: "1999",
-      BATCH_END: "2000",
-      NODE_OPTIONS: `--import=${fixturePath}`
-    }
-  });
+    const stateAfterBootstrap = readTrainingState();
+    const modelSeasons = stateAfterBootstrap?.bootstraps?.model_training?.seasons ?? [];
+    const coveredSeasons = modelSeasons.map((entry) => Number(entry.season)).sort((a, b) => a - b);
+    assert.deepEqual(coveredSeasons, [1999, 2000], "bootstrap:state should include seasons 1999-2000");
 
-  const stateAfterBootstrap = readTrainingState();
-  const modelSeasons = stateAfterBootstrap?.bootstraps?.model_training?.seasons ?? [];
-  const coveredSeasons = modelSeasons.map((entry) => Number(entry.season)).sort((a, b) => a - b);
-  assert.deepEqual(
-    coveredSeasons,
-    [1999, 2000],
-    "bootstrap:state should include seasons 1999-2000"
-  );
+    runCommand("npm", ["run", "train:multi", "--", "--start", "1999", "--end", "2000"], {
+      env: {
+        TRAINER_SMOKE_TEST: "1",
+        CI_FAST: "1",
+        MAX_WORKERS: "1",
+        NODE_OPTIONS: `--import=${fixturePath}`
+      }
+    });
 
-  runCommand("npm", ["run", "train:multi", "--", "--start", "1999", "--end", "2000"], {
-    env: {
-      BATCH_START: "1999",
-      BATCH_END: "2000",
-      TRAINER_SMOKE_TEST: "1",
-      CI_FAST: "1",
-      MAX_WORKERS: "1",
-      NODE_OPTIONS: `--import=${fixturePath}`
-    }
-  });
+    const stateAfterTrain = readTrainingState();
+    const finalSeasons = stateAfterTrain?.bootstraps?.model_training?.seasons ?? [];
+    const finalCoverage = finalSeasons.map((entry) => Number(entry.season)).sort((a, b) => a - b);
+    assert.deepEqual(finalCoverage, [1999, 2000], "train:multi should retain season coverage");
 
-  const stateAfterTrain = readTrainingState();
-  const finalSeasons = stateAfterTrain?.bootstraps?.model_training?.seasons ?? [];
-  const finalCoverage = finalSeasons.map((entry) => Number(entry.season)).sort((a, b) => a - b);
-  assert.deepEqual(finalCoverage, [1999, 2000], "train:multi should retain season coverage");
+    const status1999 = path.join(tmp, ".status", "1999.done");
+    const status2000 = path.join(tmp, ".status", "2000.done");
+    assert(fs.existsSync(status1999), "Season 1999 status marker missing");
+    assert(fs.existsSync(status2000), "Season 2000 status marker missing");
 
-  const status1999 = path.join(artifactsDir, ".status", "1999.done");
-  const status2000 = path.join(artifactsDir, ".status", "2000.done");
-  assert(fs.existsSync(status1999), "Season 1999 status marker missing");
-  assert(fs.existsSync(status2000), "Season 2000 status marker missing");
-
-  console.log("cold start bootstrap + training smoke tests passed");
+    console.log("cold start bootstrap + training smoke tests passed");
+  } finally {
+    cleanup();
+  }
 })();

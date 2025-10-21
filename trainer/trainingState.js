@@ -1,8 +1,9 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
+import { artp, artifactsRoot } from "./utils/paths.js";
 
-const ARTIFACTS_DIR = path.resolve("artifacts");
-const STATE_PATH = path.join(ARTIFACTS_DIR, "training_state.json");
+const ARTIFACTS_DIR = path.resolve(artifactsRoot());
+const STATE_PATH = path.resolve(artp("training_state.json"));
 export const CURRENT_BOOTSTRAP_REVISION = "2025-historical-bootstrap-v1";
 export const BOOTSTRAP_KEYS = Object.freeze({
   MODEL: "model_training",

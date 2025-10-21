@@ -10,7 +10,9 @@ import {
 } from "./trainingState.js";
 import { canReuseModel, mapModelRevision } from "./modelRevision.js";
 
-const MODELS_ROOT = path.resolve("artifacts", "models");
+import { artifactsRoot } from "./utils/paths.js";
+
+const MODELS_ROOT = path.resolve(artifactsRoot(), "models");
 const JSON_SPACE = process.env.CI ? undefined : 2;
 const FEATURE_STATS_PREFIX = "feature_stats_1999_";
 

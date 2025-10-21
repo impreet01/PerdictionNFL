@@ -1,17 +1,27 @@
 import assert from "assert/strict";
-import fs from "fs";
-import path from "path";
-import { spawnSync } from "child_process";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
-const artifactsDir = path.join(repoRoot, "artifacts");
 const fixturePath = path.join(repoRoot, "trainer", "tests", "mocks", "stateFixture.js");
+const artifactsDir = path.join(repoRoot, ".test_artifacts", `strictBatch-${process.pid}-${Date.now()}`);
+
+const originalEnv = {
+  ARTIFACTS_DIR: process.env.ARTIFACTS_DIR
+};
+
+const baseEnv = { ARTIFACTS_DIR: artifactsDir };
+
+fs.rmSync(artifactsDir, { recursive: true, force: true });
+fs.mkdirSync(artifactsDir, { recursive: true });
+process.env.ARTIFACTS_DIR = artifactsDir;
 
 function runCommand(command, args = [], { env: envOverrides = {}, cwd = repoRoot } = {}) {
-  const env = { ...process.env, ...envOverrides };
+  const env = { ...process.env, ...baseEnv, ...envOverrides };
   const result = spawnSync(command, args, {
     cwd,
     env,
@@ -37,41 +47,52 @@ function readTrainingState() {
   return JSON.parse(raw);
 }
 
-(function runStrictBatchSuite() {
+function cleanup() {
   fs.rmSync(artifactsDir, { recursive: true, force: true });
+  if (originalEnv.ARTIFACTS_DIR === undefined) {
+    delete process.env.ARTIFACTS_DIR;
+  } else {
+    process.env.ARTIFACTS_DIR = originalEnv.ARTIFACTS_DIR;
+  }
+}
 
-  runCommand("npm", ["run", "bootstrap:state"], {
-    env: {
-      BATCH_START: "2001",
-      BATCH_END: "2002",
-      NODE_OPTIONS: `--import=${fixturePath}`
-    }
-  });
+(function runStrictBatchSuite() {
+  try {
+    runCommand("npm", ["run", "bootstrap:state"], {
+      env: {
+        BATCH_START: "2001",
+        BATCH_END: "2002",
+        NODE_OPTIONS: `--import=${fixturePath}`
+      }
+    });
 
-  const initialState = readTrainingState();
-  const initialSeasons = (initialState?.bootstraps?.model_training?.seasons ?? []).map((entry) => Number(entry.season));
-  assert.deepEqual(initialSeasons, [2001, 2002], "bootstrap should record explicit seasons only");
+    const initialState = readTrainingState();
+    const initialSeasons = (initialState?.bootstraps?.model_training?.seasons ?? []).map((entry) => Number(entry.season));
+    assert.deepEqual(initialSeasons, [2001, 2002], "bootstrap should record explicit seasons only");
 
-  runCommand("npm", ["run", "train:multi", "--", "--start", "2001", "--end", "2002"], {
-    env: {
-      BATCH_START: "2001",
-      BATCH_END: "2002",
-      TRAINER_SMOKE_TEST: "1",
-      CI_FAST: "1",
-      MAX_WORKERS: "1",
-      NODE_OPTIONS: `--import=${fixturePath}`
-    }
-  });
+    runCommand("npm", ["run", "train:multi", "--", "--start", "2001", "--end", "2002"], {
+      env: {
+        BATCH_START: "2001",
+        BATCH_END: "2002",
+        TRAINER_SMOKE_TEST: "1",
+        CI_FAST: "1",
+        MAX_WORKERS: "1",
+        NODE_OPTIONS: `--import=${fixturePath}`
+      }
+    });
 
-  const chunkDir = path.join(artifactsDir, "chunks");
-  const chunkFiles = fs.existsSync(chunkDir)
-    ? fs.readdirSync(chunkDir).filter((name) => name.startsWith("model_") && name.endsWith(".done"))
-    : [];
-  assert.deepEqual(chunkFiles, ["model_2001-2002.done"], "Trainer should only emit the requested chunk marker");
+    const chunkDir = path.join(artifactsDir, "chunks");
+    const chunkFiles = fs.existsSync(chunkDir)
+      ? fs.readdirSync(chunkDir).filter((name) => name.startsWith("model_") && name.endsWith(".done"))
+      : [];
+    assert.deepEqual(chunkFiles, ["model_2001-2002.done"], "Trainer should only emit the requested chunk marker");
 
-  const finalState = readTrainingState();
-  const finalSeasons = (finalState?.bootstraps?.model_training?.seasons ?? []).map((entry) => Number(entry.season));
-  assert.deepEqual(finalSeasons, [2001, 2002], "training_state should remain scoped to the explicit window");
+    const finalState = readTrainingState();
+    const finalSeasons = (finalState?.bootstraps?.model_training?.seasons ?? []).map((entry) => Number(entry.season));
+    assert.deepEqual(finalSeasons, [2001, 2002], "training_state should remain scoped to the explicit window");
 
-  console.log("strict batch window tests passed");
+    console.log("strict batch window tests passed");
+  } finally {
+    cleanup();
+  }
 })();

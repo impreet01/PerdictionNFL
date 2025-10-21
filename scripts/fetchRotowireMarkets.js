@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { artifactsRoot } from '../trainer/utils/paths.js';
 import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -376,7 +377,7 @@ async function main() {
   }
 
   const fetchedAt = new Date().toISOString();
-  const artifactsDir = path.resolve(process.cwd(), 'artifacts');
+  const artifactsDir = path.resolve(process.cwd(), artifactsRoot());
   await fs.mkdir(artifactsDir, { recursive: true });
 
   // `trainer/dataSources.js#loadMarkets` reads the JSON artifacts generated here.

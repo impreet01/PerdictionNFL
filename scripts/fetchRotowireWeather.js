@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { artifactsRoot } from "../trainer/utils/paths.js";
 import axios from "axios";
 import { load } from "cheerio";
 
@@ -77,7 +78,7 @@ if (!Number.isFinite(week) || week <= 0) {
 }
 
 const fetchedAt = new Date().toISOString();
-const artifactsDir = path.resolve(process.cwd(), "artifacts");
+const artifactsDir = path.resolve(process.cwd(), artifactsRoot());
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";

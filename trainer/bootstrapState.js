@@ -1,5 +1,5 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import {
   loadTrainingState,
   saveTrainingState,
@@ -8,9 +8,10 @@ import {
   BOOTSTRAP_KEYS,
   CURRENT_BOOTSTRAP_REVISION
 } from "./trainingState.js";
+import { artp, artifactsRoot } from "./utils/paths.js";
 
-const ARTIFACTS_DIR = path.resolve("artifacts");
-const STATE_PATH = path.join(ARTIFACTS_DIR, "training_state.json");
+const ARTIFACTS_DIR = path.resolve(artifactsRoot());
+const STATE_PATH = path.resolve(artp("training_state.json"));
 
 function ensureArtifactsDir() {
   fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });

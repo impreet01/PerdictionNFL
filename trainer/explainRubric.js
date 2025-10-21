@@ -1,5 +1,6 @@
 // trainer/explainRubric.js
 import fs from "node:fs";
+import { artp } from "./utils/paths.js";
 
 const DEFAULT_THRESHOLDS = Object.freeze({
   elo: 15,
@@ -29,7 +30,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   weather: 0.5
 });
 
-const THRESHOLD_PATH = "artifacts/explain_thresholds.json";
+const THRESHOLD_PATH = artp("explain_thresholds.json");
 let activeThresholds = { ...DEFAULT_THRESHOLDS };
 
 function ensureDirectory(filePath) {
@@ -504,7 +505,7 @@ export function computeExplainArtifact({ season, week, predictions, context }) {
 export async function writeExplainArtifact({ season, week, predictions, context }) {
   ensureThresholdsLoaded();
   const out = computeExplainArtifact({ season, week, predictions, context });
-  const name = `artifacts/explain_${season}_W${String(week).padStart(2, "0")}.json`;
+  const name = artp(`explain_${season}_W${String(week).padStart(2, "0")}.json`);
   await fs.promises.writeFile(name, JSON.stringify(out, null, 2));
   return name;
 }

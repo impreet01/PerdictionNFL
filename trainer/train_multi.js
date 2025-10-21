@@ -54,6 +54,7 @@ import {
   seasonsInRangeMissing,
   MIN_SEASON as MIN_SEASON_CONSTANT
 } from "./stateBuilder.js";
+import { artp, artifactsRoot } from "./utils/paths.js";
 
 const { readFileSync, existsSync } = fs;
 
@@ -96,7 +97,7 @@ const ANN_CONFIG = (() => {
   return { ...ANN_BASE_CONFIG };
 })();
 
-const ART_DIR = "artifacts";
+const ART_DIR = artifactsRoot();
 const STATUS_DIR = path.join(ART_DIR, ".status");
 const CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
 const CHUNK_FILE_PREFIX = "model";
@@ -498,7 +499,7 @@ function weekStamp(season, week) {
 }
 
 function artifactPath(prefix, season, week) {
-  return `${ART_DIR}/${prefix}_${weekStamp(season, week)}.json`;
+  return path.join(ART_DIR, `${prefix}_${weekStamp(season, week)}.json`);
 }
 
 function weekArtifactsExist(season, week) {
@@ -2013,15 +2014,18 @@ export async function writeArtifacts(result) {
   await ensureArtifactsDir();
   validateArtifact("predictions", result.predictions);
   await fsp.writeFile(
-    `${ART_DIR}/predictions_${stamp}.json`,
+    path.join(ART_DIR, `predictions_${stamp}.json`),
     JSON.stringify(result.predictions, null, JSON_SPACE)
   );
   // 1) Build & write context pack
+  const skipContext = process.env.TRAINER_SMOKE_TEST === "1";
   const context = Array.isArray(result.context)
     ? result.context
-    : await buildContextForWeek(result.season, result.week);
+    : skipContext
+      ? []
+      : await buildContextForWeek(result.season, result.week);
   await fs.promises.writeFile(
-    `${ART_DIR}/context_${result.season}_W${String(result.week).padStart(2, "0")}.json`,
+    path.join(ART_DIR, `context_${result.season}_W${String(result.week).padStart(2, "0")}.json`),
     JSON.stringify(context, null, JSON_SPACE)
   );
 
@@ -2035,20 +2039,27 @@ export async function writeArtifacts(result) {
       : result.predictions?.games || result.predictions,
     context
   });
-  validateArtifact("model", result.modelSummary);
-  await fsp.writeFile(`${ART_DIR}/model_${stamp}.json`, JSON.stringify(result.modelSummary, null, JSON_SPACE));
+  const modelSummaryPayload = {
+    ...(result.modelSummary ?? {}),
+    generated_at: result.modelSummary?.generated_at ?? new Date().toISOString()
+  };
+  validateArtifact("model", modelSummaryPayload);
+  await fsp.writeFile(
+    path.join(ART_DIR, `model_${stamp}.json`),
+    JSON.stringify(modelSummaryPayload, null, JSON_SPACE)
+  );
   const diagnosticsPayload = {
     ...result.diagnostics,
     training_metadata: result.trainingMetadata ?? null
   };
   validateArtifact("diagnostics", diagnosticsPayload);
   await fsp.writeFile(
-    `${ART_DIR}/diagnostics_${stamp}.json`,
+    path.join(ART_DIR, `diagnostics_${stamp}.json`),
     JSON.stringify(diagnosticsPayload, null, JSON_SPACE)
   );
   validateArtifact("bt_features", result.btDebug);
   await fsp.writeFile(
-    `${ART_DIR}/bt_features_${stamp}.json`,
+    path.join(ART_DIR, `bt_features_${stamp}.json`),
     JSON.stringify(result.btDebug, null, JSON_SPACE)
   );
 }
@@ -2085,9 +2096,9 @@ export async function updateHistoricalArtifacts({ season, schedules }) {
     const predictionFilename = `predictions_${stamp}.json`;
     const outcomesFilename = `outcomes_${stamp}.json`;
     const metricsFilename = `metrics_${stamp}.json`;
-    const predictionPath = `${ART_DIR}/${predictionFilename}`;
-    const outcomesPath = `${ART_DIR}/${outcomesFilename}`;
-    const metricsPath = `${ART_DIR}/${metricsFilename}`;
+    const predictionPath = path.join(ART_DIR, predictionFilename);
+    const outcomesPath = path.join(ART_DIR, outcomesFilename);
+    const metricsPath = path.join(ART_DIR, metricsFilename);
 
     const metadataEntry = {
       week,
@@ -2256,7 +2267,7 @@ export async function updateHistoricalArtifacts({ season, schedules }) {
 
   validateArtifact("metrics", seasonMetrics);
   await fsp.writeFile(
-    `${ART_DIR}/metrics_${season}.json`,
+    path.join(ART_DIR, `metrics_${season}.json`),
     JSON.stringify(seasonMetrics, null, JSON_SPACE)
   );
 
@@ -2268,7 +2279,7 @@ export async function updateHistoricalArtifacts({ season, schedules }) {
 
   validateArtifact("season_index", seasonIndex);
   await fsp.writeFile(
-    `${ART_DIR}/season_index_${season}.json`,
+    path.join(ART_DIR, `season_index_${season}.json`),
     JSON.stringify(seasonIndex, null, JSON_SPACE)
   );
 
@@ -2290,7 +2301,7 @@ export async function updateHistoricalArtifacts({ season, schedules }) {
 
   validateArtifact("season_summary", seasonSummary);
   await fsp.writeFile(
-    `${ART_DIR}/season_summary_${season}.json`,
+    path.join(ART_DIR, `season_summary_${season}.json`),
     JSON.stringify(seasonSummary, null, JSON_SPACE)
   );
 }
@@ -2498,7 +2509,7 @@ async function buildHistoricalTrainingSet({ minSeason = MIN_SEASON, maxSeason } 
 
 async function persistWeeklyFeatureStats({ season, week, featureStats, historicalSeasons }) {
   if (!featureStats) return null;
-  const commonDir = path.join("artifacts", "models", "common");
+  const commonDir = artp("models", "common");
   await fsp.mkdir(commonDir, { recursive: true });
   const suffix = week === 1
     ? `${season - 1}`
@@ -2721,7 +2732,11 @@ async function main() {
       const promoted = await promote({ prevSeason: previousSeason, nextSeason: targetSeason });
       if (!promoted) {
         throw new Error(
-          `[train] Unable to promote final ensemble from season ${previousSeason}. Expected artifacts/models/${previousSeason}/final to exist. Restore prior-season finals before running Week 1.`
+          `[train] Unable to promote final ensemble from season ${previousSeason}. Expected ${artp(
+            "models",
+            String(previousSeason),
+            "final"
+          )} to exist. Restore prior-season finals before running Week 1.`
         );
       }
       console.log(`[train] Promoted final ensemble from ${previousSeason} → ${targetSeason}/week-00.`);

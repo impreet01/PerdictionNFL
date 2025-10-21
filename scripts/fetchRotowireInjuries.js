@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { artifactsRoot } from '../trainer/utils/paths.js';
 
 const ROTOWIRE_ENABLED = process.env.ROTOWIRE_ENABLED === 'true';
 
@@ -44,7 +45,7 @@ if (!Number.isFinite(week) || week <= 0) {
 }
 
 const fetchedAt = new Date().toISOString();
-const artifactsDir = path.resolve(process.cwd(), 'artifacts');
+const artifactsDir = path.resolve(process.cwd(), artifactsRoot());
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

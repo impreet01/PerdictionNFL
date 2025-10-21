@@ -4,8 +4,9 @@ import path from "node:path";
 import process from "node:process";
 
 import { validateArtifact } from "../trainer/schemaValidator.js";
+import { artifactsRoot } from "../trainer/utils/paths.js";
 
-const ARTIFACT_DIR = path.resolve(process.cwd(), "artifacts");
+const ARTIFACT_DIR = path.resolve(process.cwd(), artifactsRoot());
 
 const SCHEMA_PATTERNS = {
   predictions: /^predictions_.*\.json$/,

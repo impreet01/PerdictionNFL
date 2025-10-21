@@ -547,6 +547,39 @@ function markSeasonStatus(season) {
   fs.writeFileSync(seasonStatusPath(season), new Date().toISOString());
 }
 
+function normaliseSeasonValue(entry) {
+  if (entry == null) return null;
+  if (Number.isFinite(entry)) return Number(entry);
+  if (typeof entry === "string" && entry.trim()) {
+    const parsed = Number.parseInt(entry.trim(), 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (typeof entry === "object") {
+    const candidate = entry.season ?? entry.year ?? entry.season_id ?? null;
+    if (Number.isFinite(candidate)) return Number(candidate);
+    if (typeof candidate === "string") {
+      const parsed = Number.parseInt(candidate, 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+  }
+  return null;
+}
+
+function markSeasonStatusBatch(entries) {
+  if (!Array.isArray(entries) || !entries.length) return;
+  const seasons = new Set();
+  for (const entry of entries) {
+    const season = normaliseSeasonValue(entry);
+    if (Number.isFinite(season)) {
+      seasons.add(season);
+    }
+  }
+  if (!seasons.size) return;
+  for (const season of seasons) {
+    markSeasonStatus(season);
+  }
+}
+
 function envFlag(name) {
   const value = process.env[name];
   if (value == null) return false;
@@ -2875,6 +2908,7 @@ async function main() {
   if (activeChunkLabel && !historicalOverride) {
     const cachedChunk = await loadChunkCache(activeChunkLabel);
     if (cachedChunk?.seasons?.length) {
+      markSeasonStatusBatch(cachedChunk.seasons);
       console.log(
         `[train] Historical bootstrap chunk ${chunkSelection.start}-${chunkSelection.end} already cached – skipping.`
       );

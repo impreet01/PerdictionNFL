@@ -3053,6 +3053,9 @@ async function main() {
 
     if (!seasonWeeks.length) {
       console.warn(`[train] Season ${resolvedSeason}: no regular-season weeks found. Skipping.`);
+      if (bootstrapRequired && !historicalOverride) {
+        markSeasonStatus(resolvedSeason);
+      }
       continue;
     }
 
@@ -3135,6 +3138,9 @@ async function main() {
 
     if (!weekResults.length) {
       console.warn(`[train] Season ${resolvedSeason}: no evaluable weeks after filtering.`);
+      if (bootstrapRequired && !historicalOverride) {
+        markSeasonStatus(resolvedSeason);
+      }
       continue;
     }
 

@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
+import { parseArgs } from "node:util";
 import crypto from "node:crypto";
 import {
   loadSchedules,
@@ -96,6 +97,19 @@ const ANN_CONFIG = (() => {
   }
   return { ...ANN_BASE_CONFIG };
 })();
+
+const { values: cliOverrides } = parseArgs({
+  options: {
+    start: { type: "string" },
+    end: { type: "string" },
+    artifactsDir: { type: "string" }
+  },
+  allowPositionals: true
+});
+
+if (cliOverrides.start) process.env.BATCH_START = cliOverrides.start;
+if (cliOverrides.end) process.env.BATCH_END = cliOverrides.end;
+if (cliOverrides.artifactsDir) process.env.ARTIFACTS_DIR = cliOverrides.artifactsDir;
 
 const ART_DIR = artifactsRoot();
 const STATUS_DIR = path.join(ART_DIR, ".status");
@@ -248,6 +262,23 @@ function parseTrainCliArgs(argv = []) {
     }
   }
   return result;
+}
+
+function computeRequestedSeasons() {
+  const start = Number(process.env.BATCH_START || NaN);
+  const end = Number(process.env.BATCH_END || NaN);
+
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    const cur = new Date().getFullYear();
+    return [cur];
+  }
+
+  const lo = Math.min(start, end);
+  const hi = Math.max(start, end);
+
+  const seasons = [];
+  for (let y = lo; y <= hi; y += 1) seasons.push(y);
+  return seasons;
 }
 
 export function formatBatchWindowLog({ chunkSelection, explicit }) {
@@ -2898,17 +2929,12 @@ async function main() {
 
   const activeChunkLabel = chunkSelection ? chunkLabel(chunkSelection.start, chunkSelection.end) : null;
 
-  let activeSeasons = uniqueSeasons;
-  if (chunkSelection) {
-    activeSeasons = chunkSelection.seasons;
-  } else if (!bootstrapRequired && !historicalOverride) {
-    activeSeasons = uniqueSeasons.filter((season) => season === targetSeason);
-  }
+  const activeSeasons = computeRequestedSeasons();
 
   console.log(`[train:init] ARTIFACTS_DIR=${ART_DIR}`);
-  console.log(`[train:init] STATUS_DIR=${STATUS_DIR}`);
+  console.log(`[train:init] STATUS_DIR=${path.join(ART_DIR, ".status")}`);
   console.log(
-    `[train:init] Active seasons: ${JSON.stringify(activeSeasons)} (BATCH_START=${process.env.BATCH_START}, BATCH_END=${process.env.BATCH_END})`
+    `[train:init] Active seasons (unfiltered): ${JSON.stringify(activeSeasons)}; BATCH_START=${process.env.BATCH_START}, BATCH_END=${process.env.BATCH_END}`
   );
 
   if (activeChunkLabel && !historicalOverride) {
@@ -3283,3 +3309,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 export { runWeeklyWorkflow };
+

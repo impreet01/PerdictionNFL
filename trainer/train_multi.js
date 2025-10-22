@@ -3191,6 +3191,15 @@ async function main() {
     );
   }
 
+  if (!historicalOverride && chunkSelection?.seasons?.length) {
+    for (const entry of chunkSelection.seasons) {
+      const season = normaliseSeason(entry);
+      if (Number.isFinite(season)) {
+        markSeasonStatus(season);
+      }
+    }
+  }
+
   if (bootstrapRequired) {
     const bootstrapRecord = state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL] ?? {};
     const historicalSeasonsNeeded = uniqueSeasons.filter((season) =>

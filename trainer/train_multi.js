@@ -2905,6 +2905,12 @@ async function main() {
     activeSeasons = uniqueSeasons.filter((season) => season === targetSeason);
   }
 
+  console.log(`[train:init] ARTIFACTS_DIR=${ART_DIR}`);
+  console.log(`[train:init] STATUS_DIR=${STATUS_DIR}`);
+  console.log(
+    `[train:init] Active seasons: ${JSON.stringify(activeSeasons)} (BATCH_START=${process.env.BATCH_START}, BATCH_END=${process.env.BATCH_END})`
+  );
+
   if (activeChunkLabel && !historicalOverride) {
     const cachedChunk = await loadChunkCache(activeChunkLabel);
     if (cachedChunk) {

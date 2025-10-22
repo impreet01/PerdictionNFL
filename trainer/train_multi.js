@@ -3053,8 +3053,10 @@ async function main() {
 
     if (!seasonWeeks.length) {
       console.warn(`[train] Season ${resolvedSeason}: no regular-season weeks found. Skipping.`);
-      if (bootstrapRequired && !historicalOverride) {
+      // Mark the season complete for explicit runs even if bootstrap heuristics are off.
+      if (!historicalOverride) {
         markSeasonStatus(resolvedSeason);
+        console.log(`[train] Season ${resolvedSeason}: marked complete (no weeks).`);
       }
       continue;
     }
@@ -3138,8 +3140,10 @@ async function main() {
 
     if (!weekResults.length) {
       console.warn(`[train] Season ${resolvedSeason}: no evaluable weeks after filtering.`);
-      if (bootstrapRequired && !historicalOverride) {
+      // Mark the season complete even if bootstrapRequired is false.
+      if (!historicalOverride) {
         markSeasonStatus(resolvedSeason);
+        console.log(`[train] Season ${resolvedSeason}: marked complete (no evaluable weeks).`);
       }
       continue;
     }

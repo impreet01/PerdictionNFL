@@ -9,8 +9,9 @@ import {
   BOOTSTRAP_KEYS,
   envFlag
 } from "./trainingState.js";
+import { artifactsRoot } from "./utils/paths.js";
 
-const ARTIFACTS_DIR = path.resolve("artifacts");
+const ARTIFACTS_DIR = artifactsRoot();
 const PREDICTION_PREFIX = "predictions";
 const MODEL_PREFIX = "model";
 const OUTCOME_PREFIX = "outcomes";

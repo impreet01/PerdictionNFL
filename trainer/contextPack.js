@@ -17,8 +17,9 @@ import { resolveCurrentWeek } from "../scripts/resolveWeek.js";
 import { validateArtifact } from "./schemaValidator.js";
 import { ZERO_SNAPSHOT, buildTeamInjuryIndex, getTeamInjurySnapshot } from "./injuryIndex.js";
 import { normalizeTeam } from "./teamNormalizer.js";
+import { artifactsRoot } from "./utils/paths.js";
 
-const ARTIFACTS_DIR = path.resolve("artifacts");
+const ARTIFACTS_DIR = artifactsRoot();
 const INJURY_DATA_MIN_SEASON = 2009;
 
 const NEUTRAL_WEATHER_TEMPLATE = Object.freeze({

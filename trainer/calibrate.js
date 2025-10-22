@@ -2,7 +2,9 @@ import path from "node:path";
 import { promises as fsp } from "node:fs";
 import crypto from "node:crypto";
 
-const MODELS_ROOT = path.resolve("artifacts", "models");
+import { artifactsRoot } from "./utils/paths.js";
+
+const MODELS_ROOT = path.join(artifactsRoot(), "models");
 
 function toNumber(value, fallback = 0) {
   const num = Number(value);

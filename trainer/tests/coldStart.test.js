@@ -80,13 +80,18 @@ function cleanup() {
     const coveredSeasons = modelSeasons.map((entry) => Number(entry.season)).sort((a, b) => a - b);
     assert.deepEqual(coveredSeasons, [1999, 2000], "bootstrap:state should include seasons 1999-2000");
 
+    const trainEnvOverrides = {
+      TRAINER_SMOKE_TEST: "1",
+      CI_FAST: "1",
+      MAX_WORKERS: "1",
+      NODE_OPTIONS: `--import=${fixturePath}`
+    };
+    const effectiveTrainEnv = { ...process.env, ...baseEnv, ...trainEnvOverrides };
+    console.log(
+      `[coldStart:test] ARTIFACTS_DIR=${effectiveTrainEnv.ARTIFACTS_DIR} BATCH_START=${effectiveTrainEnv.BATCH_START} BATCH_END=${effectiveTrainEnv.BATCH_END}`
+    );
     runCommand("npm", ["run", "train:multi", "--", "--start", "1999", "--end", "2000"], {
-      env: {
-        TRAINER_SMOKE_TEST: "1",
-        CI_FAST: "1",
-        MAX_WORKERS: "1",
-        NODE_OPTIONS: `--import=${fixturePath}`
-      }
+      env: trainEnvOverrides
     });
 
     const stateAfterTrain = readTrainingState();

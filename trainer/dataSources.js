@@ -131,7 +131,10 @@ async function fetchWithRetry(url, options = {}, label = 'fetch') {
       clearTimeout(id);
       if (!res.ok) {
         const text = await res.text().catch(() => res.statusText);
-        throw new Error(`${label} ${res.status}: ${text}`);
+        const err = new Error(`${label} ${res.status}: ${text}`);
+        err.status = res.status;
+        err.url = url;
+        throw err;
       }
       return res;
     } catch (err) {
@@ -509,12 +512,24 @@ async function fetchBuffer(url){
 }
 function gunzipMaybe(buf,url){ return isGz(url) ? zlib.gunzipSync(buf) : buf; }
 export async function fetchCsvFlexible(url){
-  const buf = await fetchBuffer(url);
-  const decoded = gunzipMaybe(buf,url);
-  const checksum = crypto.createHash('sha256').update(decoded).digest('hex');
-  const txt = decoded.toString('utf8');
-  const rows = parse(txt, { columns:true, skip_empty_lines:true, relax_column_count:true, trim:true });
-  return { rows, source:url, checksum };
+  try {
+    const buf = await fetchBuffer(url);
+    const decoded = gunzipMaybe(buf, url);
+    const checksum = crypto.createHash('sha256').update(decoded).digest('hex');
+    const txt = decoded.toString('utf8');
+    const rows = parse(txt, { columns: true, skip_empty_lines: true, relax_column_count: true, trim: true });
+    return { rows, source: url, checksum };
+  } catch (err) {
+    // Treat 404 as “dataset missing for this season/source”.
+    const msg = err?.message || '';
+    const is404 = err?.status === 404 || /\b404\b/.test(msg);
+    if (is404) {
+      console.warn(`[fetchCsvFlexible] 404 for ${url} — returning empty rows`);
+      return { rows: [], source: url, checksum: 'missing404' };
+    }
+    // Re-throw other failures (timeouts, 5xx) so upstream retry/backoff applies.
+    throw err;
+  }
 }
 
 function normalizeSuccessFlag(value) {

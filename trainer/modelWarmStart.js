@@ -1,7 +1,9 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-const ARTIFACTS_DIR = path.resolve("artifacts");
+import { artifactsRoot } from "./utils/paths.js";
+
+const ARTIFACTS_DIR = artifactsRoot();
 const MODEL_REGEX = /^model_(\d{4})_W(\d{2})\.json$/;
 const MODEL_PREFIX = "model";
 
@@ -94,6 +96,9 @@ export async function loadLogisticWarmStart({ season, week, features } = {}) {
   if (!Number.isFinite(targetSeason) || !Number.isFinite(targetWeek)) return null;
   const latest = await findLatestBefore(targetSeason, targetWeek);
   if (!latest) return null;
+  console.log(
+    `[modelWarmStart] Warm-starting logistic from ${latest.season} W${String(latest.week).padStart(2, "0")} at ${ARTIFACTS_DIR}`
+  );
   let parsed;
   try {
     const raw = await fs.readFile(latest.path, "utf8");

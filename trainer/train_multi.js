@@ -3008,167 +3008,179 @@ async function main() {
   const weekLimiter = createLimiter(WEEK_TASK_CONCURRENCY);
 
   for (const resolvedSeason of activeSeasons) {
-    if (smokeTest) {
-      processedSeasons.push({ season: resolvedSeason, weeks: [1] });
-      seasonWeekMax.set(resolvedSeason, 1);
-      if (!historicalOverride) {
-        markSeasonStatus(resolvedSeason);
-      }
-      continue;
-    }
-    logDataCoverage(resolvedSeason);
-    const sharedData = await (seasonLoadPromises.get(resolvedSeason) ?? loadSeasonDataCached(resolvedSeason));
-    const cachedSeason = !historicalOverride ? await loadSeasonCache(resolvedSeason) : null;
-    const seasonMarkerExists = !historicalOverride && seasonStatusExists(resolvedSeason);
-    const isTargetSeason = resolvedSeason === targetSeason && !bootstrapRequired;
-    if (seasonMarkerExists && cachedSeason?.weeks?.length && !isTargetSeason) {
-      console.log(
-        `[train] Season ${resolvedSeason}: season completion marker detected – skipping.`
-      );
-      processedSeasons.push({ season: resolvedSeason, weeks: cachedSeason.weeks });
-      const cachedMaxWeek = cachedSeason.weeks[cachedSeason.weeks.length - 1];
-      if (Number.isFinite(cachedMaxWeek)) {
-        seasonWeekMax.set(resolvedSeason, cachedMaxWeek);
-      }
-      continue;
-    }
-    if (cachedSeason?.weeks?.length && !historicalOverride && !isTargetSeason) {
-      console.log(
-        `[train] Season ${resolvedSeason}: previously completed (${cachedSeason.weeks.length} weeks) – skipping.`
-      );
-      processedSeasons.push({ season: resolvedSeason, weeks: cachedSeason.weeks });
-      const cachedMaxWeek = cachedSeason.weeks[cachedSeason.weeks.length - 1];
-      if (Number.isFinite(cachedMaxWeek)) {
-        seasonWeekMax.set(resolvedSeason, cachedMaxWeek);
-      }
+    let _seasonMarked = false;
+    const _markSeasonOnce = () => {
+      if (_seasonMarked) return false;
       markSeasonStatus(resolvedSeason);
-      continue;
-    }
-    const seasonWeeks = [...new Set(
-      sharedData.schedules
-        .filter((game) => Number(game.season) === resolvedSeason && isRegularSeason(game.season_type))
-        .map((game) => Number(game.week))
-        .filter((wk) => Number.isFinite(wk) && wk >= 1)
-    )].sort((a, b) => a - b);
-
-    if (!seasonWeeks.length) {
-      console.warn(`[train] Season ${resolvedSeason}: no regular-season weeks found. Skipping.`);
-      // Mark the season complete for explicit runs even if bootstrap heuristics are off.
-      if (!historicalOverride) {
-        markSeasonStatus(resolvedSeason);
-        console.log(`[train] Season ${resolvedSeason}: marked complete (no weeks).`);
-      }
-      continue;
-    }
-
-    const maxAvailableWeek = seasonWeeks[seasonWeeks.length - 1];
-    const finalWeek = resolvedSeason === targetSeason && !bootstrapRequired
-      ? Math.min(Math.max(1, Math.floor(weekEnv)), maxAvailableWeek)
-      : maxAvailableWeek;
-
-    let startWeek = seasonWeeks[0];
-    if (!allowHistoricalRewrite && lastModelRun?.season === resolvedSeason) {
-      const priorWeek = Number.parseInt(lastModelRun?.week ?? "", 10);
-      if (Number.isFinite(priorWeek)) {
-        const desiredWeek = Math.max(1, Math.min(finalWeek, priorWeek + 1));
-        const idx = seasonWeeks.findIndex((wk) => wk >= desiredWeek);
-        startWeek = idx === -1 ? finalWeek : seasonWeeks[idx];
-      }
-    }
-
-    const trainWeek = async (wk, { isTargetWeek }) => {
-      if (!historicalOverride && weekStatusExists(resolvedSeason, wk)) {
-        console.log(
-          `[train] Season ${resolvedSeason} week ${wk}: completion marker detected – skipping.`
-        );
-        return {
-          season: resolvedSeason,
-          week: wk,
-          schedules: sharedData.schedules,
-          skipped: true
-        };
-      }
-      const hasArtifacts = weekArtifactsExist(resolvedSeason, wk);
-      if (!historicalOverride && hasArtifacts && !isTargetWeek) {
-        console.log(
-          `[train] Season ${resolvedSeason} week ${wk}: cached artifacts detected – skipping retrain.`
-        );
-        markWeekStatus(resolvedSeason, wk);
-        return {
-          season: resolvedSeason,
-          week: wk,
-          schedules: sharedData.schedules,
-          skipped: true
-        };
-      }
-      const result = await runTraining({ season: resolvedSeason, week: wk, data: sharedData });
-      if (!allowHistoricalRewrite && hasArtifacts && !isTargetWeek) {
-        console.log(
-          `[train] skipping artifact write for season ${resolvedSeason} week ${wk} (historical artifacts locked)`
-        );
-      } else if (!result?.skipped) {
-        await writeArtifacts(result);
-      }
-      if (result?.skipped) {
-        console.log(`Skipped ensemble retrain for season ${resolvedSeason} week ${wk}`);
-        markWeekStatus(resolvedSeason, wk);
-      } else {
-        console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
-        markWeekStatus(resolvedSeason, wk);
-      }
-      return result;
+      _seasonMarked = true;
+      return true;
     };
 
-    const weekTasks = [];
-    for (const wk of seasonWeeks) {
-      if (wk < startWeek) continue;
-      if (wk > finalWeek) break;
-      const isTargetWeek = resolvedSeason === targetSeason && wk === finalWeek;
-      weekTasks.push(weekLimiter(() => trainWeek(wk, { isTargetWeek })));
-    }
-
-    let weekResults = [];
-    if (weekTasks.length) {
-      weekResults = (await Promise.all(weekTasks)).filter(Boolean);
-      weekResults.sort((a, b) => a.week - b.week);
-    }
-
-    if (!weekResults.length && Number.isFinite(finalWeek)) {
-      const fallbackResult = await trainWeek(finalWeek);
-      weekResults = [fallbackResult];
-    }
-
-    if (!weekResults.length) {
-      console.warn(`[train] Season ${resolvedSeason}: no evaluable weeks after filtering.`);
-      // Mark the season complete even if bootstrapRequired is false.
-      if (!historicalOverride) {
-        markSeasonStatus(resolvedSeason);
-        console.log(`[train] Season ${resolvedSeason}: marked complete (no evaluable weeks).`);
+    try {
+      if (smokeTest) {
+        processedSeasons.push({ season: resolvedSeason, weeks: [1] });
+        seasonWeekMax.set(resolvedSeason, 1);
+        if (!historicalOverride && _markSeasonOnce()) {
+          console.log(`[train] Season ${resolvedSeason}: status marked (smoke test).`);
+        }
+        continue;
       }
-      continue;
-    }
-
-    const processedWeeks = Array.from(new Set(weekResults.map((entry) => entry.week))).sort((a, b) => a - b);
-    processedSeasons.push({ season: resolvedSeason, weeks: processedWeeks });
-    const maxWeek = processedWeeks[processedWeeks.length - 1];
-    if (Number.isFinite(maxWeek)) {
-      seasonWeekMax.set(resolvedSeason, maxWeek);
-    }
-
-    if (processedWeeks.length) {
-      await writeSeasonCache({ season: resolvedSeason, weeks: processedWeeks });
-      if (!historicalOverride) {
-        markSeasonStatus(resolvedSeason);
+      logDataCoverage(resolvedSeason);
+      const sharedData = await (seasonLoadPromises.get(resolvedSeason) ?? loadSeasonDataCached(resolvedSeason));
+      const cachedSeason = !historicalOverride ? await loadSeasonCache(resolvedSeason) : null;
+      const seasonMarkerExists = !historicalOverride && seasonStatusExists(resolvedSeason);
+      const isTargetSeason = resolvedSeason === targetSeason && !bootstrapRequired;
+      if (seasonMarkerExists && cachedSeason?.weeks?.length && !isTargetSeason) {
+        console.log(
+          `[train] Season ${resolvedSeason}: season completion marker detected – skipping.`
+        );
+        processedSeasons.push({ season: resolvedSeason, weeks: cachedSeason.weeks });
+        const cachedMaxWeek = cachedSeason.weeks[cachedSeason.weeks.length - 1];
+        if (Number.isFinite(cachedMaxWeek)) {
+          seasonWeekMax.set(resolvedSeason, cachedMaxWeek);
+        }
+        continue;
       }
-    }
+      if (cachedSeason?.weeks?.length && !historicalOverride && !isTargetSeason) {
+        console.log(
+          `[train] Season ${resolvedSeason}: previously completed (${cachedSeason.weeks.length} weeks) – skipping.`
+        );
+        processedSeasons.push({ season: resolvedSeason, weeks: cachedSeason.weeks });
+        const cachedMaxWeek = cachedSeason.weeks[cachedSeason.weeks.length - 1];
+        if (Number.isFinite(cachedMaxWeek)) {
+          seasonWeekMax.set(resolvedSeason, cachedMaxWeek);
+        }
+        if (_markSeasonOnce()) {
+          console.log(`[train] Season ${resolvedSeason}: status marked (cached skip).`);
+        }
+        continue;
+      }
+      const seasonWeeks = [...new Set(
+        sharedData.schedules
+          .filter((game) => Number(game.season) === resolvedSeason && isRegularSeason(game.season_type))
+          .map((game) => Number(game.week))
+          .filter((wk) => Number.isFinite(wk) && wk >= 1)
+      )].sort((a, b) => a - b);
 
-    if (resolvedSeason === targetSeason) {
-      latestTargetResult = weekResults[weekResults.length - 1];
-    }
+      if (!seasonWeeks.length) {
+        console.warn(`[train] Season ${resolvedSeason}: no regular-season weeks found. Skipping.`);
+        if (!historicalOverride && _markSeasonOnce()) {
+          console.log(`[train] Season ${resolvedSeason}: marked complete (no weeks).`);
+        }
+        continue;
+      }
 
-    const latestSeasonResult = weekResults[weekResults.length - 1];
-    if (latestSeasonResult) {
-      await updateHistoricalArtifacts({ season: latestSeasonResult.season, schedules: latestSeasonResult.schedules });
+      const maxAvailableWeek = seasonWeeks[seasonWeeks.length - 1];
+      const finalWeek = resolvedSeason === targetSeason && !bootstrapRequired
+        ? Math.min(Math.max(1, Math.floor(weekEnv)), maxAvailableWeek)
+        : maxAvailableWeek;
+
+      let startWeek = seasonWeeks[0];
+      if (!allowHistoricalRewrite && lastModelRun?.season === resolvedSeason) {
+        const priorWeek = Number.parseInt(lastModelRun?.week ?? "", 10);
+        if (Number.isFinite(priorWeek)) {
+          const desiredWeek = Math.max(1, Math.min(finalWeek, priorWeek + 1));
+          const idx = seasonWeeks.findIndex((wk) => wk >= desiredWeek);
+          startWeek = idx === -1 ? finalWeek : seasonWeeks[idx];
+        }
+      }
+
+      const trainWeek = async (wk, { isTargetWeek }) => {
+        if (!historicalOverride && weekStatusExists(resolvedSeason, wk)) {
+          console.log(
+            `[train] Season ${resolvedSeason} week ${wk}: completion marker detected – skipping.`
+          );
+          return {
+            season: resolvedSeason,
+            week: wk,
+            schedules: sharedData.schedules,
+            skipped: true
+          };
+        }
+        const hasArtifacts = weekArtifactsExist(resolvedSeason, wk);
+        if (!historicalOverride && hasArtifacts && !isTargetWeek) {
+          console.log(
+            `[train] Season ${resolvedSeason} week ${wk}: cached artifacts detected – skipping retrain.`
+          );
+          markWeekStatus(resolvedSeason, wk);
+          return {
+            season: resolvedSeason,
+            week: wk,
+            schedules: sharedData.schedules,
+            skipped: true
+          };
+        }
+        const result = await runTraining({ season: resolvedSeason, week: wk, data: sharedData });
+        if (!allowHistoricalRewrite && hasArtifacts && !isTargetWeek) {
+          console.log(
+            `[train] skipping artifact write for season ${resolvedSeason} week ${wk} (historical artifacts locked)`
+          );
+        } else if (!result?.skipped) {
+          await writeArtifacts(result);
+        }
+        if (result?.skipped) {
+          console.log(`Skipped ensemble retrain for season ${resolvedSeason} week ${wk}`);
+          markWeekStatus(resolvedSeason, wk);
+        } else {
+          console.log(`Trained ensemble for season ${result.season} week ${result.week}`);
+          markWeekStatus(resolvedSeason, wk);
+        }
+        return result;
+      };
+
+      const weekTasks = [];
+      for (const wk of seasonWeeks) {
+        if (wk < startWeek) continue;
+        if (wk > finalWeek) break;
+        const isTargetWeek = resolvedSeason === targetSeason && wk === finalWeek;
+        weekTasks.push(weekLimiter(() => trainWeek(wk, { isTargetWeek })));
+      }
+
+      let weekResults = [];
+      if (weekTasks.length) {
+        weekResults = (await Promise.all(weekTasks)).filter(Boolean);
+        weekResults.sort((a, b) => a.week - b.week);
+      }
+
+      if (!weekResults.length && Number.isFinite(finalWeek)) {
+        const fallbackResult = await trainWeek(finalWeek);
+        weekResults = [fallbackResult];
+      }
+
+      if (!weekResults.length) {
+        console.warn(`[train] Season ${resolvedSeason}: no evaluable weeks after filtering.`);
+        if (!historicalOverride && _markSeasonOnce()) {
+          console.log(`[train] Season ${resolvedSeason}: marked complete (no evaluable weeks).`);
+        }
+        continue;
+      }
+
+      const processedWeeks = Array.from(new Set(weekResults.map((entry) => entry.week))).sort((a, b) => a - b);
+      processedSeasons.push({ season: resolvedSeason, weeks: processedWeeks });
+      const maxWeek = processedWeeks[processedWeeks.length - 1];
+      if (Number.isFinite(maxWeek)) {
+        seasonWeekMax.set(resolvedSeason, maxWeek);
+      }
+
+      if (processedWeeks.length) {
+        await writeSeasonCache({ season: resolvedSeason, weeks: processedWeeks });
+        if (!historicalOverride && _markSeasonOnce()) {
+          console.log(`[train] Season ${resolvedSeason}: status marked (processed weeks).`);
+        }
+      }
+
+      if (resolvedSeason === targetSeason) {
+        latestTargetResult = weekResults[weekResults.length - 1];
+      }
+
+      const latestSeasonResult = weekResults[weekResults.length - 1];
+      if (latestSeasonResult) {
+        await updateHistoricalArtifacts({ season: latestSeasonResult.season, schedules: latestSeasonResult.schedules });
+      }
+    } finally {
+      if (!historicalOverride && _markSeasonOnce()) {
+        console.log(`[train] Season ${resolvedSeason}: status marked (finalize).`);
+      }
     }
   }
 

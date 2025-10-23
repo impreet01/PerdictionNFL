@@ -1,4 +1,5 @@
 import { loadSchedules, listDatasetSeasons } from "./dataSources.js";
+import { isStrictBatch, clampSeasonsToStrictBounds } from "./lib/strictBatch.js";
 
 const MIN_SEASON = 1999;
 
@@ -95,7 +96,7 @@ export async function buildSeasonCoverageFromRaw({
     if (!weeks.size) continue;
     coverage.push({ season, weeks: Array.from(weeks).sort((a, b) => a - b) });
   }
-  return coverage;
+  return applyStrictCoverage(coverage);
 }
 
 export function mergeSeasonCoverage(existing = [], incoming = []) {
@@ -113,9 +114,10 @@ export function mergeSeasonCoverage(existing = [], incoming = []) {
   };
   existing.forEach(add);
   incoming.forEach(add);
-  return Array.from(map.entries())
+  const merged = Array.from(map.entries())
     .map(([season, weeks]) => ({ season, weeks: Array.from(weeks).sort((a, b) => a - b) }))
     .sort((a, b) => a.season - b.season);
+  return applyStrictCoverage(merged);
 }
 
 export function seasonsInRangeMissing({ coverage = [], start, end }) {
@@ -129,6 +131,31 @@ export function seasonsInRangeMissing({ coverage = [], start, end }) {
     if (!set.has(season)) missing.push(season);
   }
   return missing;
+}
+
+function applyStrictCoverage(entries = []) {
+  if (!isStrictBatch()) return entries;
+  if (!Array.isArray(entries) || !entries.length) return [];
+  const allowed = new Set(
+    clampSeasonsToStrictBounds(
+      entries
+        .map((entry) => normaliseSeason(entry?.season ?? entry?.year ?? entry?.season_id))
+        .filter((season) => season != null)
+    )
+  );
+  if (!allowed.size) return [];
+  return entries
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const season = normaliseSeason(entry.season ?? entry.year ?? entry.season_id);
+      if (season == null || !allowed.has(season)) return null;
+      const weeks = Array.isArray(entry.weeks)
+        ? entry.weeks.map(normaliseSeason).filter((wk) => wk != null)
+        : [];
+      return { ...entry, season, weeks };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.season - b.season);
 }
 
 export { MIN_SEASON };

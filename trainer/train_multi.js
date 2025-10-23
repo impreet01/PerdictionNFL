@@ -30,6 +30,7 @@ import { buildFeatures, FEATS as FEATS_BASE } from "./featureBuild.js";
 import { buildBTFeatures, BT_FEATURES } from "./featureBuild_bt.js";
 import { trainBTModel, predictBT, predictBTDeterministic } from "./model_bt.js";
 import { trainANNCommittee, predictANNCommittee, gradientANNCommittee } from "./model_ann.js";
+import { isStrictBatch, getStrictBounds, clampSeasonsToStrictBounds } from "./lib/strictBatch.js";
 import { DecisionTreeClassifier as CART } from "ml-cart";
 import { Matrix, SVD } from "ml-matrix";
 import { logLoss, brier, accuracy, aucRoc, calibrationBins } from "./metrics.js";
@@ -265,6 +266,13 @@ function parseTrainCliArgs(argv = []) {
 }
 
 function computeRequestedSeasons() {
+  if (isStrictBatch()) {
+    const { start, end } = getStrictBounds();
+    const seasons = [];
+    for (let y = start; y <= end; y += 1) seasons.push(y);
+    return seasons;
+  }
+
   const start = Number(process.env.BATCH_START || NaN);
   const end = Number(process.env.BATCH_END || NaN);
 
@@ -605,10 +613,38 @@ function markSeasonStatusBatch(entries) {
       seasons.add(season);
     }
   }
-  if (!seasons.size) return;
-  for (const season of seasons) {
+  let seasonList = Array.from(seasons);
+  if (isStrictBatch()) {
+    seasonList = clampSeasonsToStrictBounds(seasonList);
+  }
+  if (!seasonList.length) return;
+  for (const season of seasonList) {
     markSeasonStatus(season);
   }
+}
+
+function filterCoverageEntries(entries = []) {
+  if (!isStrictBatch()) return entries;
+  const normalised = Array.isArray(entries)
+    ? entries
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") return null;
+          const season = normaliseSeasonValue(entry);
+          if (!Number.isFinite(season)) return null;
+          const weeks = Array.isArray(entry.weeks)
+            ? entry.weeks
+                .map((wk) => Number.parseInt(wk, 10))
+                .filter((wk) => Number.isFinite(wk))
+                .sort((a, b) => a - b)
+            : [];
+          return { ...entry, season, weeks };
+        })
+        .filter(Boolean)
+    : [];
+  if (!normalised.length) return [];
+  const allowed = new Set(clampSeasonsToStrictBounds(normalised.map((entry) => entry.season)));
+  if (!allowed.size) return [];
+  return normalised.filter((entry) => allowed.has(entry.season));
 }
 
 function envFlag(name) {
@@ -2790,7 +2826,7 @@ async function main() {
     targetWeek === 1 &&
     !historicalOverride;
 
-  if (shouldPromoteSeed) {
+  if (shouldPromoteSeed && !isStrictBatch()) {
     const hasModels = await modelsForSeasonExist(targetSeason);
     if (!hasModels) {
       const promoted = await promote({ prevSeason: previousSeason, nextSeason: targetSeason });
@@ -2835,12 +2871,21 @@ async function main() {
         .filter((season) => Number.isFinite(season))
     )
   ).sort((a, b) => a - b);
+  if (isStrictBatch()) {
+    uniqueSeasons = clampSeasonsToStrictBounds(uniqueSeasons);
+  }
 
   let stateCoverage = Array.isArray(state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL]?.seasons)
     ? state.bootstraps[BOOTSTRAP_KEYS.MODEL].seasons
     : [];
+  stateCoverage = filterCoverageEntries(stateCoverage);
 
   if (explicitWindow) {
+    if (isStrictBatch()) {
+      uniqueSeasons = uniqueSeasons.filter(
+        (season) => season >= explicitWindow.start && season <= explicitWindow.end
+      );
+    }
     const missingSeasons = seasonsInRangeMissing({
       coverage: stateCoverage,
       start: explicitWindow.start,
@@ -2859,7 +2904,7 @@ async function main() {
           chunks: state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL]?.chunks
         });
         saveTrainingState(state);
-        stateCoverage = merged;
+        stateCoverage = filterCoverageEntries(merged);
       } else {
         throw new Error(
           `[train] Unable to derive raw coverage for explicit window ${explicitWindow.start}–${explicitWindow.end}. Ensure raw schedules/outcomes are available for the requested seasons.`

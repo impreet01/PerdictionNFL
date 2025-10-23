@@ -3300,6 +3300,18 @@ async function main() {
     }
 
     markSeasonStatusBatch(markEntries);
+
+    const bootstrapCoverage = Array.isArray(state?.bootstraps?.[BOOTSTRAP_KEYS.MODEL]?.seasons)
+      ? state.bootstraps[BOOTSTRAP_KEYS.MODEL].seasons
+      : [];
+    if (bootstrapCoverage.length) {
+      const coverageSeasons = bootstrapCoverage
+        .map((entry) => normaliseSeasonValue(entry))
+        .filter((season) => Number.isFinite(season));
+      if (coverageSeasons.length) {
+        markSeasonStatusBatch(coverageSeasons);
+      }
+    }
   }
 
   if (bootstrapRequired) {

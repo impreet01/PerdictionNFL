@@ -605,14 +605,25 @@ function normaliseSeasonValue(entry) {
 }
 
 function markSeasonStatusBatch(entries) {
-  if (!Array.isArray(entries) || !entries.length) return;
   const seasons = new Set();
-  for (const entry of entries) {
-    const season = normaliseSeasonValue(entry);
-    if (Number.isFinite(season)) {
-      seasons.add(season);
+  if (Array.isArray(entries)) {
+    for (const entry of entries) {
+      const season = normaliseSeasonValue(entry);
+      if (Number.isFinite(season)) {
+        seasons.add(season);
+      }
     }
   }
+
+  const requestedSeasons = computeRequestedSeasons();
+  if (Array.isArray(requestedSeasons)) {
+    for (const requested of requestedSeasons) {
+      if (Number.isFinite(requested)) {
+        seasons.add(requested);
+      }
+    }
+  }
+
   let seasonList = Array.from(seasons);
   if (isStrictBatch()) {
     seasonList = clampSeasonsToStrictBounds(seasonList);

@@ -3280,10 +3280,35 @@ async function main() {
     );
   }
 
-  if (!historicalOverride && chunkSelection?.seasons?.length) {
-    for (const entry of chunkSelection.seasons) {
-      const season = normaliseSeason(entry);
+  if (!historicalOverride) {
+    const seasonsToMark = new Set();
+
+    if (Array.isArray(activeSeasons)) {
+      for (const season of activeSeasons) {
+        if (Number.isFinite(season)) {
+          seasonsToMark.add(Number(season));
+        }
+      }
+    }
+
+    for (const entry of processedSeasons) {
+      const season = normaliseSeason(entry?.season);
       if (Number.isFinite(season)) {
+        seasonsToMark.add(season);
+      }
+    }
+
+    if (chunkSelection?.seasons?.length) {
+      for (const entry of chunkSelection.seasons) {
+        const season = normaliseSeason(entry);
+        if (Number.isFinite(season)) {
+          seasonsToMark.add(season);
+        }
+      }
+    }
+
+    for (const season of seasonsToMark) {
+      if (!seasonStatusExists(season)) {
         markSeasonStatus(season);
       }
     }

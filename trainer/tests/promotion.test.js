@@ -18,13 +18,23 @@ const originalEnv = {
 const baseEnv = { ARTIFACTS_DIR: artifactsDir };
 
 const EXCLUDED_SEED_FILES = new Set(["historical_bootstrap.tgz"]);
+const EXCLUDED_SEED_EXTENSIONS = new Set([".tgz"]);
+
+function shouldExcludeSeedFile(source) {
+  const baseName = path.basename(source);
+  if (EXCLUDED_SEED_FILES.has(baseName)) {
+    return true;
+  }
+  const extension = path.extname(baseName);
+  return EXCLUDED_SEED_EXTENSIONS.has(extension);
+}
 
 function seedArtifacts() {
   fs.rmSync(artifactsDir, { recursive: true, force: true });
   fs.mkdirSync(artifactsDir, { recursive: true });
   fs.cpSync(sampleArtifactsDir, artifactsDir, {
     recursive: true,
-    filter: (source) => !EXCLUDED_SEED_FILES.has(path.basename(source))
+    filter: (source) => !shouldExcludeSeedFile(source)
   });
 }
 

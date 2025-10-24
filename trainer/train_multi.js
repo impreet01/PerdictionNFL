@@ -3108,7 +3108,7 @@ async function main() {
       if (smokeTest) {
         processedSeasons.push({ season: resolvedSeason, weeks: [1] });
         seasonWeekMax.set(resolvedSeason, 1);
-        if (!historicalOverride && _markSeasonOnce()) {
+        if (_markSeasonOnce() && !historicalOverride) {
           console.log(`[train] Season ${resolvedSeason}: status marked (smoke test).`);
         }
         continue;
@@ -3152,7 +3152,7 @@ async function main() {
 
       if (!seasonWeeks.length) {
         console.warn(`[train] Season ${resolvedSeason}: no regular-season weeks found. Skipping.`);
-        if (!historicalOverride && _markSeasonOnce()) {
+        if (_markSeasonOnce() && !historicalOverride) {
           console.log(`[train] Season ${resolvedSeason}: marked complete (no weeks).`);
         }
         continue;
@@ -3237,7 +3237,7 @@ async function main() {
 
       if (!weekResults.length) {
         console.warn(`[train] Season ${resolvedSeason}: no evaluable weeks after filtering.`);
-        if (!historicalOverride && _markSeasonOnce()) {
+        if (_markSeasonOnce() && !historicalOverride) {
           console.log(`[train] Season ${resolvedSeason}: marked complete (no evaluable weeks).`);
         }
         continue;
@@ -3252,7 +3252,7 @@ async function main() {
 
       if (processedWeeks.length) {
         await writeSeasonCache({ season: resolvedSeason, weeks: processedWeeks });
-        if (!historicalOverride && _markSeasonOnce()) {
+        if (_markSeasonOnce() && !historicalOverride) {
           console.log(`[train] Season ${resolvedSeason}: status marked (processed weeks).`);
         }
       }
@@ -3266,7 +3266,7 @@ async function main() {
         await updateHistoricalArtifacts({ season: latestSeasonResult.season, schedules: latestSeasonResult.schedules });
       }
     } finally {
-      if (!historicalOverride && _markSeasonOnce()) {
+      if (_markSeasonOnce() && !historicalOverride) {
         console.log(`[train] Season ${resolvedSeason}: status marked (finalize).`);
       }
     }

@@ -99,8 +99,16 @@ function cleanup() {
     const finalCoverage = finalSeasons.map((entry) => Number(entry.season)).sort((a, b) => a - b);
     assert.deepEqual(finalCoverage, [1999, 2000], "train:multi should retain season coverage");
 
-    const status1999 = path.join(tmp, ".status", "1999.done");
-    const status2000 = path.join(tmp, ".status", "2000.done");
+    const statusDir = path.join(tmp, ".status");
+    const statusContents = fs.existsSync(statusDir)
+      ? fs.readdirSync(statusDir).sort()
+      : [];
+    console.log(
+      `[coldStart:test] STATUS_DIR=${statusDir} contents=${JSON.stringify(statusContents)}`
+    );
+
+    const status1999 = path.join(statusDir, "1999.done");
+    const status2000 = path.join(statusDir, "2000.done");
     assert(fs.existsSync(status1999), "Season 1999 status marker missing");
     assert(fs.existsSync(status2000), "Season 2000 status marker missing");
 

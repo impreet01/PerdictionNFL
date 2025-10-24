@@ -17,10 +17,15 @@ const originalEnv = {
 
 const baseEnv = { ARTIFACTS_DIR: artifactsDir };
 
+const EXCLUDED_SEED_FILES = new Set(["historical_bootstrap.tgz"]);
+
 function seedArtifacts() {
   fs.rmSync(artifactsDir, { recursive: true, force: true });
   fs.mkdirSync(artifactsDir, { recursive: true });
-  fs.cpSync(sampleArtifactsDir, artifactsDir, { recursive: true });
+  fs.cpSync(sampleArtifactsDir, artifactsDir, {
+    recursive: true,
+    filter: (source) => !EXCLUDED_SEED_FILES.has(path.basename(source))
+  });
 }
 
 seedArtifacts();

@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 const fixturePath = path.join(repoRoot, "trainer", "tests", "mocks", "stateFixture.js");
+const offlineFixturePath = path.join(repoRoot, "trainer", "tests", "mocks", "offlineFetch.js");
 const tmp = path.join(repoRoot, ".test_artifacts", `coldStart-${process.pid}-${Date.now()}`);
 
 const originalEnv = {
@@ -72,7 +73,7 @@ function cleanup() {
 (function runColdStartSuite() {
   try {
     runCommand("npm", ["run", "bootstrap:state", "--", "--start", "1999", "--end", "2000", "--reset"], {
-      env: { NODE_OPTIONS: `--import=${fixturePath}` }
+      env: { NODE_OPTIONS: `--import=${fixturePath} --import=${offlineFixturePath}` }
     });
 
     const stateAfterBootstrap = readTrainingState();
@@ -84,23 +85,45 @@ function cleanup() {
       TRAINER_SMOKE_TEST: "1",
       CI_FAST: "1",
       MAX_WORKERS: "1",
-      NODE_OPTIONS: `--import=${fixturePath}`
+      NODE_OPTIONS: `--import=${fixturePath} --import=${offlineFixturePath}`
     };
     const effectiveTrainEnv = { ...process.env, ...baseEnv, ...trainEnvOverrides };
     console.log(
       `[coldStart:test] ARTIFACTS_DIR=${effectiveTrainEnv.ARTIFACTS_DIR} BATCH_START=${effectiveTrainEnv.BATCH_START} BATCH_END=${effectiveTrainEnv.BATCH_END}`
     );
-    runCommand("npm", ["run", "train:multi", "--", "--start", "1999", "--end", "2000"], {
-      env: trainEnvOverrides
-    });
+    runCommand(
+      "npm",
+      [
+        "run",
+        "train:multi",
+        "--",
+        "--start",
+        "1999",
+        "--end",
+        "2000",
+        "--artifactsDir",
+        tmp
+      ],
+      {
+        env: trainEnvOverrides
+      }
+    );
 
     const stateAfterTrain = readTrainingState();
     const finalSeasons = stateAfterTrain?.bootstraps?.model_training?.seasons ?? [];
     const finalCoverage = finalSeasons.map((entry) => Number(entry.season)).sort((a, b) => a - b);
     assert.deepEqual(finalCoverage, [1999, 2000], "train:multi should retain season coverage");
 
-    const status1999 = path.join(tmp, ".status", "1999.done");
-    const status2000 = path.join(tmp, ".status", "2000.done");
+    const statusDir = path.join(tmp, ".status");
+    const statusContents = fs.existsSync(statusDir)
+      ? fs.readdirSync(statusDir).sort()
+      : [];
+    console.log(
+      `[coldStart:test] STATUS_DIR=${statusDir} contents=${JSON.stringify(statusContents)}`
+    );
+
+    const status1999 = path.join(statusDir, "1999.done");
+    const status2000 = path.join(statusDir, "2000.done");
     assert(fs.existsSync(status1999), "Season 1999 status marker missing");
     assert(fs.existsSync(status2000), "Season 2000 status marker missing");
 

@@ -162,6 +162,34 @@ jobs:
             echo "::endgroup::"
             exit 1
           fi
+      - name: Verify status markers present ${{ matrix.chunk.label }}
+        run: |
+          ROOT="${ARTIFACTS_DIR:-artifacts}"
+          STATUS_DIR="${ROOT}/.status"
+          echo "[verify] ARTIFACTS_DIR=${ROOT}"
+          echo "[verify] STATUS_DIR=${STATUS_DIR}"
+
+          if [ ! -d "${STATUS_DIR}" ]; then
+            echo "::error::.status directory missing in ${ROOT}"
+            ls -la "${ROOT}" || true
+            exit 1
+          fi
+
+          missing=()
+          for season in $(seq ${{ matrix.chunk.start }} ${{ matrix.chunk.end }}); do
+            marker="${STATUS_DIR}/${season}.done"
+            if [ ! -f "${marker}" ]; then
+              missing+=("${marker}")
+            fi
+          done
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing status markers: ${missing[*]}"
+            ls -la "${STATUS_DIR}" || true
+            exit 1
+          fi
+
+          echo "[verify] Found status markers:" "${STATUS_DIR}"/*.done
       - name: Pack bootstrap chunk ${{ matrix.chunk.label }}
         run: |
           ROOT="${ARTIFACTS_DIR:-artifacts}"
@@ -322,6 +350,27 @@ jobs:
           echo "[train:init] STATUS_DIR=${ROOT}/.status"
           echo "Training SEASON=$SEASON WEEK=$WEEK"
           CI_FAST=1 SEASON=$SEASON WEEK=$WEEK npm run train:multi
+      - name: Verify weekly status markers
+        run: |
+          ROOT="${ARTIFACTS_DIR:-artifacts}"
+          STATUS_DIR="${ROOT}/.status"
+          echo "[verify] ARTIFACTS_DIR=${ROOT}"
+          echo "[verify] STATUS_DIR=${STATUS_DIR}"
+
+          if [ ! -d "${STATUS_DIR}" ]; then
+            echo "::error::.status directory missing in ${ROOT}"
+            ls -la "${ROOT}" || true
+            exit 1
+          fi
+
+          marker="${STATUS_DIR}/${SEASON}.done"
+          if [ ! -f "${marker}" ]; then
+            echo "::error::Missing status marker ${marker}"
+            ls -la "${STATUS_DIR}" || true
+            exit 1
+          fi
+
+          echo "[verify] Found marker ${marker}"
       - name: Run Hybrid v2 Calibration
         timeout-minutes: 15
         run: node trainer/hybrid_v2.js

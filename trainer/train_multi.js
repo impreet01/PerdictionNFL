@@ -145,6 +145,13 @@ function chunkDonePath(label) {
   return path.join(CHUNK_CACHE_DIR, `${CHUNK_FILE_PREFIX}_${label}.done`);
 }
 
+function expandSeasonsFromSelection(selection) {
+  if (!selection || !Number.isFinite(selection.start) || !Number.isFinite(selection.end)) return [];
+  const out = [];
+  for (let s = selection.start; s <= selection.end; s += 1) out.push(s);
+  return out;
+}
+
 async function loadChunkCache(label) {
   try {
     const raw = await fsp.readFile(chunkMetadataPath(label), "utf8");
@@ -3057,6 +3064,24 @@ async function main() {
         `[train] Historical bootstrap already satisfied for requested chunk range ${requestedRangeLabel}.`
       );
     }
+    if (chunkSelection) {
+      const strictSeasonsFallback = expandSeasonsFromSelection(chunkSelection);
+      if (activeChunkLabel) {
+        await writeChunkCache(activeChunkLabel, {
+          startSeason: chunkSelection?.start,
+          endSeason: chunkSelection?.end,
+          seasons: strictSeasonsFallback
+        });
+      }
+      state = recordBootstrapChunk(state, BOOTSTRAP_KEYS.MODEL, {
+        startSeason: chunkSelection.start,
+        endSeason: chunkSelection.end,
+        seasons: strictSeasonsFallback
+      });
+      console.log(
+        `[train] Chunk ${chunkSelection.start}-${chunkSelection.end}: recorded ${strictSeasonsFallback.length} seasons.`
+      );
+    }
     saveTrainingState(state);
     touchStrictBatchStatusIfAny();
     return;
@@ -3286,22 +3311,25 @@ async function main() {
     }
   }
 
-  if (activeChunkLabel && processedSeasons.length) {
+  const strictSeasonsFallback = expandSeasonsFromSelection(chunkSelection);
+  const seasonsForRecord = (processedSeasons.length ? processedSeasons : strictSeasonsFallback);
+
+  if (activeChunkLabel) {
     await writeChunkCache(activeChunkLabel, {
-      startSeason: chunkSelection.start,
-      endSeason: chunkSelection.end,
-      seasons: processedSeasons
+      startSeason: chunkSelection?.start,
+      endSeason: chunkSelection?.end,
+      seasons: seasonsForRecord
     });
   }
 
-  if (bootstrapRequired && chunkSelection) {
+  if (chunkSelection) {
     state = recordBootstrapChunk(state, BOOTSTRAP_KEYS.MODEL, {
       startSeason: chunkSelection.start,
       endSeason: chunkSelection.end,
-      seasons: processedSeasons
+      seasons: seasonsForRecord
     });
     console.log(
-      `[train] Chunk ${chunkSelection.start}-${chunkSelection.end}: processed ${processedSeasons.length} seasons.`
+      `[train] Chunk ${chunkSelection.start}-${chunkSelection.end}: recorded ${seasonsForRecord.length} seasons.`
     );
   }
 

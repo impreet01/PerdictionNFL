@@ -586,6 +586,14 @@ function markSeasonStatus(season) {
   fs.writeFileSync(seasonStatusPath(season), new Date().toISOString());
 }
 
+function touchStrictBatchStatusIfAny() {
+  if (!isStrictBatch()) return;
+  const { start, end } = getStrictBounds();
+  for (let s = start; s <= end; s++) {
+    markSeasonStatus(s);
+  }
+}
+
 function normaliseSeasonValue(entry) {
   if (entry == null) return null;
   if (Number.isFinite(entry)) return Number(entry);
@@ -2820,6 +2828,7 @@ async function main() {
   const weeklyMode = Number.isFinite(weeklySeason) && Number.isFinite(weeklyWeek);
   if (weeklyMode && !shouldRunHistoricalBootstrap(state, BOOTSTRAP_KEYS.MODEL)) {
     await runWeeklyWorkflow({ season: weeklySeason, week: weeklyWeek });
+    touchStrictBatchStatusIfAny();
     return;
   }
   const lastModelRun = state?.latest_runs?.[BOOTSTRAP_KEYS.MODEL];
@@ -3033,6 +3042,7 @@ async function main() {
         seasons: cachedChunk.seasons
       });
       saveTrainingState(state);
+      touchStrictBatchStatusIfAny();
       return;
     }
   }
@@ -3048,6 +3058,7 @@ async function main() {
       );
     }
     saveTrainingState(state);
+    touchStrictBatchStatusIfAny();
     return;
   }
 
@@ -3127,6 +3138,9 @@ async function main() {
         if (Number.isFinite(cachedMaxWeek)) {
           seasonWeekMax.set(resolvedSeason, cachedMaxWeek);
         }
+        if (_markSeasonOnce()) {
+          console.log(`[train] Season ${resolvedSeason}: status marked (skip: cached).`);
+        }
         continue;
       }
       if (cachedSeason?.weeks?.length && !historicalOverride && !isTargetSeason) {
@@ -3139,7 +3153,7 @@ async function main() {
           seasonWeekMax.set(resolvedSeason, cachedMaxWeek);
         }
         if (_markSeasonOnce()) {
-          console.log(`[train] Season ${resolvedSeason}: status marked (cached skip).`);
+          console.log(`[train] Season ${resolvedSeason}: status marked (skip: cached).`);
         }
         continue;
       }

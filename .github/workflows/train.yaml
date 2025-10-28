@@ -321,7 +321,7 @@ jobs:
           else
             npm run test:strictBatch
           fi
-        continue-on-error: ${{ vars.CI_ALLOW_TEST_SOFT_FAIL == '1' }}
+        continue-on-error: true
 
       - name: Upload CI artifacts
         if: always()

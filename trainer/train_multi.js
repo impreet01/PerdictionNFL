@@ -152,6 +152,30 @@ function expandSeasonsFromSelection(selection) {
   return out;
 }
 
+async function finalizeStrictWindow({ chunkSelection, processedSeasons = [], state }) {
+  if (!chunkSelection) return state;
+  const label = chunkLabel(chunkSelection.start, chunkSelection.end);
+  const fallback = expandSeasonsFromSelection(chunkSelection);
+  const seasonsForRecord = processedSeasons.length ? processedSeasons : fallback;
+
+  await writeChunkCache(label, {
+    startSeason: chunkSelection.start,
+    endSeason:   chunkSelection.end,
+    seasons:     seasonsForRecord
+  });
+
+  state = recordBootstrapChunk(state, BOOTSTRAP_KEYS.MODEL, {
+    startSeason: chunkSelection.start,
+    endSeason:   chunkSelection.end,
+    seasons:     seasonsForRecord
+  });
+
+  if (seasonsForRecord?.length) {
+    markSeasonStatusBatch(seasonsForRecord);
+  }
+  return state;
+}
+
 async function loadChunkCache(label) {
   try {
     const raw = await fsp.readFile(chunkMetadataPath(label), "utf8");
@@ -3043,10 +3067,14 @@ async function main() {
       console.log(
         `[train] Historical bootstrap chunk ${chunkSelection.start}-${chunkSelection.end} already cached – skipping.`
       );
-      state = recordBootstrapChunk(state, BOOTSTRAP_KEYS.MODEL, {
-        startSeason: chunkSelection.start,
-        endSeason: chunkSelection.end,
-        seasons: cachedChunk.seasons
+      const processedSeasonsForFinalize =
+        Array.isArray(cachedChunk?.seasons) && cachedChunk.seasons.length
+          ? cachedChunk.seasons
+          : Array.from(normalizedSeasons);
+      state = await finalizeStrictWindow({
+        chunkSelection,
+        processedSeasons: processedSeasonsForFinalize,
+        state
       });
       saveTrainingState(state);
       touchStrictBatchStatusIfAny();
@@ -3064,20 +3092,13 @@ async function main() {
         `[train] Historical bootstrap already satisfied for requested chunk range ${requestedRangeLabel}.`
       );
     }
+    const strictSeasonsFallback = chunkSelection ? expandSeasonsFromSelection(chunkSelection) : [];
+    state = await finalizeStrictWindow({
+      chunkSelection,
+      processedSeasons: [],
+      state
+    });
     if (chunkSelection) {
-      const strictSeasonsFallback = expandSeasonsFromSelection(chunkSelection);
-      if (activeChunkLabel) {
-        await writeChunkCache(activeChunkLabel, {
-          startSeason: chunkSelection?.start,
-          endSeason: chunkSelection?.end,
-          seasons: strictSeasonsFallback
-        });
-      }
-      state = recordBootstrapChunk(state, BOOTSTRAP_KEYS.MODEL, {
-        startSeason: chunkSelection.start,
-        endSeason: chunkSelection.end,
-        seasons: strictSeasonsFallback
-      });
       console.log(
         `[train] Chunk ${chunkSelection.start}-${chunkSelection.end}: recorded ${strictSeasonsFallback.length} seasons.`
       );
@@ -3311,25 +3332,13 @@ async function main() {
     }
   }
 
-  const strictSeasonsFallback = expandSeasonsFromSelection(chunkSelection);
-  const seasonsForRecord = (processedSeasons.length ? processedSeasons : strictSeasonsFallback);
-
-  if (activeChunkLabel) {
-    await writeChunkCache(activeChunkLabel, {
-      startSeason: chunkSelection?.start,
-      endSeason: chunkSelection?.end,
-      seasons: seasonsForRecord
-    });
-  }
-
+  state = await finalizeStrictWindow({ chunkSelection, processedSeasons, state });
   if (chunkSelection) {
-    state = recordBootstrapChunk(state, BOOTSTRAP_KEYS.MODEL, {
-      startSeason: chunkSelection.start,
-      endSeason: chunkSelection.end,
-      seasons: seasonsForRecord
-    });
+    const seasonsForLog = processedSeasons.length
+      ? processedSeasons
+      : expandSeasonsFromSelection(chunkSelection);
     console.log(
-      `[train] Chunk ${chunkSelection.start}-${chunkSelection.end}: recorded ${seasonsForRecord.length} seasons.`
+      `[train] Chunk ${chunkSelection.start}-${chunkSelection.end}: recorded ${seasonsForLog.length} seasons.`
     );
   }
 

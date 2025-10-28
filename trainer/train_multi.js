@@ -3067,9 +3067,13 @@ async function main() {
       console.log(
         `[train] Historical bootstrap chunk ${chunkSelection.start}-${chunkSelection.end} already cached – skipping.`
       );
+      const processedSeasonsForFinalize =
+        Array.isArray(cachedChunk?.seasons) && cachedChunk.seasons.length
+          ? cachedChunk.seasons
+          : Array.from(normalizedSeasons);
       state = await finalizeStrictWindow({
         chunkSelection,
-        processedSeasons: Array.from(normalizedSeasons),
+        processedSeasons: processedSeasonsForFinalize,
         state
       });
       saveTrainingState(state);

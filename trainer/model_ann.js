@@ -317,6 +317,83 @@ function ensureConsistentDimensions(X = []) {
   return dim;
 }
 
+function flattenWarmStartCandidates(source) {
+  if (!source) return [];
+  if (source.model) return flattenWarmStartCandidates(source.model);
+  const candidates = [];
+  const push = (network, seed) => {
+    if (!network) return;
+    candidates.push({ network, seed });
+  };
+  if (Array.isArray(source)) {
+    source.forEach((network, idx) => push(network, source?.seeds?.[idx] ?? null));
+  }
+  if (Array.isArray(source?.models)) {
+    source.models.forEach((network, idx) => push(network, source.seeds?.[idx] ?? null));
+  }
+  if (Array.isArray(source?.networks)) {
+    source.networks.forEach((network, idx) => push(network, source.seeds?.[idx] ?? null));
+  }
+  if (Array.isArray(source?.committees)) {
+    for (const committee of source.committees) {
+      if (!committee) continue;
+      const seeds = Array.isArray(committee.seeds) ? committee.seeds : [];
+      if (Array.isArray(committee.networks)) {
+        committee.networks.forEach((network, idx) => push(network, seeds[idx] ?? null));
+      }
+    }
+  }
+  return candidates;
+}
+
+function validateNetworkShape(network, inputDim) {
+  if (!network || typeof network !== "object") return false;
+  if (!Array.isArray(network.weights) || !network.weights.length) return false;
+  if (!Array.isArray(network.biases) || network.biases.length !== network.weights.length) return false;
+  let prevDim = inputDim;
+  for (let layerIdx = 0; layerIdx < network.weights.length; layerIdx++) {
+    const matrix = network.weights[layerIdx];
+    if (!Array.isArray(matrix) || !matrix.length) return false;
+    const biasVec = Array.isArray(network.biases[layerIdx]) ? network.biases[layerIdx] : [];
+    if (biasVec.length !== matrix.length) return false;
+    for (const row of matrix) {
+      if (!Array.isArray(row) || row.length !== prevDim) return false;
+    }
+    prevDim = matrix.length;
+  }
+  if (Array.isArray(network.batchNorm)) {
+    const expected = Math.max(0, network.weights.length - 1);
+    if (network.batchNorm.length !== expected) return false;
+    for (let i = 0; i < expected; i++) {
+      const bn = network.batchNorm[i];
+      if (!bn) return false;
+      if (!Array.isArray(bn.gamma) || !Array.isArray(bn.beta)) return false;
+      if (bn.gamma.length !== network.weights[i].length) return false;
+      if (bn.beta.length !== network.weights[i].length) return false;
+    }
+  }
+  return true;
+}
+
+function normaliseWarmStartNetworks(warmStart, inputDim) {
+  if (!warmStart) return [];
+  const candidates = flattenWarmStartCandidates(warmStart);
+  const seen = new Set();
+  const normalised = [];
+  for (const { network, seed } of candidates) {
+    if (!validateNetworkShape(network, inputDim)) continue;
+    const key = JSON.stringify({
+      seed: Number.isFinite(seed) ? seed : null,
+      layers: network.weights.length,
+      hash: network.weights[0]?.[0]?.[0] ?? 0
+    });
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalised.push({ network: copyNetwork(network), seed });
+  }
+  return normalised;
+}
+
 function trainSingleNetwork(
   X,
   y,
@@ -328,14 +405,23 @@ function trainSingleNetwork(
     architecture = [128, 64, 32],
     batchSize = modelParams?.ann?.batchSize ?? 32,
     l2 = 1e-4,
-    dropout = modelParams?.ann?.dropout ?? 0.3
+    dropout = modelParams?.ann?.dropout ?? 0.3,
+    warmStartNetwork = null
   }
 ) {
   const rng = makeLCG(seed);
   const splitRng = makeLCG((seed ^ 0xa5a5a5a5) >>> 0);
   const inputDim = ensureConsistentDimensions(X);
   const dropoutArr = Array.isArray(dropout) ? dropout : [dropout];
-  const net = initNetwork(inputDim, architecture, rng, dropoutArr);
+  let net;
+  if (warmStartNetwork && validateNetworkShape(warmStartNetwork, inputDim)) {
+    net = copyNetwork(warmStartNetwork);
+    if (!net.dropoutRates) {
+      net.dropoutRates = dropoutArr;
+    }
+  } else {
+    net = initNetwork(inputDim, architecture, rng, dropoutArr);
+  }
 
   if (X.length <= 1 || !inputDim) {
     return { network: net, epochs: 0, bestLoss: Infinity };
@@ -448,7 +534,8 @@ export function trainANNCommittee(
     committees: committeesOption,
     batchSize,
     l2,
-    dropout
+    dropout,
+    warmStart = null
   } = {}
 ) {
   if (!X?.length) {
@@ -461,7 +548,34 @@ export function trainANNCommittee(
   const committeeSize = Math.max(1, Math.round(committeeSizeOption ?? Math.min(5, maxSeeds, 5)));
   const maxCommitteesDefault = Math.max(1, Math.ceil(maxSeeds / committeeSize));
   const committeeCount = Math.max(1, Math.round(committeesOption ?? Math.min(3, maxCommitteesDefault)));
+  const inputDim = ensureConsistentDimensions(X);
+
+  const warmNetworks = normaliseWarmStartNetworks(warmStart, inputDim);
+  let warmSeedOffset = 0;
+  for (const candidate of warmNetworks) {
+    const warmSeed = Number.isFinite(candidate.seed)
+      ? candidate.seed
+      : maxSeeds + warmSeedOffset + 1;
+    warmSeedOffset += 1;
+    const result = trainSingleNetwork(X, y, {
+      seed: warmSeed,
+      maxEpochs,
+      lr,
+      patience,
+      architecture: arch,
+      batchSize,
+      l2,
+      dropout,
+      warmStartNetwork: candidate.network
+    });
+    results.push({ ...result, seed: warmSeed, warm: true });
+    const lossMsgWarm = Number.isFinite(result.bestLoss) ? result.bestLoss.toFixed(4) : "inf";
+    console.log(`[ANN] warm-seed=${warmSeed} valLoss=${lossMsgWarm}`);
+    if (Date.now() - start > timeLimitMs) break;
+  }
+
   for (let i = 0; i < maxSeeds; i++) {
+    if (Date.now() - start > timeLimitMs) break;
     const seed = i + 1;
     const result = trainSingleNetwork(X, y, {
       seed,
@@ -476,7 +590,6 @@ export function trainANNCommittee(
     results.push({ ...result, seed });
     const lossMsg = Number.isFinite(result.bestLoss) ? result.bestLoss.toFixed(4) : "inf";
     console.log(`[ANN] seed=${seed} valLoss=${lossMsg}`);
-    if (Date.now() - start > timeLimitMs) break;
   }
   results.sort((a, b) => (a.bestLoss ?? Infinity) - (b.bestLoss ?? Infinity));
   const selectionCount = Math.min(results.length, committeeSize * committeeCount);

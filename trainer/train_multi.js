@@ -116,6 +116,8 @@ const ART_DIR = artifactsRoot();
 const STATUS_DIR = path.join(ART_DIR, ".status");
 const CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
 const CHUNK_FILE_PREFIX = "model";
+const CHECKPOINT_DIR = path.join(ART_DIR, "checkpoints");
+const ANN_CHECKPOINT_PATH = path.join(CHECKPOINT_DIR, "ann_committee.json");
 const FEATURE_STATS_PREFIX = "feature_stats_1999_";
 const DEFAULT_CHUNK_SPAN = Math.min(
   MAX_SEASONS_PER_CHUNK,
@@ -145,18 +147,86 @@ function chunkDonePath(label) {
   return path.join(CHUNK_CACHE_DIR, `${CHUNK_FILE_PREFIX}_${label}.done`);
 }
 
+async function ensureCheckpointDir() {
+  await fsp.mkdir(CHECKPOINT_DIR, { recursive: true });
+}
+
+async function loadAnnCheckpoint() {
+  try {
+    const raw = await fsp.readFile(ANN_CHECKPOINT_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return { ...parsed, path: ANN_CHECKPOINT_PATH };
+  } catch (err) {
+    if (err?.code === "ENOENT") return null;
+    console.warn(`[train] Unable to load ANN checkpoint: ${err?.message || err}`);
+    return null;
+  }
+}
+
+async function saveAnnCheckpoint({ model, season, week, chunkSelection } = {}) {
+  if (!model) return null;
+  await ensureCheckpointDir();
+  const payload = {
+    version: 1,
+    updated_at: new Date().toISOString(),
+    season: Number.isFinite(season) ? season : null,
+    week: Number.isFinite(week) ? week : null,
+    chunk: chunkSelection
+      ? {
+          start: Number.isFinite(chunkSelection.start) ? chunkSelection.start : null,
+          end: Number.isFinite(chunkSelection.end) ? chunkSelection.end : null
+        }
+      : null,
+    model
+  };
+  await fsp.writeFile(ANN_CHECKPOINT_PATH, JSON.stringify(payload, null, JSON_SPACE));
+  return { ...payload, path: ANN_CHECKPOINT_PATH };
+}
+
 function expandSeasonsFromSelection(selection) {
   if (!selection || !Number.isFinite(selection.start) || !Number.isFinite(selection.end)) return [];
   const out = [];
-  for (let s = selection.start; s <= selection.end; s += 1) out.push(s);
+  for (let s = selection.start; s <= selection.end; s += 1) out.push({ season: s });
   return out;
+}
+
+function normaliseChunkSeasonEntries(entries) {
+  if (!Array.isArray(entries) || !entries.length) return [];
+  const normalised = [];
+  for (const entry of entries) {
+    if (entry == null) continue;
+    if (typeof entry === "object") {
+      const season = normaliseSeasonValue(entry);
+      if (!Number.isFinite(season)) continue;
+      const weeks = Array.isArray(entry.weeks)
+        ? entry.weeks
+            .map((wk) => Number.parseInt(wk, 10))
+            .filter((wk) => Number.isFinite(wk))
+            .sort((a, b) => a - b)
+        : undefined;
+      if (weeks && weeks.length) {
+        normalised.push({ season, weeks });
+      } else {
+        normalised.push({ season });
+      }
+      continue;
+    }
+    const season = Number.parseInt(entry, 10);
+    if (Number.isFinite(season)) {
+      normalised.push({ season });
+    }
+  }
+  normalised.sort((a, b) => a.season - b.season);
+  return normalised;
 }
 
 async function finalizeStrictWindow({ chunkSelection, processedSeasons = [], state }) {
   if (!chunkSelection) return state;
   const label = chunkLabel(chunkSelection.start, chunkSelection.end);
   const fallback = expandSeasonsFromSelection(chunkSelection);
-  const seasonsForRecord = processedSeasons.length ? processedSeasons : fallback;
+  const seasonsForRecordRaw = processedSeasons.length ? processedSeasons : fallback;
+  const seasonsForRecord = normaliseChunkSeasonEntries(seasonsForRecordRaw);
 
   await writeChunkCache(label, {
     startSeason: chunkSelection.start,
@@ -170,7 +240,7 @@ async function finalizeStrictWindow({ chunkSelection, processedSeasons = [], sta
     seasons:     seasonsForRecord
   });
 
-  if (seasonsForRecord?.length) {
+  if (seasonsForRecord.length) {
     markSeasonStatusBatch(seasonsForRecord);
   }
   return state;
@@ -1432,6 +1502,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const historicalBTRows = Array.isArray(options?.historical?.btRows)
     ? options.historical.btRows
     : [];
+  const annWarmStart = options?.annWarmStart ?? null;
 
   const schedules = data.schedules ?? (await loadSchedules(resolvedSeason));
   const teamWeekly = data.teamWeekly ?? (await loadTeamWeekly(resolvedSeason));
@@ -1739,7 +1810,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
         batchSize: annBatchSize,
         l2: annL2,
         timeLimitMs: CI_FAST ? 12000 : options.annCvTimeLimit ?? 25000,
-        architecture: options.annArchitecture
+        architecture: options.annArchitecture,
+        warmStart: annWarmStart
       });
       const preds = predictANNCommittee(annModel, XvaS);
       for (let j = 0; j < iva.length; j++) annOOF[iva[j]] = safeProb(preds[j]);
@@ -1836,7 +1908,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     batchSize: annBatchSize,
     l2: annL2,
     timeLimitMs: CI_FAST ? 20000 : options.annTimeLimit ?? 70000,
-    architecture: options.annArchitecture
+    architecture: options.annArchitecture,
+    warmStart: annWarmStart
   });
   // --- END: robust ANN full fit ---
   const btModelFull = trainBTModel(btTrainRows, {
@@ -2155,7 +2228,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     btDebug,
     schedules,
     featureHash,
-    trainingMetadata
+    trainingMetadata,
+    annModel: annModelFull
   };
 }
 
@@ -2700,13 +2774,25 @@ async function runWeeklyWorkflow({ season, week }) {
   if (week === 1 && !promoted) {
     throw new Error(`[train] Unable to promote final ensemble from season ${prevSeason}: promotion failed.`);
   }
-  if (!promoted) {
-    console.warn(`[train] Promotion skipped for season ${season}; continuing with existing seeds.`);
-  } else {
-    console.log(`[train] Promotion complete for season ${season} using finals from ${prevSeason}.`);
-  }
+    if (!promoted) {
+      console.warn(`[train] Promotion skipped for season ${season}; continuing with existing seeds.`);
+    } else {
+      console.log(`[train] Promotion complete for season ${season} using finals from ${prevSeason}.`);
+    }
 
-  const historicalMax = Math.max(MIN_SEASON, season - 1);
+    const weeklyAnnCheckpoint = await loadAnnCheckpoint();
+    let weeklyAnnWarmStart = weeklyAnnCheckpoint?.model ?? null;
+    if (weeklyAnnWarmStart) {
+      const seasonLog = Number.isFinite(weeklyAnnCheckpoint?.season)
+        ? ` season ${weeklyAnnCheckpoint.season}`
+        : "";
+      const weekLog = Number.isFinite(weeklyAnnCheckpoint?.week)
+        ? ` week ${String(weeklyAnnCheckpoint.week).padStart(2, "0")}`
+        : "";
+      console.log(`[train] Weekly workflow: restored ANN warm-start${seasonLog}${weekLog}.`);
+    }
+
+    const historicalMax = Math.max(MIN_SEASON, season - 1);
   const compactHistory = process.env.TRAINER_SMOKE_TEST === "1";
   const historicalMin = compactHistory ? Math.max(MIN_SEASON, historicalMax) : MIN_SEASON;
   const historical = await buildHistoricalTrainingSet({ minSeason: historicalMin, maxSeason: historicalMax });
@@ -2791,12 +2877,18 @@ async function runWeeklyWorkflow({ season, week }) {
         featureRows: historical.featureRows,
         btRows: historical.btRows,
         seasons: historical.seasons
-      }
+      },
+      annWarmStart: weeklyAnnWarmStart
     }
   });
 
   if (!trainingResult || trainingResult.skipped) {
     throw new Error(`[train] Weekly training failed to produce a model for season ${season} week ${week}.`);
+  }
+
+  if (trainingResult.annModel) {
+    weeklyAnnWarmStart = trainingResult.annModel;
+    await saveAnnCheckpoint({ model: weeklyAnnWarmStart, season, week });
   }
 
   const statsRecord = await persistWeeklyFeatureStats({
@@ -3137,6 +3229,20 @@ async function main() {
   const seasonWeekMax = new Map();
   let latestTargetResult = null;
 
+  const annCheckpoint = await loadAnnCheckpoint();
+  let annWarmStartModel = annCheckpoint?.model ?? null;
+  if (annWarmStartModel) {
+    const chunkInfo = annCheckpoint?.chunk;
+    const chunkLabelLog = chunkInfo && Number.isFinite(chunkInfo.start) && Number.isFinite(chunkInfo.end)
+      ? `${chunkInfo.start}-${chunkInfo.end}`
+      : "previous run";
+    const seasonLog = Number.isFinite(annCheckpoint?.season) ? ` season ${annCheckpoint.season}` : "";
+    const weekLog = Number.isFinite(annCheckpoint?.week)
+      ? ` week ${String(annCheckpoint.week).padStart(2, "0")}`
+      : "";
+    console.log(`[train] Restored ANN warm-start checkpoint from ${chunkLabelLog}${seasonLog}${weekLog}.`);
+  }
+
   const smokeTest = process.env.TRAINER_SMOKE_TEST === "1";
 
   const loadLimiter = createLimiter(SEASON_BUILD_CONCURRENCY);
@@ -3152,21 +3258,28 @@ async function main() {
 
   const weekLimiter = createLimiter(WEEK_TASK_CONCURRENCY);
 
-  for (const resolvedSeason of activeSeasons) {
-    let _seasonMarked = false;
-    const _markSeasonOnce = () => {
-      if (_seasonMarked) return false;
-      markSeasonStatus(resolvedSeason);
-      _seasonMarked = true;
-      return true;
-    };
+    for (const resolvedSeason of activeSeasons) {
+      let _seasonMarked = false;
+      const _markSeasonOnce = () => {
+        if (_seasonMarked) return false;
+        markSeasonStatus(resolvedSeason);
+        _seasonMarked = true;
+        return true;
+      };
 
-    try {
-      if (smokeTest) {
-        processedSeasons.push({ season: resolvedSeason, weeks: [1] });
-        seasonWeekMax.set(resolvedSeason, 1);
-        if (_markSeasonOnce() && !historicalOverride) {
-          console.log(`[train] Season ${resolvedSeason}: status marked (smoke test).`);
+      try {
+        if (annWarmStartModel) {
+          console.log(
+            `[train] Season ${resolvedSeason}: continuing ANN warm-start from prior checkpoint.`
+          );
+        } else {
+          console.log(`[train] Season ${resolvedSeason}: ANN warm-start not found; initialising fresh.`);
+        }
+        if (smokeTest) {
+          processedSeasons.push({ season: resolvedSeason, weeks: [1] });
+          seasonWeekMax.set(resolvedSeason, 1);
+          if (_markSeasonOnce() && !historicalOverride) {
+            console.log(`[train] Season ${resolvedSeason}: status marked (smoke test).`);
         }
         continue;
       }
@@ -3258,7 +3371,21 @@ async function main() {
             skipped: true
           };
         }
-        const result = await runTraining({ season: resolvedSeason, week: wk, data: sharedData });
+        const result = await runTraining({
+          season: resolvedSeason,
+          week: wk,
+          data: sharedData,
+          options: { annWarmStart: annWarmStartModel }
+        });
+        if (!result?.skipped && result?.annModel) {
+          annWarmStartModel = result.annModel;
+          await saveAnnCheckpoint({
+            model: annWarmStartModel,
+            season: resolvedSeason,
+            week: wk,
+            chunkSelection
+          });
+        }
         if (!allowHistoricalRewrite && hasArtifacts && !isTargetWeek) {
           console.log(
             `[train] skipping artifact write for season ${resolvedSeason} week ${wk} (historical artifacts locked)`
@@ -3276,24 +3403,21 @@ async function main() {
         return result;
       };
 
-      const weekTasks = [];
-      for (const wk of seasonWeeks) {
-        if (wk < startWeek) continue;
-        if (wk > finalWeek) break;
-        const isTargetWeek = resolvedSeason === targetSeason && wk === finalWeek;
-        weekTasks.push(weekLimiter(() => trainWeek(wk, { isTargetWeek })));
-      }
+        let weekResults = [];
+        for (const wk of seasonWeeks) {
+          if (wk < startWeek) continue;
+          if (wk > finalWeek) break;
+          const isTargetWeek = resolvedSeason === targetSeason && wk === finalWeek;
+          const result = await weekLimiter(() => trainWeek(wk, { isTargetWeek }));
+          if (result) weekResults.push(result);
+        }
 
-      let weekResults = [];
-      if (weekTasks.length) {
-        weekResults = (await Promise.all(weekTasks)).filter(Boolean);
         weekResults.sort((a, b) => a.week - b.week);
-      }
 
-      if (!weekResults.length && Number.isFinite(finalWeek)) {
-        const fallbackResult = await trainWeek(finalWeek);
-        weekResults = [fallbackResult];
-      }
+        if (!weekResults.length && Number.isFinite(finalWeek)) {
+          const fallbackResult = await weekLimiter(() => trainWeek(finalWeek, { isTargetWeek: true }));
+          weekResults = fallbackResult ? [fallbackResult] : [];
+        }
 
       if (!weekResults.length) {
         console.warn(`[train] Season ${resolvedSeason}: no evaluable weeks after filtering.`);

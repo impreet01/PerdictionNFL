@@ -83,6 +83,14 @@ const ANN_BASE_CONFIG = Object.freeze({
   gridTopN: Number.POSITIVE_INFINITY,
   kfold: 5
 });
+const TRACE_ENABLED = process.env.TRAIN_TRACE === "1";
+const trace = (...args) => {
+  if (!TRACE_ENABLED) return;
+  console.log("[train:trace]", ...args);
+};
+const warn = (...args) => {
+  console.warn("[train:warn]", ...args);
+};
 const ANN_CONFIG = (() => {
   if (CI_FAST) {
     return {
@@ -156,10 +164,19 @@ async function loadAnnCheckpoint() {
     const raw = await fsp.readFile(ANN_CHECKPOINT_PATH, "utf8");
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
+    trace("checkpoint:ann:load", {
+      path: ANN_CHECKPOINT_PATH,
+      hasModel: Boolean(parsed?.model),
+      season: parsed?.season ?? null,
+      chunk: parsed?.chunk ?? null
+    });
     return { ...parsed, path: ANN_CHECKPOINT_PATH };
   } catch (err) {
-    if (err?.code === "ENOENT") return null;
-    console.warn(`[train] Unable to load ANN checkpoint: ${err?.message || err}`);
+    if (err?.code === "ENOENT") {
+      trace("checkpoint:ann:load", { path: ANN_CHECKPOINT_PATH, missing: true });
+      return null;
+    }
+    warn(`[train] Unable to load ANN checkpoint: ${err?.message || err}`);
     return null;
   }
 }
@@ -181,6 +198,12 @@ async function saveAnnCheckpoint({ model, season, week, chunkSelection } = {}) {
     model
   };
   await fsp.writeFile(ANN_CHECKPOINT_PATH, JSON.stringify(payload, null, JSON_SPACE));
+  trace("checkpoint:ann:save", {
+    path: ANN_CHECKPOINT_PATH,
+    season: payload.season,
+    week: payload.week,
+    chunk: payload.chunk
+  });
   return { ...payload, path: ANN_CHECKPOINT_PATH };
 }
 
@@ -228,6 +251,15 @@ async function finalizeStrictWindow({ chunkSelection, processedSeasons = [], sta
   const seasonsForRecordRaw = processedSeasons.length ? processedSeasons : fallback;
   const seasonsForRecord = normaliseChunkSeasonEntries(seasonsForRecordRaw);
 
+  trace("finalizeStrictWindow", {
+    label,
+    seasons: seasonsForRecord.map((entry) => ({
+      season: entry.season,
+      weeks: Array.isArray(entry.weeks) ? entry.weeks : undefined
+    })),
+    source: processedSeasons.length ? "processed" : "fallback"
+  });
+
   await writeChunkCache(label, {
     startSeason: chunkSelection.start,
     endSeason:   chunkSelection.end,
@@ -268,6 +300,16 @@ async function writeChunkCache(label, payload = {}) {
     completed_at: new Date().toISOString(),
     ...payload
   };
+  trace("chunk-cache:write", {
+    label,
+    donePath: chunkDonePath(label),
+    seasons: Array.isArray(record.seasons)
+      ? record.seasons.map((entry) => ({
+          season: entry.season,
+          weeks: Array.isArray(entry.weeks) ? entry.weeks : undefined
+        }))
+      : []
+  });
   await fsp.writeFile(chunkMetadataPath(label), JSON.stringify(record, null, JSON_SPACE));
   await fsp.writeFile(chunkDonePath(label), `${record.completed_at}\n`);
   return record;
@@ -738,6 +780,7 @@ function markSeasonStatusBatch(entries) {
     seasonList = clampSeasonsToStrictBounds(seasonList);
   }
   if (!seasonList.length) return;
+  trace("season-status:markBatch", { seasons: seasonList });
   for (const season of seasonList) {
     markSeasonStatus(season);
   }
@@ -804,7 +847,7 @@ function loadModelParamsFile() {
     return JSON.parse(raw);
   } catch (err) {
     if (err?.code !== "ENOENT") {
-      console.warn(`[train] unable to read model params: ${err?.message || err}`);
+      warn(`[train] unable to read model params: ${err?.message || err}`);
     }
     return {};
   }
@@ -828,9 +871,9 @@ async function persistModelParams(updates = {}) {
   const current = loadModelParamsFile();
   const merged = deepMerge(current, updates);
   try {
-  await fsp.writeFile(MODEL_PARAMS_PATH, JSON.stringify(merged, null, JSON_SPACE));
+    await fsp.writeFile(MODEL_PARAMS_PATH, JSON.stringify(merged, null, JSON_SPACE));
   } catch (err) {
-    console.warn(`[train] unable to persist model params: ${err?.message || err}`);
+    warn(`[train] unable to persist model params: ${err?.message || err}`);
   }
 }
 
@@ -1427,14 +1470,14 @@ const resolveTeamCode = (primary, fallback, gameId, role) => {
   const normalizedFallback = normalizeTeamCode(fallback);
   if (normalizedFallback) {
     if (primary != null && String(primary).trim() !== "" && String(primary).trim().toUpperCase() !== normalizedFallback) {
-      console.warn(
+      warn(
         `[train] Normalized ${role} team code for ${gameId} from "${String(primary).trim()}" to "${normalizedFallback}".`
       );
     }
     return normalizedFallback;
   }
 
-  console.warn(`[train] Unable to resolve ${role} team code for ${gameId}; defaulting to "UNK".`);
+  warn(`[train] Unable to resolve ${role} team code for ${gameId}; defaulting to "UNK".`);
   return "UNK";
 };
 
@@ -2725,7 +2768,7 @@ async function buildHistoricalTrainingSet({ minSeason = MIN_SEASON, maxSeason } 
       btRows.push(...btSeason);
       seasons.push(season);
     } catch (err) {
-      console.warn(`[train] Failed to build historical rows for season ${season}: ${err?.message ?? err}`);
+      warn(`[train] Failed to build historical rows for season ${season}: ${err?.message ?? err}`);
     }
   }
   return { featureRows, btRows, seasons };
@@ -2775,7 +2818,7 @@ async function runWeeklyWorkflow({ season, week }) {
     throw new Error(`[train] Unable to promote final ensemble from season ${prevSeason}: promotion failed.`);
   }
     if (!promoted) {
-      console.warn(`[train] Promotion skipped for season ${season}; continuing with existing seeds.`);
+      warn(`[train] Promotion skipped for season ${season}; continuing with existing seeds.`);
     } else {
       console.log(`[train] Promotion complete for season ${season} using finals from ${prevSeason}.`);
     }
@@ -2941,7 +2984,7 @@ async function main() {
       `[train] Refreshed cached training_state metadata from artifacts (revision ${CURRENT_BOOTSTRAP_REVISION}).`
     );
   } else if (refreshResult.error) {
-    console.warn(
+    warn(
       `[train] Unable to refresh cached training_state metadata from artifacts (${refreshResult.error.message ?? refreshResult.error}). Proceeding with trainer bootstrap.`
     );
   }
@@ -3086,6 +3129,18 @@ async function main() {
     });
   }
   let chunkSelection = chunkResolution.chunkSelection;
+  trace("chunk-selection:resolved", {
+    explicitWindow: explicitWindow
+      ? { start: explicitWindow.start, end: explicitWindow.end }
+      : null,
+    chunkSelection: chunkSelection
+      ? { start: chunkSelection.start, end: chunkSelection.end }
+      : null,
+    strictBatch,
+    bootstrapRequired,
+    historicalOverride,
+    recordedChunkCount: Array.isArray(recordedChunks) ? recordedChunks.length : 0
+  });
   if (explicitWindow) {
     if (!chunkSelection) {
       const label = `${explicitWindow.start}–${explicitWindow.end}`;
@@ -3118,6 +3173,11 @@ async function main() {
   const activeChunkLabel = chunkSelection ? chunkLabel(chunkSelection.start, chunkSelection.end) : null;
 
   const activeSeasons = computeRequestedSeasons();
+  trace("active-seasons", {
+    explicit: Boolean(explicitWindow),
+    activeSeasons,
+    chunkLabel: activeChunkLabel
+  });
 
   console.log(`[train:init] ARTIFACTS_DIR=${ART_DIR}`);
   console.log(`[train:init] STATUS_DIR=${path.join(ART_DIR, ".status")}`);
@@ -3127,6 +3187,11 @@ async function main() {
 
   if (activeChunkLabel && !historicalOverride) {
     const cachedChunk = await loadChunkCache(activeChunkLabel);
+    trace("chunk-cache:lookup", {
+      label: activeChunkLabel,
+      hit: Boolean(cachedChunk),
+      seasons: cachedChunk?.seasons?.length ?? 0
+    });
     if (cachedChunk) {
       if (cachedChunk?.seasons?.length) {
         markSeasonStatusBatch(cachedChunk.seasons);
@@ -3152,7 +3217,7 @@ async function main() {
           markSeasonStatus(season);
         }
       } catch (err) {
-        console.warn(
+        warn(
           `[train] Unable to update cached chunk status markers: ${err?.message || err}`
         );
       }
@@ -3179,6 +3244,12 @@ async function main() {
     : "auto";
 
   if (!activeSeasons.length) {
+    trace("active-seasons:empty", {
+      chunkSelection: chunkSelection
+        ? { start: chunkSelection.start, end: chunkSelection.end }
+        : null,
+      bootstrapRequired
+    });
     if (bootstrapRequired) {
       console.log(
         `[train] Historical bootstrap already satisfied for requested chunk range ${requestedRangeLabel}.`
@@ -3324,7 +3395,7 @@ async function main() {
       )].sort((a, b) => a - b);
 
       if (!seasonWeeks.length) {
-        console.warn(`[train] Season ${resolvedSeason}: no regular-season weeks found. Skipping.`);
+        warn(`[train] Season ${resolvedSeason}: no regular-season weeks found. Skipping.`);
         if (_markSeasonOnce() && !historicalOverride) {
           console.log(`[train] Season ${resolvedSeason}: marked complete (no weeks).`);
         }
@@ -3420,7 +3491,7 @@ async function main() {
         }
 
       if (!weekResults.length) {
-        console.warn(`[train] Season ${resolvedSeason}: no evaluable weeks after filtering.`);
+        warn(`[train] Season ${resolvedSeason}: no evaluable weeks after filtering.`);
         if (_markSeasonOnce() && !historicalOverride) {
           console.log(`[train] Season ${resolvedSeason}: marked complete (no evaluable weeks).`);
         }

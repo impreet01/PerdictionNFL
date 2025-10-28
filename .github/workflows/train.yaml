@@ -315,7 +315,19 @@ jobs:
         run: npm run test:core
 
       - name: Run strict-batch window test (soft-fail if allowed)
+        env:
+          ARTIFACTS_DIR: .test_artifacts
+          NODE_ENV: test
+          TRAIN_TRACE: "1"
         run: |
+          set -euo pipefail
+          ROOT="${ARTIFACTS_DIR}"
+          rm -rf "${ROOT}"
+          mkdir -p "${ROOT}/chunks"
+          echo "[strict] ARTIFACTS_DIR env=${ARTIFACTS_DIR}"
+          node --input-type=module -e "import path from 'node:path'; console.log('[strict] cwd=' + process.cwd()); console.log('[strict] resolved ARTIFACTS_DIR=' + path.resolve(process.cwd(), process.env.ARTIFACTS_DIR ?? ''));"
+          ls -la "${ROOT}" || true
+          ls -la "${ROOT}/chunks" || true
           if [ "${{ vars.CI_ALLOW_TEST_SOFT_FAIL }}" = "1" ]; then
             npm run test:strictBatch || echo "::warning::strictBatch failed (soft-fail enabled)"
           else
@@ -361,6 +373,7 @@ jobs:
       - name: Promote prior season ensemble
         env:
           SEASON: ${{ env.SEASON }}
+          TRAIN_TRACE: "1"
         run: |
           node --input-type=module -e "const season = Number(process.env.SEASON); if (!Number.isFinite(season)) { console.log('No season resolved; skipping promotion.'); process.exit(0); } const prev = season - 1; (async () => { const { promote } = await import('./trainer/promotePreviousSeason.js'); const ok = await promote({ prevSeason: prev, nextSeason: season }); if (!ok) { console.error('Unable to promote final ensemble from prior season.'); process.exit(1); } console.log(`Promoted finals from ${prev} → ${season}`); })().catch((err) => { console.error(err); process.exit(1); });"
       - name: Train + Predict (auto week)

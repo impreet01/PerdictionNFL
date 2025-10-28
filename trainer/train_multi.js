@@ -121,6 +121,11 @@ if (cliOverrides.end) process.env.BATCH_END = cliOverrides.end;
 if (cliOverrides.artifactsDir) process.env.ARTIFACTS_DIR = cliOverrides.artifactsDir;
 
 const ART_DIR = artifactsRoot();
+trace("artifacts:resolve", {
+  cwd: process.cwd(),
+  env: process.env.ARTIFACTS_DIR ?? null,
+  resolved: ART_DIR
+});
 const STATUS_DIR = path.join(ART_DIR, ".status");
 const CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
 const CHUNK_FILE_PREFIX = "model";
@@ -198,6 +203,17 @@ async function saveAnnCheckpoint({ model, season, week, chunkSelection } = {}) {
     model
   };
   await fsp.writeFile(ANN_CHECKPOINT_PATH, JSON.stringify(payload, null, JSON_SPACE));
+  const chunkLabel = chunkSelection && Number.isFinite(chunkSelection.start) && Number.isFinite(chunkSelection.end)
+    ? `${chunkSelection.start}-${chunkSelection.end}`
+    : null;
+  const seasonLog = Number.isFinite(payload.season) ? ` season ${payload.season}` : "";
+  const weekLog = Number.isFinite(payload.week)
+    ? ` week ${String(payload.week).padStart(2, "0")}`
+    : "";
+  const chunkLog = chunkLabel ? ` chunk ${chunkLabel}` : "";
+  console.log(
+    `[train] Saved ANN warm-start checkpoint to ${ANN_CHECKPOINT_PATH}${chunkLog}${seasonLog}${weekLog}.`
+  );
   trace("checkpoint:ann:save", {
     path: ANN_CHECKPOINT_PATH,
     season: payload.season,

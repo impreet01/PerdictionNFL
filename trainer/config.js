@@ -137,7 +137,62 @@ export function getDataConfig() {
 function buildTrainSettings() {
   const envDefaults = getEnvTrainDefaults();
   const yamlOverrides = loadTrainConfig();
-  return mergeDeep(envDefaults, yamlOverrides || {});
+  const merged = mergeDeep(envDefaults, yamlOverrides || {});
+
+  const artifactsDir = typeof process.env.ARTIFACTS_DIR === "string"
+    ? process.env.ARTIFACTS_DIR.trim()
+    : "";
+  if (artifactsDir) {
+    merged.paths = { ...(merged.paths || {}), artifacts: artifactsDir };
+  }
+
+  const seedEnv = typeof process.env.SEED === "string" ? process.env.SEED.trim() : "";
+  if (seedEnv && merged.seed === undefined) {
+    merged.seed = seedEnv;
+  }
+
+  if (merged.seed === undefined) {
+    merged.seed = 42;
+  }
+
+  if (process.env.CI_FAST === "1") {
+    const seasonEnv = Number.parseInt(process.env.SEASON ?? "", 10);
+    const batchStartRaw = Number.parseInt(process.env.BATCH_START ?? "", 10);
+    const batchEndRaw = Number.parseInt(process.env.BATCH_END ?? "", 10);
+    const startSeasonFromBatch = Number.isFinite(batchStartRaw) && batchStartRaw > 100 ? batchStartRaw : null;
+    const endSeasonFromBatch = Number.isFinite(batchEndRaw) && batchEndRaw > 100 ? batchEndRaw : null;
+
+    let resolvedStart = Number.isFinite(seasonEnv) ? seasonEnv : null;
+    let resolvedEnd = Number.isFinite(seasonEnv) ? seasonEnv : null;
+
+    if (startSeasonFromBatch !== null) {
+      resolvedStart = startSeasonFromBatch;
+      resolvedEnd = endSeasonFromBatch !== null ? endSeasonFromBatch : startSeasonFromBatch;
+    }
+
+    if (resolvedStart === null || resolvedStart === undefined) {
+      resolvedStart = merged?.train_window?.start_season ?? null;
+    }
+    if (resolvedEnd === null || resolvedEnd === undefined) {
+      const fallbackEnd = merged?.train_window?.end_season ?? merged?.train_window?.start_season;
+      resolvedEnd = fallbackEnd != null ? fallbackEnd : resolvedStart;
+    }
+
+    if (resolvedStart != null) {
+      const startNumeric = Number.parseInt(resolvedStart, 10);
+      const endNumeric = Number.parseInt(resolvedEnd, 10);
+      if (Number.isFinite(startNumeric)) {
+        const finalEnd = Number.isFinite(endNumeric) ? Math.max(startNumeric, endNumeric) : startNumeric;
+        merged.train_window = {
+          ...(merged.train_window || {}),
+          start_season: startNumeric,
+          end_season: finalEnd
+        };
+      }
+    }
+  }
+
+  return merged;
 }
 
 const TRAIN_SETTINGS = buildTrainSettings();

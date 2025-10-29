@@ -3,7 +3,9 @@ import path from "node:path";
 
 import { artifactsRoot } from "./utils/paths.js";
 
-const ARTIFACTS_DIR = artifactsRoot();
+function getArtifactsDir() {
+  return artifactsRoot();
+}
 const MODEL_REGEX = /^model_(\d{4})_W(\d{2})\.json$/;
 const MODEL_PREFIX = "model";
 
@@ -13,7 +15,7 @@ function toWeekStamp(season, week) {
 
 function modelArtifactPath(season, week) {
   const stamp = toWeekStamp(season, week);
-  return path.join(ARTIFACTS_DIR, `${MODEL_PREFIX}_${stamp}.json`);
+  return path.join(getArtifactsDir(), `${MODEL_PREFIX}_${stamp}.json`);
 }
 
 function toFiniteNumber(value, fallback = 0) {
@@ -23,7 +25,8 @@ function toFiniteNumber(value, fallback = 0) {
 
 export async function listModelArtifacts() {
   try {
-    const entries = await fs.readdir(ARTIFACTS_DIR, { withFileTypes: true });
+    const artifactsDir = getArtifactsDir();
+    const entries = await fs.readdir(artifactsDir, { withFileTypes: true });
     return entries
       .filter((dirent) => dirent.isFile())
       .map((dirent) => dirent.name)
@@ -37,7 +40,7 @@ export async function listModelArtifacts() {
           season,
           week,
           name,
-          path: path.join(ARTIFACTS_DIR, name)
+          path: path.join(artifactsDir, name)
         };
       })
       .filter(Boolean)
@@ -97,7 +100,7 @@ export async function loadLogisticWarmStart({ season, week, features } = {}) {
   const latest = await findLatestBefore(targetSeason, targetWeek);
   if (!latest) return null;
   console.log(
-    `[modelWarmStart] Warm-starting logistic from ${latest.season} W${String(latest.week).padStart(2, "0")} at ${ARTIFACTS_DIR}`
+    `[modelWarmStart] Warm-starting logistic from ${latest.season} W${String(latest.week).padStart(2, "0")} at ${getArtifactsDir()}`
   );
   let parsed;
   try {

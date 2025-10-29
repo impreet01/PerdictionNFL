@@ -21,10 +21,10 @@ function resolveArtifactsRoot() {
   const envValue = typeof process.env.ARTIFACTS_DIR === "string"
     ? process.env.ARTIFACTS_DIR.trim()
     : "";
-  const base = configValue
-    ? configValue
-    : envValue
-      ? envValue
+  const base = envValue
+    ? envValue
+    : configValue
+      ? configValue
       : process.env.NODE_ENV === "test"
         ? TEST_ARTIFACTS_DIR
         : DEFAULT_ARTIFACTS_DIR;

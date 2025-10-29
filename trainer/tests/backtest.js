@@ -161,6 +161,7 @@ async function main() {
 
     results.push({
       week,
+      count: labels.length,
       losses: {
         logistic: logLoss(labels, logistic),
         tree: logLoss(labels, tree),
@@ -184,11 +185,11 @@ async function main() {
   }
 
   const improvements = results
-    .filter((r) => r.week >= 4 && r.losses.blended != null)
+    .filter((r) => r.week >= 4 && r.losses.blended != null && r.count >= 8)
     .map((r) => {
       const indiv = [r.losses.logistic, r.losses.tree, r.losses.bt, r.losses.ann].filter((v) => v != null);
       const best = Math.min(...indiv);
-      return { week: r.week, blended: r.losses.blended, best };
+      return { week: r.week, blended: r.losses.blended, best, count: r.count };
     });
 
   for (const entry of improvements) {

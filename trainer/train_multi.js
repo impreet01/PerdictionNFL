@@ -122,17 +122,17 @@ if (cliOverrides.start) process.env.BATCH_START = cliOverrides.start;
 if (cliOverrides.end) process.env.BATCH_END = cliOverrides.end;
 if (cliOverrides.artifactsDir) process.env.ARTIFACTS_DIR = cliOverrides.artifactsDir;
 
-const ART_DIR = artifactsRoot();
+let ART_DIR = artifactsRoot();
 trace("artifacts:resolve", {
   cwd: process.cwd(),
   env: process.env.ARTIFACTS_DIR ?? null,
   resolved: ART_DIR
 });
-const STATUS_DIR = path.join(ART_DIR, ".status");
-const CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
+let STATUS_DIR = path.join(ART_DIR, ".status");
+let CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
 const CHUNK_FILE_PREFIX = "model";
-const CHECKPOINT_DIR = path.join(ART_DIR, "checkpoints");
-const ANN_CHECKPOINT_PATH = path.join(CHECKPOINT_DIR, "ann_committee.json");
+let CHECKPOINT_DIR = path.join(ART_DIR, "checkpoints");
+let ANN_CHECKPOINT_PATH = path.join(CHECKPOINT_DIR, "ann_committee.json");
 const FEATURE_STATS_PREFIX = "feature_stats_1999_";
 const DEFAULT_CHUNK_SPAN = Math.min(
   MAX_SEASONS_PER_CHUNK,
@@ -140,6 +140,18 @@ const DEFAULT_CHUNK_SPAN = Math.min(
     ? Math.max(1, Number(process.env.HISTORICAL_CHUNK_SPAN))
     : HISTORICAL_BATCH_SIZE
 );
+
+export function refreshArtifactPaths() {
+  ART_DIR = artifactsRoot();
+  STATUS_DIR = path.join(ART_DIR, ".status");
+  CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
+  CHECKPOINT_DIR = path.join(ART_DIR, "checkpoints");
+  ANN_CHECKPOINT_PATH = path.join(CHECKPOINT_DIR, "ann_committee.json");
+  trace("artifacts:refresh", {
+    env: process.env.ARTIFACTS_DIR ?? null,
+    resolved: ART_DIR
+  });
+}
 
 async function ensureArtifactsDir() {
   await fsp.mkdir(ART_DIR, { recursive: true });
@@ -1648,6 +1660,7 @@ function expandFeats(baseFeats, sampleRows){
 }
 
 export async function runTraining({ season, week, data = {}, options = {} } = {}) {
+  refreshArtifactPaths();
   const resolvedSeason = Number(season ?? process.env.SEASON ?? new Date().getFullYear());
   let resolvedWeek = Number(week ?? process.env.WEEK ?? 6);
   if (!Number.isFinite(resolvedWeek)) resolvedWeek = 6;
@@ -2399,6 +2412,7 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
 }
 
 export async function writeArtifacts(result) {
+  refreshArtifactPaths();
   const stamp = `${result.season}_W${String(result.week).padStart(2, "0")}`;
   await ensureArtifactsDir();
   validateArtifact("predictions", result.predictions);
@@ -2454,6 +2468,7 @@ export async function writeArtifacts(result) {
 }
 
 export async function updateHistoricalArtifacts({ season, schedules }) {
+  refreshArtifactPaths();
   await ensureArtifactsDir();
   if (!Array.isArray(schedules) || !schedules.length) return;
   const seasonGames = schedules.filter(
@@ -3088,6 +3103,7 @@ async function runWeeklyWorkflow({ season, week }) {
 }
 
 async function runCumulativeByWeek(trainSettings = {}) {
+  refreshArtifactPaths();
   const windowConfig = trainSettings?.train_window ?? {};
   const startSeasonRaw = Number(windowConfig.start_season);
   const endSeasonRaw = Number(windowConfig.end_season ?? windowConfig.start_season);
@@ -3151,12 +3167,17 @@ async function runCumulativeByWeek(trainSettings = {}) {
   const historicalBtRows = [];
   const historicalSeasons = [];
   const includePreseason = Boolean(windowConfig.include_preseason);
-  const seedNumeric = trainSettings?.seed != null ? Number(trainSettings.seed) : NaN;
+  const envSeedRaw = process.env.SEED;
+  const envSeed =
+    envSeedRaw !== undefined && envSeedRaw !== null && String(envSeedRaw).trim() !== ""
+      ? envSeedRaw
+      : null;
+  const resolvedSeedSource = trainSettings?.seed ?? envSeed ?? 42;
+  const seedNumeric = Number(resolvedSeedSource);
   const baseSeed = Number.isFinite(seedNumeric)
     ? String(seedNumeric)
-    : trainSettings?.seed != null
-      ? String(trainSettings.seed)
-      : null;
+    : String(resolvedSeedSource);
+  seedrandom(baseSeed, { global: true });
   const batchStartRaw = Number.parseInt(process.env.BATCH_START ?? "", 10);
   const batchEndRaw = Number.parseInt(process.env.BATCH_END ?? "", 10);
   const batchStart = Number.isFinite(batchStartRaw) ? batchStartRaw : null;
@@ -3217,9 +3238,7 @@ async function runCumulativeByWeek(trainSettings = {}) {
             ? sampleHistoricalRows(historicalContext, sampleLimit, `${baseSeed ?? "seed"}:${season}:${week}`)
             : historicalContext;
 
-        if (baseSeed) {
-          seedrandom(`${baseSeed}:${season}:${week}`, { global: true });
-        }
+        seedrandom(`${baseSeed}:${season}:${week}`, { global: true });
 
         const result = await runTraining({
           season,

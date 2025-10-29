@@ -99,10 +99,11 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Use Node ${{ env.NODE_VERSION }}
+      - name: Use Node 20.x
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: '20.x'
+          cache: 'npm'
 
       - name: Prepare artifacts directory
         run: |
@@ -130,6 +131,17 @@ jobs:
 
       - name: Install deps
         run: npm ci || npm install --no-audit --no-fund
+
+      - name: Run unit tests
+        run: npm run test:ci
+
+      - name: Upload test summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary
+          path: artifacts/test-summary.json
+          if-no-files-found: ignore
 
       - name: Bootstrap training state (if missing)
         run: |
@@ -238,10 +250,11 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Use Node ${{ env.NODE_VERSION }}
+      - name: Use Node 20.x
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: '20.x'
+          cache: 'npm'
 
       - name: Prepare artifacts directory
         run: |
@@ -297,6 +310,17 @@ jobs:
 
       - name: Install deps
         run: npm ci || npm install --no-audit --no-fund
+
+      - name: Run unit tests
+        run: npm run test:ci
+
+      - name: Upload test summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary
+          path: artifacts/test-summary.json
+          if-no-files-found: ignore
 
       - name: Resolve season (auto unless override)
         run: |
@@ -356,9 +380,6 @@ jobs:
           if (( ${#bad[@]} )); then
             echo "::error::Historical override flags detected: ${bad[*]}"; exit 1;
           fi
-
-      - name: Run core unit tests (must pass)
-        run: npm run test:core
 
       - name: Run strict-batch window test (soft-fail if allowed)
         env:

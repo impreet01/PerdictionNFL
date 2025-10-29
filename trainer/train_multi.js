@@ -57,6 +57,7 @@ import {
   MIN_SEASON as MIN_SEASON_CONSTANT
 } from "./stateBuilder.js";
 import { artp, artifactsRoot } from "./utils/paths.js";
+import { isBefore, sortChronologically } from "./utils/temporalWindow.js";
 
 const { readFileSync, existsSync } = fs;
 
@@ -1659,6 +1660,12 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     injuries: injuryRows
   });
 
+  const targetWindow = { season: resolvedSeason, week: resolvedWeek };
+  const featureRowsChrono = sortChronologically(featureRows);
+  const historicalFeatureRowsChrono = sortChronologically(historicalFeatureRows);
+  const btRowsChrono = sortChronologically(btRows);
+  const historicalBTRowsChrono = sortChronologically(historicalBTRows);
+
   // --- Enrich feature rows with PFR advanced weekly differentials ---
   if (DB) {
     for (const r of featureRows) {
@@ -1684,25 +1691,29 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     );
   }
 
-  const btTrainRowsRaw = btRows.filter(
-    (r) => r.season === resolvedSeason && r.week < resolvedWeek && (r.label_win === 0 || r.label_win === 1)
+  const btTrainRowsRaw = btRowsChrono.filter(
+    (r) => (r.label_win === 0 || r.label_win === 1) && isBefore(targetWindow, r)
   );
-  const historicalBtTrainRows = historicalBTRows.filter((r) => r.label_win === 0 || r.label_win === 1);
-  const btTestRowsRaw = btRows.filter((r) => r.season === resolvedSeason && r.week === resolvedWeek);
+  const historicalBtTrainRows = historicalBTRowsChrono.filter(
+    (r) => (r.label_win === 0 || r.label_win === 1) && isBefore(targetWindow, r)
+  );
+  const btTestRowsRaw = btRowsChrono.filter(
+    (r) => Number(r.season) === resolvedSeason && Number(r.week) === resolvedWeek
+  );
 
   const btTrainMap = new Map(btTrainRowsRaw.map((r) => [r.game_id, r]));
   const btTestMap = new Map(btTestRowsRaw.map((r) => [r.game_id, r]));
 
   const historicalBtTrainMap = new Map(historicalBtTrainRows.map((r) => [r.game_id, r]));
 
-  const trainRowsRaw = featureRows.filter(
-    (r) => r.season === resolvedSeason && r.week < resolvedWeek && r.home === 1 && (r.win === 0 || r.win === 1)
+  const trainRowsRaw = featureRowsChrono.filter(
+    (r) => r.home === 1 && (r.win === 0 || r.win === 1) && isBefore(targetWindow, r)
   );
-  const historicalTrainRowsRaw = historicalFeatureRows.filter(
-    (r) => r.home === 1 && (r.win === 0 || r.win === 1)
+  const historicalTrainRowsRaw = historicalFeatureRowsChrono.filter(
+    (r) => r.home === 1 && (r.win === 0 || r.win === 1) && isBefore(targetWindow, r)
   );
-  const testRowsRaw = featureRows.filter(
-    (r) => r.season === resolvedSeason && r.week === resolvedWeek && r.home === 1
+  const testRowsRaw = featureRowsChrono.filter(
+    (r) => r.home === 1 && Number(r.season) === resolvedSeason && Number(r.week) === resolvedWeek
   );
 
   const historicalTrainGames = historicalTrainRowsRaw

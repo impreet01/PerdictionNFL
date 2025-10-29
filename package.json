@@ -6,8 +6,6 @@
     "build:context": "node trainer/databases.js",
     "train": "node trainer/train.js",
     "train:multi": "node trainer/train_multi.js",
-    "train:yaml": "node -e \"import('./trainer/config.js').then(c=>console.log(JSON.stringify(c.default.trainSettings,null,2)))\"",
-    "train:one": "node trainer/train.js run",
     "build:index": "node scripts/buildIndex.js",
     "resolve:week": "node scripts/resolveWeek.js",
     "fetch:injuries": "node scripts/fetchRotowireInjuries.js",
@@ -16,29 +14,18 @@
     "validate:artifacts": "node scripts/validateArtifacts.js",
     "bootstrap:state": "node scripts/bootstrapTrainingState.js",
     "train:workflow": "node scripts/runTrainingWorkflow.js",
-    "test": "node --version && npm run lint:ci || true && jest --runInBand",
+    "test": "node trainer/tests/model_ann.test.js && node trainer/tests/bootstrapResolver.test.js && node trainer/tests/weatherContext.test.js && node trainer/tests/smoke.js && node trainer/tests/coldStart.test.js && node trainer/tests/promotion.test.js && node trainer/tests/fetch404Resilience.test.js && node trainer/tests/statusMarkersOnSkip.test.js && node trainer/tests/strictBatch.test.js",
     "test:core": "node trainer/tests/model_ann.test.js && node trainer/tests/bootstrapResolver.test.js && node trainer/tests/weatherContext.test.js && node trainer/tests/smoke.js && node trainer/tests/coldStart.test.js && node trainer/tests/promotion.test.js && node trainer/tests/fetch404Resilience.test.js && node trainer/tests/statusMarkersOnSkip.test.js",
     "test:strictBatch": "node trainer/tests/strictBatch.test.js"
   },
   "dependencies": {
-    "ajv": "^8.17.1",
     "axios": "^1.7.7",
+    "ajv": "^8.17.1",
     "cheerio": "^1.0.0",
-    "csv-parse": "^5.5.6",
     "ml-cart": "^2.0.1",
     "ml-logistic-regression": "^2.0.0",
     "ml-matrix": "^6.11.0",
-    "papaparse": "^5.4.1",
-    "seedrandom": "^3.0.5",
-    "yaml": "^2.8.1"
-  },
-  "jest": {
-    "testEnvironment": "node",
-    "testMatch": [
-      "**/?(*.)+(spec|test).[tj]s?(x)"
-    ],
-    "setupFilesAfterEnv": [
-      "<rootDir>/jest.setup.js"
-    ]
+    "csv-parse": "^5.5.6",
+    "papaparse": "^5.4.1"
   }
 }

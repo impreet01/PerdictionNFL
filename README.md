@@ -78,20 +78,6 @@ Injury and betting market context both ship from Rotowire scraper artifacts emit
    The scraper parses `https://www.rotowire.com/football/weather.php`, extracts per-game conditions, and writes `artifacts/weather_<season>_W<week>.json` alongside `artifacts/weather_current.json` for the latest snapshot.
 5. Re-run `npm run build:context` or `npm run train:multi` so the refreshed artifacts flow into summaries, per-game context, and ensemble training.
 
-## Cumulative training
-
-Run the cumulative trainer week by week or in batches using the bundled helper scripts:
-
-```bash
-# Single week (uses cumulative history automatically)
-SEASON=2025 BATCH_START=1 BATCH_END=1 npm run train:multi
-
-# Iterate multiple weeks (fast mode for CI)
-CI_FAST=1 SEASON=2025 BATCH_START=1 BATCH_END=4 npm run train:multi
-```
-
-Use `npm run train:yaml` to inspect the currently resolved YAML settings and `npm run train:one` for the legacy single-week runner when you need to target a specific batch manually.
-
 ## Produced artifacts
 Each successful `train:multi` run refreshes or adds:
 

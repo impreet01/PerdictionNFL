@@ -8,7 +8,6 @@ import {
   recordLatestRun,
   saveTrainingState
 } from "../trainer/trainingState.js";
-import config from "../trainer/config.js";
 import { getArtifactsDir, getTrainingStatePath } from "../trainer/bootstrapState.js";
 import {
   buildSeasonCoverageFromRaw,
@@ -16,11 +15,6 @@ import {
   mergeSeasonCoverage,
   MIN_SEASON
 } from "../trainer/stateBuilder.js";
-
-const TRAIN_SETTINGS = config.trainSettings ?? {};
-if (TRAIN_SETTINGS?.paths?.artifacts && !process.env.ARTIFACTS_DIR) {
-  process.env.ARTIFACTS_DIR = TRAIN_SETTINGS.paths.artifacts;
-}
 
 const ARTIFACTS_DIR = getArtifactsDir();
 const STATE_PATH = getTrainingStatePath();

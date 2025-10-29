@@ -32,7 +32,12 @@ import { buildFeatures, FEATS as FEATS_BASE } from "./featureBuild.js";
 import { buildBTFeatures, BT_FEATURES } from "./featureBuild_bt.js";
 import { trainBTModel, predictBT, predictBTDeterministic } from "./model_bt.js";
 import { trainANNCommittee, predictANNCommittee, gradientANNCommittee } from "./model_ann.js";
-import { isStrictBatch, getStrictBounds, clampSeasonsToStrictBounds } from "./lib/strictBatch.js";
+import {
+  isStrictBatch,
+  getStrictBounds,
+  clampSeasonsToStrictBounds,
+  deriveTrainingSplitForTarget
+} from "./lib/strictBatch.js";
 import { DecisionTreeClassifier as CART } from "ml-cart";
 import { Matrix, SVD } from "ml-matrix";
 import { logLoss, brier, accuracy, aucRoc, calibrationBins } from "./metrics.js";
@@ -1682,6 +1687,58 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     : [];
   const annWarmStart = options?.annWarmStart ?? null;
 
+  const historicalSeasonSet = new Set();
+  if (Array.isArray(options?.historical?.seasons)) {
+    for (const season of options.historical.seasons) {
+      const normalized = Number.parseInt(season, 10);
+      if (Number.isFinite(normalized)) historicalSeasonSet.add(normalized);
+    }
+  }
+  for (const row of historicalFeatureRows) {
+    const normalized = Number.parseInt(row?.season, 10);
+    if (Number.isFinite(normalized)) historicalSeasonSet.add(normalized);
+  }
+  const availableHistoricalSeasons = Array.from(historicalSeasonSet).sort((a, b) => a - b);
+  const historicalMinSeason = Number.isFinite(options?.historical?.minSeason)
+    ? Math.floor(options.historical.minSeason)
+    : availableHistoricalSeasons.length
+      ? availableHistoricalSeasons[0]
+      : null;
+  const historicalMaxSeason = Number.isFinite(options?.historical?.maxSeason)
+    ? Math.floor(options.historical.maxSeason)
+    : availableHistoricalSeasons.length
+      ? availableHistoricalSeasons[availableHistoricalSeasons.length - 1]
+      : null;
+
+  const trainingSplit = deriveTrainingSplitForTarget({
+    targetSeason: resolvedSeason,
+    targetWeek: resolvedWeek,
+    availableSeasons: availableHistoricalSeasons,
+    minSeason: historicalMinSeason,
+    maxSeason: historicalMaxSeason
+  });
+  const allowedHistoricalSeasonSet = new Set(trainingSplit.trainSeasons);
+
+  const formatRange = (values) => {
+    if (!Array.isArray(values) || values.length === 0) return "[]";
+    const sorted = [...values].sort((a, b) => a - b);
+    const isContiguous = sorted.every((value, index) =>
+      index === 0 ? true : value === sorted[index - 1] + 1
+    );
+    if (isContiguous && sorted.length > 1) {
+      return `[${sorted[0]}..${sorted[sorted.length - 1]}]`;
+    }
+    return `[${sorted.join(',')}]`;
+  };
+
+  const splitLogParts = [`seasons:${formatRange(trainingSplit.trainSeasons)}`];
+  for (const [season, weeks] of trainingSplit.trainWeeksBySeason.entries()) {
+    splitLogParts.push(`${season}:${formatRange(weeks)}`);
+  }
+  console.log(
+    `[split] target=${resolvedSeason}-W${String(resolvedWeek).padStart(2, '0')} train={${splitLogParts.join(', ')}}`
+  );
+
   const schedules = data.schedules ?? (await loadSchedules(resolvedSeason));
   const teamWeekly = data.teamWeekly ?? (await loadTeamWeekly(resolvedSeason));
   let teamGame;
@@ -1806,7 +1863,11 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const btTrainRowsRaw = btRows.filter(
     (r) => r.season === resolvedSeason && r.week < resolvedWeek && (r.label_win === 0 || r.label_win === 1)
   );
-  const historicalBtTrainRows = historicalBTRows.filter((r) => r.label_win === 0 || r.label_win === 1);
+  const historicalBtTrainRows = historicalBTRows.filter((r) => {
+    if (!(r?.label_win === 0 || r?.label_win === 1)) return false;
+    const season = Number.parseInt(r?.season, 10);
+    return Number.isFinite(season) && allowedHistoricalSeasonSet.has(season);
+  });
   const btTestRowsRaw = btRows.filter((r) => r.season === resolvedSeason && r.week === resolvedWeek);
 
   const btTrainMap = new Map(btTrainRowsRaw.map((r) => [r.game_id, r]));
@@ -1817,9 +1878,11 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const trainRowsRaw = featureRows.filter(
     (r) => r.season === resolvedSeason && r.week < resolvedWeek && r.home === 1 && (r.win === 0 || r.win === 1)
   );
-  const historicalTrainRowsRaw = historicalFeatureRows.filter(
-    (r) => r.home === 1 && (r.win === 0 || r.win === 1)
-  );
+  const historicalTrainRowsRaw = historicalFeatureRows.filter((r) => {
+    if (!(r?.home === 1 && (r?.win === 0 || r?.win === 1))) return false;
+    const season = Number.parseInt(r?.season, 10);
+    return Number.isFinite(season) && allowedHistoricalSeasonSet.has(season);
+  });
   const testRowsRaw = featureRows.filter(
     (r) => r.season === resolvedSeason && r.week === resolvedWeek && r.home === 1
   );
@@ -2389,11 +2452,22 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     historical_rows: historicalTrainRowsRaw.length
   };
 
+  const weeksBySeasonEntries = Array.from(trainingSplit.trainWeeksBySeason.entries()).map(
+    ([season, weeks]) => [String(season), [...weeks]]
+  );
   const trainingMetadata = {
     featureStats,
     historical: {
-      seasons: Array.isArray(options?.historical?.seasons) ? options.historical.seasons : [],
-      rowCount: historicalTrainRowsRaw.length
+      seasons: trainingSplit.trainSeasons,
+      rowCount: historicalTrainRowsRaw.length,
+      weeksBySeason: Object.fromEntries(weeksBySeasonEntries)
+    },
+    target: {
+      season: resolvedSeason,
+      week: resolvedWeek,
+      weeks: trainingSplit.trainWeeksBySeason.get(resolvedSeason)
+        ? [...trainingSplit.trainWeeksBySeason.get(resolvedSeason)]
+        : []
     }
   };
 
@@ -2908,7 +2982,7 @@ async function buildHistoricalTrainingSet({ minSeason = MIN_SEASON, maxSeason } 
       warn(`[train] Failed to build historical rows for season ${season}: ${err?.message ?? err}`);
     }
   }
-  return { featureRows, btRows, seasons };
+  return { featureRows, btRows, seasons, minSeason: start, maxSeason: end };
 }
 
 async function persistWeeklyFeatureStats({ season, week, featureStats, historicalSeasons }) {
@@ -3056,7 +3130,9 @@ async function runWeeklyWorkflow({ season, week }) {
       historical: {
         featureRows: historical.featureRows,
         btRows: historical.btRows,
-        seasons: historical.seasons
+        seasons: historical.seasons,
+        minSeason: historical.minSeason,
+        maxSeason: historical.maxSeason
       },
       annWarmStart: weeklyAnnWarmStart
     }
@@ -3228,10 +3304,15 @@ async function runCumulativeByWeek(trainSettings = {}) {
         if (batchStart !== null && week < batchStart) continue;
         if (batchEnd !== null && week > batchEnd) continue;
 
+        const historicalSeasonList = Array.from(new Set(historicalSeasons)).sort((a, b) => a - b);
         const historicalContext = {
           featureRows: historicalFeatureRows,
           btRows: historicalBtRows,
-          seasons: historicalSeasons.slice()
+          seasons: historicalSeasonList,
+          minSeason: historicalSeasonList.length ? historicalSeasonList[0] : null,
+          maxSeason: historicalSeasonList.length
+            ? historicalSeasonList[historicalSeasonList.length - 1]
+            : null
         };
         const histForWeek =
           sampleLimit && historicalContext.featureRows.length

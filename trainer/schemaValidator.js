@@ -13,13 +13,7 @@ function isPlainObject(value) {
 
 function normaliseColumnName(column) {
   if (!column || typeof column !== "object") return null;
-  const candidates = [column.key, column.id, column.name];
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.length) {
-      return candidate;
-    }
-  }
-  return null;
+  return column.name || column.key || column.id || null;
 }
 
 function extractLabelKey(meta) {

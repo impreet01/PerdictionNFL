@@ -1,12 +1,9 @@
 import { promises as fs } from "node:fs";
-import crypto from "node:crypto";
 import path from "node:path";
 
 import { artifactsRoot } from "./utils/paths.js";
 
-function getArtifactsDir() {
-  return artifactsRoot();
-}
+const ARTIFACTS_DIR = artifactsRoot();
 const MODEL_REGEX = /^model_(\d{4})_W(\d{2})\.json$/;
 const MODEL_PREFIX = "model";
 
@@ -16,7 +13,7 @@ function toWeekStamp(season, week) {
 
 function modelArtifactPath(season, week) {
   const stamp = toWeekStamp(season, week);
-  return path.join(getArtifactsDir(), `${MODEL_PREFIX}_${stamp}.json`);
+  return path.join(ARTIFACTS_DIR, `${MODEL_PREFIX}_${stamp}.json`);
 }
 
 function toFiniteNumber(value, fallback = 0) {
@@ -26,8 +23,7 @@ function toFiniteNumber(value, fallback = 0) {
 
 export async function listModelArtifacts() {
   try {
-    const artifactsDir = getArtifactsDir();
-    const entries = await fs.readdir(artifactsDir, { withFileTypes: true });
+    const entries = await fs.readdir(ARTIFACTS_DIR, { withFileTypes: true });
     return entries
       .filter((dirent) => dirent.isFile())
       .map((dirent) => dirent.name)
@@ -41,7 +37,7 @@ export async function listModelArtifacts() {
           season,
           week,
           name,
-          path: path.join(artifactsDir, name)
+          path: path.join(ARTIFACTS_DIR, name)
         };
       })
       .filter(Boolean)
@@ -94,29 +90,14 @@ function mapWeightsToFeatures(weights = [], fromFeatures = [], toFeatures = []) 
   return { weights: mapped, matched };
 }
 
-export function computeFeatureListHash(features = []) {
-  const payload = {
-    version: 1,
-    features: Array.isArray(features) ? [...features] : []
-  };
-  const hash = crypto.createHash("sha1");
-  hash.update(JSON.stringify(payload));
-  return hash.digest("hex");
-}
-
-export async function loadLogisticWarmStart({
-  season,
-  week,
-  features,
-  featureListHash
-} = {}) {
+export async function loadLogisticWarmStart({ season, week, features } = {}) {
   const targetSeason = Number(season);
   const targetWeek = Number(week);
   if (!Number.isFinite(targetSeason) || !Number.isFinite(targetWeek)) return null;
   const latest = await findLatestBefore(targetSeason, targetWeek);
   if (!latest) return null;
   console.log(
-    `[modelWarmStart] Warm-starting logistic from ${latest.season} W${String(latest.week).padStart(2, "0")} at ${getArtifactsDir()}`
+    `[modelWarmStart] Warm-starting logistic from ${latest.season} W${String(latest.week).padStart(2, "0")} at ${ARTIFACTS_DIR}`
   );
   let parsed;
   try {
@@ -130,29 +111,6 @@ export async function loadLogisticWarmStart({
   const weightVector = Array.isArray(logistic?.weights) ? logistic.weights : null;
   const featureList = Array.isArray(logistic?.features) ? logistic.features : null;
   if (!weightVector || !featureList) return null;
-
-  const storedFeatureHash =
-    parsed?.feature_hash ??
-    parsed?.featureHash ??
-    parsed?.metadata?.feature_hash ??
-    parsed?.modelSummary?.feature_hash ??
-    null;
-  const storedFeatureListHash =
-    parsed?.feature_list_hash ??
-    parsed?.modelSummary?.feature_list_hash ??
-    (featureList ? computeFeatureListHash(featureList) : null);
-  const expectedFeatureListHash =
-    typeof featureListHash === "string" && featureListHash
-      ? featureListHash
-      : computeFeatureListHash(Array.isArray(features) ? features : []);
-
-  if (storedFeatureListHash && expectedFeatureListHash && storedFeatureListHash !== expectedFeatureListHash) {
-    console.warn(
-      `[modelWarmStart] Feature list hash mismatch for ${latest.name}: expected ${expectedFeatureListHash}, found ${storedFeatureListHash}. Skipping warm-start.`
-    );
-    return null;
-  }
-
   const aligned = mapWeightsToFeatures(weightVector, featureList, Array.isArray(features) ? features : []);
   if (!aligned) return null;
   const biasCandidate = logistic?.bias ?? logistic?.b ?? 0;
@@ -164,9 +122,6 @@ export async function loadLogisticWarmStart({
       season: latest.season,
       week: latest.week,
       path: latest.path,
-      artifactName: path.basename(latest.path, ".json"),
-      featureHash: storedFeatureHash ?? null,
-      featureListHash: storedFeatureListHash ?? expectedFeatureListHash ?? null,
       matchedFeatures: aligned.matched,
       totalFeatures: Array.isArray(features) ? features.length : aligned.weights.length
     }

@@ -12,13 +12,7 @@ const repoRoot = path.resolve(__dirname, "../..");
 const artifactsDir = path.join(repoRoot, ".test_artifacts", `smoke-${process.pid}-${Date.now()}`);
 process.env.ARTIFACTS_DIR = artifactsDir;
 
-const {
-  runTraining,
-  writeArtifacts,
-  updateHistoricalArtifacts,
-  refreshArtifactPaths
-} = await import("../train_multi.js");
-refreshArtifactPaths();
+const { runTraining, writeArtifacts, updateHistoricalArtifacts } = await import("../train_multi.js");
 
 // Use realistic team abbreviations so downstream normalization logic that
 // expects 2-4 character codes (see normalizeTeamCode in train_multi.js)

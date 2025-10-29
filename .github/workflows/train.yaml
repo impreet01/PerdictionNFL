@@ -1,15 +1,27 @@
-name: weekly model + predictions
+name: build + roll-forward training
 
 on:
   schedule:
     - cron: '0 10 * 9-12,1 *'
   workflow_dispatch:
     inputs:
+      run_bootstrap:
+        description: 'Run bootstrap-history job (manual only)'
+        required: false
+        default: false
+        type: boolean
+      min_season:
+        description: 'Bootstrap start season'
+        required: false
+        default: '2002'
+      max_season:
+        description: 'Bootstrap end season (default: last completed)'
+        required: false
       season:
-        description: 'Season override (default: current year)'
+        description: 'Weekly update season override'
         required: false
       week:
-        description: 'Week override (default: auto via resolveWeek.js)'
+        description: 'Weekly update week override'
         required: false
 
 env:
@@ -18,597 +30,231 @@ env:
   LOG_LEVEL: warn
   CI_FAST: '1'
   MAX_WORKERS: '2'
-  NODE_OPTIONS: "--unhandled-rejections=strict --trace-uncaught"  # NEW: catch async errors early
+  NODE_OPTIONS: "--unhandled-rejections=strict --trace-uncaught"
 
 jobs:
-  bootstrap:
+  bootstrap-history:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_bootstrap == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 75
-    strategy:
-      max-parallel: 1
-      matrix:
-        chunk:
-          - label: '1999-2000'
-            start: 1999
-            end: 2000
-            artifact_in: ''
-            artifact_out: 'bootstrap-1999-2000'
-          - label: '2001-2002'
-            start: 2001
-            end: 2002
-            artifact_in: 'bootstrap-1999-2000'
-            artifact_out: 'bootstrap-2001-2002'
-          - label: '2003-2004'
-            start: 2003
-            end: 2004
-            artifact_in: 'bootstrap-2001-2002'
-            artifact_out: 'bootstrap-2003-2004'
-          - label: '2005-2006'
-            start: 2005
-            end: 2006
-            artifact_in: 'bootstrap-2003-2004'
-            artifact_out: 'bootstrap-2005-2006'
-          - label: '2007-2008'
-            start: 2007
-            end: 2008
-            artifact_in: 'bootstrap-2005-2006'
-            artifact_out: 'bootstrap-2007-2008'
-          - label: '2009-2010'
-            start: 2009
-            end: 2010
-            artifact_in: 'bootstrap-2007-2008'
-            artifact_out: 'bootstrap-2009-2010'
-          - label: '2011-2012'
-            start: 2011
-            end: 2012
-            artifact_in: 'bootstrap-2009-2010'
-            artifact_out: 'bootstrap-2011-2012'
-          - label: '2013-2014'
-            start: 2013
-            end: 2014
-            artifact_in: 'bootstrap-2011-2012'
-            artifact_out: 'bootstrap-2013-2014'
-          - label: '2015-2016'
-            start: 2015
-            end: 2016
-            artifact_in: 'bootstrap-2013-2014'
-            artifact_out: 'bootstrap-2015-2016'
-          - label: '2017-2018'
-            start: 2017
-            end: 2018
-            artifact_in: 'bootstrap-2015-2016'
-            artifact_out: 'bootstrap-2017-2018'
-          - label: '2019-2020'
-            start: 2019
-            end: 2020
-            artifact_in: 'bootstrap-2017-2018'
-            artifact_out: 'bootstrap-2019-2020'
-          - label: '2021-2022'
-            start: 2021
-            end: 2022
-            artifact_in: 'bootstrap-2019-2020'
-            artifact_out: 'bootstrap-2021-2022'
-          - label: '2023-2024'
-            start: 2023
-            end: 2024
-            artifact_in: 'bootstrap-2021-2022'
-            artifact_out: 'historical_bootstrap'
+    timeout-minutes: 90
+    env:
+      CACHE_KEY_PREFIX: artifacts-${{ hashFiles('package-lock.json', 'configs/model.json', 'configs/data.json') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Prepare artifacts directory
-        run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          rm -rf "${ROOT}"
-          mkdir -p "${ROOT}"
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Restore previous artifacts
-        if: ${{ matrix.chunk.artifact_in != '' }}
-        uses: actions/download-artifact@v4
+      - name: Restore artifact cache
+        id: bootstrap-cache
+        uses: actions/cache/restore@v4
         with:
-          name: ${{ matrix.chunk.artifact_in }}
           path: ${{ env.ARTIFACTS_DIR }}
+          key: ${{ env.CACHE_KEY_PREFIX }}
+          restore-keys: ${{ env.CACHE_KEY_PREFIX }}-
 
-      - name: Ensure lockfile
+      - name: Resolve bootstrap range
+        id: bootstrap-range
         run: |
           set -euo pipefail
-          if [ ! -f package-lock.json ]; then
-            echo "No package-lock.json found; generating one…"
-            npm install --package-lock-only
-          else
-            echo "Found existing package-lock.json"
+          MIN_INPUT="${{ github.event.inputs.min_season }}"
+          MAX_INPUT="${{ github.event.inputs.max_season }}"
+          if [ -z "${MIN_INPUT}" ]; then
+            MIN_INPUT=2002
           fi
+          if [ -z "${MAX_INPUT}" ]; then
+            MAX_INPUT=$(node -e 'const now=new Date();const yr=now.getUTCFullYear();const mo=now.getUTCMonth()+1;const completed=mo<3?yr-1:yr;process.stdout.write(String(completed));')
+          fi
+          echo "min=${MIN_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "max=${MAX_INPUT}" >> "$GITHUB_OUTPUT"
+          printf 'Resolved bootstrap window: %s-%s\n' "$MIN_INPUT" "$MAX_INPUT"
 
-      - name: Install deps
-        run: npm ci || npm install --no-audit --no-fund
+      - name: Ensure artifacts directory
+        run: mkdir -p "$ARTIFACTS_DIR"
 
-      - name: Bootstrap training state (if missing)
+      - name: Show planned training context
         run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          if [ ! -f "${ROOT}/training_state.json" ]; then
-            BATCH_START=${{ matrix.chunk.start }} \
-            BATCH_END=${{ matrix.chunk.end }} \
-            npm run bootstrap:state -- --start ${{ matrix.chunk.start }} --end ${{ matrix.chunk.end }}
-          fi
+          node --input-type=module <<'NODE'
+          import { getTrainSettings } from './trainer/config.js';
+          const settings = getTrainSettings();
+          const window = settings?.train_window;
+          const label = window ? `${window.start_season ?? '?'}-${window.end_season ?? '?'}` : 'unknown';
+          console.log(`[summary] config.train_window=${label}`);
+          NODE
 
-      - name: Run chunked historical training ${{ matrix.chunk.label }}
+      - name: Run historical bootstrap
         env:
-          BATCH_START: ${{ matrix.chunk.start }}
-          BATCH_END: ${{ matrix.chunk.end }}
-          CI_FAST: '1'
+          BATCH_START: ${{ steps.bootstrap-range.outputs.min }}
+          BATCH_END: ${{ steps.bootstrap-range.outputs.max }}
         run: |
           set -euo pipefail
-          echo "Running historical chunk ${{ matrix.chunk.label }}"
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          CHUNK_DIR="${ROOT}/chunks"
-          MARKER="${CHUNK_DIR}/model_${{ matrix.chunk.label }}.done"
-          if [ -f "${MARKER}" ]; then
-            echo "Chunk ${{ matrix.chunk.label }} already complete – skipping."
-            exit 0
-          fi
-          BATCH_START=${{ matrix.chunk.start }} \
-          BATCH_END=${{ matrix.chunk.end }} \
-          CI_FAST=1 npm run train:multi
+          echo "Bootstrapping history ${{ steps.bootstrap-range.outputs.min }}-${{ steps.bootstrap-range.outputs.max }}"
+          node trainer/train_multi.js --bootstrap ${{ steps.bootstrap-range.outputs.min }}-${{ steps.bootstrap-range.outputs.max }}
 
-      - name: Verify chunk marker present (exact) ${{ matrix.chunk.label }}  # CHANGED: check exact marker
+      - name: Summarise training state
         run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          CHUNK_DIR="${ROOT}/chunks"
-          MARKER="${CHUNK_DIR}/model_${{ matrix.chunk.label }}.done"
-          echo "[verify] ARTIFACTS_DIR=${ROOT}"
-          echo "[verify] Expecting: ${MARKER}"
-          if [ ! -f "${MARKER}" ]; then
-            echo "::error::Missing chunk marker ${MARKER}"
-            echo "::group::Debug listing"
-            ls -la "${ROOT}" || true
-            ls -la "${CHUNK_DIR}" || true
-            echo "::endgroup::"
-            exit 1
-          fi
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const statePath = `${process.env.ARTIFACTS_DIR ?? 'artifacts'}/training_state.json`;
+          let warm = 'none';
+          let windowText = 'unknown';
+          try {
+            const raw = fs.readFileSync(statePath, 'utf8');
+            const parsed = JSON.parse(raw);
+            const coverage = parsed?.bootstraps?.model_training?.seasons;
+            if (Array.isArray(coverage) && coverage.length) {
+              const start = coverage[0]?.season ?? '';
+              const end = coverage[coverage.length - 1]?.season ?? '';
+              windowText = `${start}-${end}`;
+            }
+            if (parsed?.weekly_seed?.seededFrom) {
+              warm = `model_${parsed.weekly_seed.seededFrom}_W00`;
+            }
+          } catch (err) {
+            console.log(`[summary] unable to read training_state.json (${err?.message ?? err})`);
+          }
+          console.log(`[summary] bootstrap_window=${windowText}`);
+          console.log(`[summary] warmStartedFrom=${warm}`);
+          NODE
 
-      - name: Verify status markers present ${{ matrix.chunk.label }}
-        run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          STATUS_DIR="${ROOT}/.status"
-          echo "[verify] ARTIFACTS_DIR=${ROOT}"
-          echo "[verify] STATUS_DIR=${STATUS_DIR}"
-
-          if [ ! -d "${STATUS_DIR}" ]; then
-            echo "::error::.status directory missing in ${ROOT}"
-            ls -la "${ROOT}" || true
-            exit 1
-          fi
-
-          missing=()
-          for season in $(seq ${{ matrix.chunk.start }} ${{ matrix.chunk.end }}); do
-            marker="${STATUS_DIR}/${season}.done"
-            if [ ! -f "${marker}" ]; then
-              missing+=("${marker}")
-            fi
-          done
-
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing status markers: ${missing[*]}"
-            ls -la "${STATUS_DIR}" || true
-            exit 1
-          fi
-
-          echo "[verify] Found status markers:" "${STATUS_DIR}"/*.done
-
-      - name: Pack bootstrap chunk ${{ matrix.chunk.label }}
-        run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          tar -czf bootstrap_chunk.tgz -C "${ROOT}" .
-          mv bootstrap_chunk.tgz "${ROOT}/bootstrap-${{ matrix.chunk.label }}.tgz"
-          if [ "${{ matrix.chunk.artifact_out }}" = "historical_bootstrap" ]; then
-            cp "${ROOT}/bootstrap-${{ matrix.chunk.label }}.tgz" "${ROOT}/historical_bootstrap.tgz"
-          fi
-
-      - name: Upload artifacts ${{ matrix.chunk.label }}
-        uses: actions/upload-artifact@v4
+      - name: Save artifact cache
+        if: success()
+        uses: actions/cache/save@v4
         with:
-          name: ${{ matrix.chunk.artifact_out }}
           path: ${{ env.ARTIFACTS_DIR }}
-          if-no-files-found: warn
-          retention-days: 7
+          key: ${{ env.CACHE_KEY_PREFIX }}-${{ github.run_id }}
 
-  train:
+  weekly-update:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.run_bootstrap != 'true'
     runs-on: ubuntu-latest
-    needs: bootstrap
     timeout-minutes: 90
     permissions:
       contents: write
-      pull-requests: write
+    env:
+      CACHE_KEY_PREFIX: artifacts-${{ hashFiles('package-lock.json', 'configs/model.json', 'configs/data.json') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Prepare artifacts directory
-        run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          rm -rf "${ROOT}"
-          mkdir -p "${ROOT}"
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Resolve bootstrap revision
-        run: |
-          set -euo pipefail
-          REVISION=$(node --input-type=module -e "import('./trainer/trainingState.js').then((m) => process.stdout.write(m.CURRENT_BOOTSTRAP_REVISION)).catch((e)=>{console.error(e);process.exit(1);})")
-          echo "CURRENT_BOOTSTRAP_REVISION=$REVISION" >> $GITHUB_ENV
-
-      - name: Restore historical cache
-        id: cache
-        uses: actions/cache@v4
+      - name: Restore artifact cache
+        id: weekly-cache
+        uses: actions/cache/restore@v4
         with:
-          path: |
-            ${{ env.ARTIFACTS_DIR }}/models
-            ${{ env.ARTIFACTS_DIR }}/outcomes
-            ${{ env.ARTIFACTS_DIR }}/predictions
-            ${{ env.ARTIFACTS_DIR }}/training_state.json
-          key: historical-${{ hashFiles('trainer/trainingState.js') }}-${{ env.CURRENT_BOOTSTRAP_REVISION }}
-
-      - name: Download merged historical (fallback)
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: historical_bootstrap
           path: ${{ env.ARTIFACTS_DIR }}
+          key: ${{ env.CACHE_KEY_PREFIX }}
+          restore-keys: ${{ env.CACHE_KEY_PREFIX }}-
 
-      - name: Extract merged historical  # CHANGED: shell-guard instead of hashFiles-if
-        run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          if [ -f "${ROOT}/historical_bootstrap.tgz" ]; then
-            tar -xzf "${ROOT}/historical_bootstrap.tgz" -C "${ROOT}"
-            echo "[extract] historical_bootstrap.tgz extracted into ${ROOT}"
-          else
-            echo "[extract] no historical_bootstrap.tgz present (cache hit or first run)"
-          fi
+      - name: Ensure artifacts directory
+        run: mkdir -p "$ARTIFACTS_DIR"
 
-      - name: Ensure lockfile
-        run: |
-          set -euo pipefail
-          if [ ! -f package-lock.json ]; then
-            echo "No package-lock.json found; generating one…"
-            npm install --package-lock-only
-          else
-            echo "Found existing package-lock.json"
-          fi
-
-      - name: Install deps
-        run: npm ci || npm install --no-audit --no-fund
-
-      - name: Resolve season (auto unless override)
-        run: |
-          set -euo pipefail
-          if [ -n "${{ github.event.inputs.season }}" ]; then
-            SEASON="${{ github.event.inputs.season }}"
-          else
-            SEASON=$(node -e 'console.log(new Date().getFullYear())')
-          fi
-          echo "SEASON=$SEASON" >> $GITHUB_ENV
-          echo "Resolved SEASON=$SEASON"
-
-      - name: Resolve week (auto unless override)
+      - name: Resolve weekly target
         id: resolve
         run: |
           set -euo pipefail
-          if [ -n "${{ github.event.inputs.week }}" ]; then
-            WEEK="${{ github.event.inputs.week }}"
-            echo "WEEK=${{ github.event.inputs.week }}" >> $GITHUB_ENV
-            echo "Resolved WEEK=$WEEK (manual override)"
-          else
-            WEEK=$(node scripts/resolveWeek.js | sed -n 's/Resolved WEEK=\(.*\)$/\1/p')
-            if [ -z "$WEEK" ]; then WEEK=2; fi
-            echo "WEEK=$WEEK" >> $GITHUB_ENV
-            echo "Resolved WEEK=$WEEK (auto)"
+          season_input="${{ github.event.inputs.season }}"
+          week_input="${{ github.event.inputs.week }}"
+          if [ -z "$season_input" ]; then
+            season_input=$(node -e 'const now=new Date();const yr=now.getUTCFullYear();const month=now.getUTCMonth()+1;const season=month<3?yr-1:yr;process.stdout.write(String(season));')
           fi
-          PADDED=$(printf '%02d' "$WEEK")
-          echo "PAD_WEEK=$PADDED" >> $GITHUB_ENV
-          echo "WEEK=$WEEK" >> $GITHUB_OUTPUT
-
-      - name: Cold-start training state (if missing)
-        run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          if [ ! -f "${ROOT}/training_state.json" ]; then
-            echo "training_state.json missing – synthesising minimal weekly state."
-            npm run bootstrap:state
+          if [ -z "$week_input" ]; then
+            week_input=$(node scripts/resolveWeek.js | sed -n 's/Resolved WEEK=\(.*\)$/\1/p')
           fi
-        env:
-          SEASON: ${{ env.SEASON }}
-          WEEK: ${{ steps.resolve.outputs.WEEK }}
-
-      - name: "Guard: training_state available"
-        run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          [[ -f "${ROOT}/training_state.json" ]] || { echo "::error::training_state.json missing after restore"; exit 1; }
-
-      - name: Guard against historical override flags
-        run: |
-          set -euo pipefail
-          bad=()
-          for k in REWRITE_HISTORICAL OVERWRITE_HISTORICAL REBUILD_HISTORICAL REGENERATE_HISTORICAL REGEN_HISTORICAL FORCE_HISTORICAL_BOOTSTRAP; do
-            v="${!k-}"
-            if [[ -n "$v" ]]; then bad+=("$k"); fi
-          done
-          if (( ${#bad[@]} )); then
-            echo "::error::Historical override flags detected: ${bad[*]}"; exit 1;
+          if [ -z "$week_input" ]; then
+            week_input=1
           fi
+          printf 'season=%s\n' "$season_input" >> "$GITHUB_OUTPUT"
+          printf 'week=%s\n' "$week_input" >> "$GITHUB_OUTPUT"
+          printf 'week_padded=%02d\n' "$week_input" >> "$GITHUB_OUTPUT"
+          {
+            echo "TARGET_SEASON=$season_input"
+            echo "TARGET_WEEK=$week_input"
+            printf 'PADDED_WEEK=%02d\n' "$week_input"
+          } >> "$GITHUB_ENV"
+          printf 'Resolved weekly target: %s-W%02d\n' "$season_input" "$week_input"
 
-      - name: Run core unit tests (must pass)
-        run: npm run test:core
-
-      - name: Run strict-batch window test (soft-fail if allowed)
-        env:
-          ARTIFACTS_DIR: .test_artifacts
-          NODE_ENV: test
-          TRAIN_TRACE: "1"
+      - name: Show training context
         run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR}"
-          rm -rf "${ROOT}"
-          mkdir -p "${ROOT}/chunks"
-          echo "[strict] ARTIFACTS_DIR env=${ARTIFACTS_DIR}"
-          node --input-type=module -e "import path from 'node:path'; console.log('[strict] cwd=' + process.cwd()); console.log('[strict] resolved ARTIFACTS_DIR=' + path.resolve(process.cwd(), process.env.ARTIFACTS_DIR ?? ''));"
-          ls -la "${ROOT}" || true
-          ls -la "${ROOT}/chunks" || true
-          if [ "${{ vars.CI_ALLOW_TEST_SOFT_FAIL }}" = "1" ]; then
-            npm run test:strictBatch || echo "::warning::strictBatch failed (soft-fail enabled)"
-          else
-            npm run test:strictBatch
-          fi
-        continue-on-error: true
-
-      - name: Upload CI artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-artifacts
-          path: |
-            .test_artifacts/**
-            trainer/tests/*.log
-            **/*.txt
-            **/*.log
-          if-no-files-found: warn
-
-      - name: Fetch Rotowire injuries
-        env:
-          ROTOWIRE_ENABLED: 'true'
-          SEASON: ${{ env.SEASON }}
-          WEEK: ${{ steps.resolve.outputs.WEEK }}
-        run: npm run fetch:injuries -- --season=$SEASON --week=$WEEK
-
-      - name: Fetch Rotowire markets
-        env:
-          ROTOWIRE_ENABLED: 'true'
-          SEASON: ${{ env.SEASON }}
-          WEEK: ${{ steps.resolve.outputs.WEEK }}
-        run: npm run fetch:markets -- --season=$SEASON --week=$WEEK
-
-      - name: Fetch Rotowire weather
-        env:
-          ROTOWIRE_ENABLED: 'true'
-          SEASON: ${{ env.SEASON }}
-          WEEK: ${{ steps.resolve.outputs.WEEK }}
-        run: npm run fetch:weather -- --season=$SEASON --week=$WEEK
-
-      - name: Build context
-        env:
-          SEASON: ${{ env.SEASON }}
-          WEEK: ${{ steps.resolve.outputs.WEEK }}
-          SINCE_SEASON: ${{ env.MIN_TRAIN_SEASON }}
-        run: npm run build:context
-
-      # CHANGED: robust heredoc; "no prior to promote" is a NOOP success, not a failure
-      - name: Promote prior season ensemble
-        env:
-          SEASON: ${{ env.SEASON }}
-          TRAIN_TRACE: "1"
-          ARTIFACTS_DIR: ${{ env.ARTIFACTS_DIR }}
-        run: |
-          set -euo pipefail
-          node --input-type=module - <<'NODE'
-          (async () => {
-            const season = Number(process.env.SEASON);
-            if (!Number.isFinite(season)) {
-              console.log('[promote] No season resolved; skipping promotion.');
-              return;
-            }
-            const prev = season - 1;
-
-            const { resolve } = await import('node:path');
-            const { existsSync } = await import('node:fs');
-            const artifacts = process.env.ARTIFACTS_DIR || 'artifacts';
-            console.log('[promote] artifacts:', resolve(process.cwd(), artifacts));
-            console.log('[promote] prev → next:', prev, '→', season);
-
-            try {
-              const mod = await import('./trainer/promotePreviousSeason.js');
-              const ok = await mod.promote({ prevSeason: prev, nextSeason: season });
-              if (ok === false) {
-                console.log('[promote] no prior ensemble found — NOOP');
-                return; // success/no-op
+          node --input-type=module <<'NODE'
+          import { getTrainSettings } from './trainer/config.js';
+          import { listModelArtifacts } from './trainer/modelWarmStart.js';
+          const season = Number(process.env.TARGET_SEASON);
+          const week = Number(process.env.TARGET_WEEK);
+          const settings = getTrainSettings();
+          const window = settings?.train_window;
+          const windowLabel = window ? `${window.start_season ?? '?'}-${window.end_season ?? '?'}` : 'unknown';
+          let warm = 'none';
+          if (Number.isFinite(season) && Number.isFinite(week)) {
+            const entries = await listModelArtifacts();
+            let candidate = null;
+            for (const entry of entries) {
+              if (entry.season > season) break;
+              const beforeSame = entry.season === season && entry.week < week;
+              const beforePrev = entry.season < season;
+              if (!beforeSame && !beforePrev) continue;
+              if (!candidate || entry.season > candidate.season || (entry.season === candidate.season && entry.week > candidate.week)) {
+                candidate = entry;
               }
-              console.log('[promote] promoted finals from', prev, '→', season);
-            } catch (err) {
-              console.error('[promote:error]', err && (err.stack || err));
-              process.exit(1);
             }
-          })();
+            warm = candidate ? candidate.name.replace(/\.json$/, '') : 'none';
+          }
+          console.log(`[summary] train_window=${windowLabel}`);
+          console.log(`[summary] warmStartedFrom=${warm}`);
           NODE
-          echo "[promote] step completed."
-      
-      - name: Train + Predict (auto week)
-        timeout-minutes: 25
-        run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          echo "[train:init] ARTIFACTS_DIR=${ROOT}"
-          echo "[train:init] STATUS_DIR=${ROOT}/.status"
-          echo "Training SEASON=$SEASON WEEK=$WEEK"
-          CI_FAST=1 SEASON=$SEASON WEEK=$WEEK npm run train:multi
 
-      - name: Verify weekly status markers
-        run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          STATUS_DIR="${ROOT}/.status"
-          echo "[verify] ARTIFACTS_DIR=${ROOT}"
-          echo "[verify] STATUS_DIR=${STATUS_DIR}"
-
-          if [ ! -d "${STATUS_DIR}" ]; then
-            echo "::error::.status directory missing in ${ROOT}"
-            ls -la "${ROOT}" || true
-            exit 1
-          fi
-
-          marker="${STATUS_DIR}/${SEASON}.done"
-          if [ ! -f "${marker}" ]; then
-            echo "::error::Missing status marker ${marker}"
-            ls -la "${STATUS_DIR}" || true
-            exit 1
-          fi
-
-          echo "[verify] Found marker ${marker}"
-
-      - name: Run Hybrid v2 Calibration
-        timeout-minutes: 15
-        run: node trainer/hybrid_v2.js
+      - name: Run weekly training
         env:
-          SEASON: ${{ env.SEASON }}
-          WEEK: ${{ steps.resolve.outputs.WEEK }}
-
-      - name: Validate artifacts against schemas
+          SEASON: ${{ steps.resolve.outputs.season }}
+          WEEK: ${{ steps.resolve.outputs.week }}
         run: |
           set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          echo "Validating artifacts in ${ROOT}/"
-          npm run validate:artifacts
+          echo "Training target ${{ steps.resolve.outputs.season }}-W${{ steps.resolve.outputs.week_padded }}"
+          node trainer/train_multi.js --target ${{ steps.resolve.outputs.season }}-${{ steps.resolve.outputs.week }}
 
-      - name: Show artifacts
+      - name: Summarise latest artifacts
         run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          echo "Artifacts directory:"
-          ls -lah "${ROOT}" || true
-          for f in "${ROOT}"/season_index_*.json "${ROOT}"/season_summary_*.json; do
-            [ -f "$f" ] && echo "--- $f ---" && cat "$f"
-          done
+          node --input-type=module <<'NODE'
+          import { listModelArtifacts } from './trainer/modelWarmStart.js';
+          const season = Number(process.env.TARGET_SEASON);
+          const week = Number(process.env.TARGET_WEEK);
+          let warm = 'none';
+          if (Number.isFinite(season) && Number.isFinite(week)) {
+            const entries = await listModelArtifacts();
+            let candidate = null;
+            for (const entry of entries) {
+              if (entry.season > season) break;
+              if (entry.season === season && entry.week >= week) continue;
+              const beforePrev = entry.season < season;
+              const beforeSame = entry.season === season && entry.week < week;
+              if (!beforePrev && !beforeSame) continue;
+              if (!candidate || entry.season > candidate.season || (entry.season === candidate.season && entry.week > candidate.week)) {
+                candidate = entry;
+              }
+            }
+            warm = candidate ? candidate.name.replace(/\.json$/, '') : 'none';
+          }
+          const padded = Number.isFinite(week) ? String(week).padStart(2, '0') : '??';
+          const resolvedSeason = Number.isFinite(season) ? season : '????';
+          console.log(`[summary] completed target=${resolvedSeason}-W${padded}`);
+          console.log(`[summary] warmStartedFrom=${warm}`);
+          NODE
 
-      - name: "Guard: weekly artifacts generated"
-        run: |
-          set -euo pipefail
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          pad_week=$(printf '%02d' "$WEEK")
-          stamp="${SEASON}_W${pad_week}"
-          required=(
-            "${ROOT}/predictions_${stamp}.json"
-            "${ROOT}/model_${stamp}.json"
-            "${ROOT}/bt_features_${stamp}.json"
-            "${ROOT}/diagnostics_${stamp}.json"
-            "${ROOT}/context_${SEASON}_W${pad_week}.json"
-          )
-          missing=()
-          for file in "${required[@]}"; do
-            if [ ! -f "$file" ]; then
-              missing+=("$file")
-            fi
-          done
-          if (( ${#missing[@]} )); then
-            echo "::error::Missing required weekly artifacts: ${missing[*]}"
-            exit 1
-          fi
-
-      - name: Commit artifacts (try main)
-        id: commit_main
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-          ROOT="${ARTIFACTS_DIR:-artifacts}"
-          pad_week=$(printf '%02d' "$WEEK")
-          stamp="${SEASON}_W${pad_week}"
-          targets=(
-            "${ROOT}/predictions_${stamp}.json"
-            "${ROOT}/model_${stamp}.json"
-            "${ROOT}/bt_features_${stamp}.json"
-            "${ROOT}/diagnostics_${stamp}.json"
-            "${ROOT}/context_${SEASON}_W${pad_week}.json"
-          )
-          for file in "${targets[@]}"; do
-            if [ -f "$file" ]; then
-              git add "$file"
-            fi
-          done
-          meta_targets=(
-            "${ROOT}/training_state.json"
-          )
-          for file in "${meta_targets[@]}"; do
-            if [ -f "$file" ]; then
-              git add "$file"
-            fi
-          done
-          find "${ROOT}" -maxdepth 1 -name '*_current.json' -print0 2>/dev/null | xargs -0 -r git add
-          find "${ROOT}" -maxdepth 1 -name 'season_index_*.json' -print0 2>/dev/null | xargs -0 -r git add
-          find "${ROOT}" -maxdepth 1 -name 'season_summary_*.json' -print0 2>/dev/null | xargs -0 -r git add
-          if [ -d "${ROOT}/models/common" ]; then
-            find "${ROOT}/models/common" -maxdepth 1 -name 'feature_stats_1999_*' -print0 2>/dev/null | xargs -0 -r git add
-          fi
-          if [ -d "${ROOT}/models/${SEASON}/week-00" ]; then
-            find "${ROOT}/models/${SEASON}/week-00" -maxdepth 2 -type f -name '*.json' -print0 2>/dev/null | xargs -0 -r git add
-          fi
-          if git diff --cached --quiet; then
-            echo "no_changes=true" >> $GITHUB_OUTPUT
-            echo "No artifact changes to commit."
-            exit 0
-          fi
-          git status --short || true
-          git commit -m "weekly model + predictions (S=$SEASON, W=$WEEK)"
-          git pull --rebase --autostash || true
-          git push
-          echo "no_changes=false" >> $GITHUB_OUTPUT
-
-      - name: Create PR (fallback if push failed or branch protected)
-        if: steps.commit_main.outcome == 'failure'
-        uses: peter-evans/create-pull-request@v6
+      - name: Save artifact cache
+        if: success()
+        uses: actions/cache/save@v4
         with:
-          commit-message: "weekly model + predictions (S=${{ env.SEASON }}, W=${{ env.WEEK }})"
-          title: "Artifacts: S=${{ env.SEASON }}, W=${{ env.WEEK }}"
-          body: "Automated artifacts update. Merge to publish."
-          branch: "bot/artifacts-S${{ env.SEASON }}-W${{ env.WEEK }}"
-          add-paths: |
-            ${{ env.ARTIFACTS_DIR }}/predictions_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json
-            ${{ env.ARTIFACTS_DIR }}/model_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json
-            ${{ env.ARTIFACTS_DIR }}/bt_features_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json
-            ${{ env.ARTIFACTS_DIR }}/diagnostics_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json
-            ${{ env.ARTIFACTS_DIR }}/context_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json
-            ${{ env.ARTIFACTS_DIR }}/training_state.json
-            ${{ env.ARTIFACTS_DIR }}/*_current.json
-            ${{ env.ARTIFACTS_DIR }}/season_index_*.json
-            ${{ env.ARTIFACTS_DIR }}/season_summary_*.json
-            ${{ env.ARTIFACTS_DIR }}/models/common/feature_stats_1999_*
-            ${{ env.ARTIFACTS_DIR }}/models/${{ env.SEASON }}/week-00/**/*.json
+          path: ${{ env.ARTIFACTS_DIR }}
+          key: ${{ env.CACHE_KEY_PREFIX }}-${{ github.run_id }}

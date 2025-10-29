@@ -53,7 +53,7 @@ import {
   CURRENT_BOOTSTRAP_REVISION
 } from "./trainingState.js";
 import { ensureTrainingStateCurrent } from "./bootstrapState.js";
-import { loadLogisticWarmStart, shouldRetrain } from "./modelWarmStart.js";
+import { computeFeatureListHash, loadLogisticWarmStart, shouldRetrain } from "./modelWarmStart.js";
 import { validateArtifact } from "./schemaValidator.js";
 import { promote } from "./promotePreviousSeason.js";
 import { resolveCalibration, hashCalibrationMeta } from "./calibrate.js";
@@ -1123,6 +1123,26 @@ function computeFeatureHash(features, extra = {}) {
   return hash.digest("hex");
 }
 
+function computeTrainSpan(rows = []) {
+  const bySeason = new Map();
+  for (const row of rows) {
+    const season = Number(row?.season);
+    const week = Number(row?.week);
+    if (!Number.isFinite(season) || !Number.isFinite(week)) continue;
+    if (!bySeason.has(season)) bySeason.set(season, new Set());
+    bySeason.get(season).add(week);
+  }
+  const seasons = [...bySeason.keys()].sort((a, b) => a - b);
+  const weeksBySeason = {};
+  for (const season of seasons) {
+    weeksBySeason[season] = [...bySeason.get(season)].sort((a, b) => a - b);
+  }
+  return {
+    seasons,
+    weeks_by_season: weeksBySeason
+  };
+}
+
 function kfoldIndices(n, k) {
   if (n <= 1) return [[...Array(n).keys()]];
   const folds = Array.from({ length: k }, () => []);
@@ -1850,15 +1870,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
 
   // Determine the final FEATS list (union of base + discovered diff_*):
   const FEATS_ENR = expandFeats(FEATS_BASE, featureRows.concat(historicalFeatureRows));
-
-  const warmStart = await loadLogisticWarmStart({ season: resolvedSeason, week: resolvedWeek, features: FEATS_ENR });
-  if (warmStart?.meta) {
-    const { season: srcSeason, week: srcWeek, matchedFeatures, totalFeatures } = warmStart.meta;
-    const paddedWeek = String(srcWeek).padStart(2, "0");
-    console.log(
-      `[train] Warm-starting logistic regression from season ${srcSeason} week ${paddedWeek} (${matchedFeatures}/${totalFeatures} features aligned).`
-    );
-  }
+  const featureListHash = computeFeatureListHash(FEATS_ENR);
+  let warmStart = null;
 
   const btTrainRowsRaw = btRows.filter(
     (r) => r.season === resolvedSeason && r.week < resolvedWeek && (r.label_win === 0 || r.label_win === 1)
@@ -1909,6 +1922,8 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
   const testRows = testGames.map((g) => g.row);
   const btTestRows = testGames.map((g) => g.bt);
 
+  const trainSpan = computeTrainSpan(trainRows);
+
   const featureHash = computeFeatureHash(FEATS_ENR, {
     trainCount: trainRowsRaw.length + historicalTrainRowsRaw.length,
     testCount: testRowsRaw.length
@@ -1926,6 +1941,20 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
       schedules,
       skipped: true
     };
+  }
+
+  warmStart = await loadLogisticWarmStart({
+    season: resolvedSeason,
+    week: resolvedWeek,
+    features: FEATS_ENR,
+    featureListHash
+  });
+  if (warmStart?.meta) {
+    const { season: srcSeason, week: srcWeek, matchedFeatures, totalFeatures } = warmStart.meta;
+    const paddedWeek = String(srcWeek).padStart(2, "0");
+    console.log(
+      `[train] Warm-starting logistic regression from season ${srcSeason} week ${paddedWeek} (${matchedFeatures}/${totalFeatures} features aligned).`
+    );
   }
 
   const leagueMeans = computeLeagueMeans(trainRows);
@@ -2390,6 +2419,9 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     week: resolvedWeek,
     generated_at: new Date().toISOString(),
     feature_hash: featureHash,
+    feature_list_hash: featureListHash,
+    train_span: trainSpan,
+    warmStartedFrom: warmStart?.meta?.artifactName ?? null,
     logistic: {
       weights: logitModelFull.w,
       bias: logitModelFull.b,
@@ -2480,8 +2512,11 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     btDebug,
     schedules,
     featureHash,
+    featureListHash,
+    trainSpan,
     trainingMetadata,
-    annModel: annModelFull
+    annModel: annModelFull,
+    warmStartMeta: warmStart?.meta ?? null
   };
 }
 
@@ -2521,8 +2556,16 @@ export async function writeArtifacts(result) {
     generated_at: result.modelSummary?.generated_at ?? new Date().toISOString()
   };
   validateArtifact("model", modelSummaryPayload);
+  const modelPath = path.join(ART_DIR, `model_${stamp}.json`);
+  if (result.warmStartMeta?.path) {
+    const sourceRelative = path.relative(process.cwd(), result.warmStartMeta.path);
+    const destRelative = path.relative(process.cwd(), modelPath);
+    const sourceLog = sourceRelative.startsWith("..") ? result.warmStartMeta.path : sourceRelative;
+    const destLog = destRelative.startsWith("..") ? modelPath : destRelative;
+    console.log(`warm-start: loading ${sourceLog} then saving ${destLog}`);
+  }
   await fsp.writeFile(
-    path.join(ART_DIR, `model_${stamp}.json`),
+    modelPath,
     JSON.stringify(modelSummaryPayload, null, JSON_SPACE)
   );
   const diagnosticsPayload = {

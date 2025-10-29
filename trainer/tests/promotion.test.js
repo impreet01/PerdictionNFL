@@ -93,6 +93,24 @@ function cleanup() {
       JSON.stringify({ name: "logistic", weights: [0.1, 0.2, 0.3] }, null, 2)
     );
 
+    const warmStartModelPath = path.join(artifactsDir, "model_2024_W18.json");
+    fs.writeFileSync(
+      warmStartModelPath,
+      JSON.stringify(
+        {
+          season: 2024,
+          week: 18,
+          logistic: {
+            weights: [0.05, -0.12, 0.08],
+            bias: 0.01,
+            features: ["home", "elo_diff", "rest_diff"]
+          }
+        },
+        null,
+        2
+      )
+    );
+
     runCommand("npm", ["run", "bootstrap:state"], {
       env: {
         BATCH_START: "2024",
@@ -144,6 +162,15 @@ function cleanup() {
       assert(trainingMeta?.historical?.rowCount > 0, "Week-1 training should include historical rows");
       assert(trainingMeta?.featureStats?.historical_rows > 0, "Historical row count should be reflected in feature stats");
     }
+
+    const modelPath = path.join(artifactsDir, "model_2025_W01.json");
+    assert(fs.existsSync(modelPath), "Week-1 model artifact missing");
+    const modelPayload = JSON.parse(fs.readFileSync(modelPath, "utf8"));
+    assert.equal(
+      modelPayload?.warmStartedFrom,
+      "model_2024_W18",
+      "Week-1 model should record warm-start source"
+    );
 
     const state = readTrainingState();
     const modelRecord = state?.bootstraps?.model_training ?? {};

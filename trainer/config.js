@@ -4,7 +4,12 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import loadTrainConfig from "./yamlConfig.js";
+
 const CONFIG_ROOT = path.resolve("./configs");
+
+const DEFAULT_ARTIFACTS_DIR = "artifacts";
+const TEST_ARTIFACTS_DIR = ".test_artifacts";
 
 function readJSONSafe(file) {
   try {
@@ -30,6 +35,21 @@ function mergeDeep(base, override) {
     }
   }
   return merged;
+}
+
+function getEnvTrainDefaults() {
+  const defaults = {
+    paths: {
+      artifacts: process.env.NODE_ENV === "test" ? TEST_ARTIFACTS_DIR : DEFAULT_ARTIFACTS_DIR
+    }
+  };
+
+  const artifactsDir = typeof process.env.ARTIFACTS_DIR === "string" ? process.env.ARTIFACTS_DIR.trim() : "";
+  if (artifactsDir) {
+    defaults.paths.artifacts = artifactsDir;
+  }
+
+  return defaults;
 }
 
 function parseEnvJSON(key) {
@@ -114,7 +134,20 @@ export function getDataConfig() {
   return override;
 }
 
+function buildTrainSettings() {
+  const envDefaults = getEnvTrainDefaults();
+  const yamlOverrides = loadTrainConfig();
+  return mergeDeep(envDefaults, yamlOverrides || {});
+}
+
+const TRAIN_SETTINGS = buildTrainSettings();
+
+export function getTrainSettings() {
+  return TRAIN_SETTINGS;
+}
+
 export default {
   getModelConfig,
-  getDataConfig
+  getDataConfig,
+  trainSettings: TRAIN_SETTINGS
 };

@@ -38,18 +38,11 @@ async function runOne(file) {
   const full = path.join(TEST_DIR, file);
   const url = pathToFileURL(full).href;
   try {
-    // Try ESM dynamic import first
     await import(url);
-  } catch (e1) {
-    try {
-      // Fall back to CJS require if needed
-      // eslint-disable-next-line global-require, import/no-dynamic-require
-      require(full);
-    } catch (e2) {
-      console.error(`❌ Failed: ${file}`);
-      console.error(e2.stack || e2);
-      process.exitCode = 1;
-    }
+  } catch (err) {
+    console.error(`❌ Failed: ${file}`);
+    console.error(err.stack || err);
+    process.exitCode = 1;
   }
 }
 

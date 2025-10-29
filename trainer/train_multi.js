@@ -6,6 +6,8 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import crypto from "node:crypto";
+import seedrandom from "seedrandom";
+import { getConfig as loadTrainerConfig } from "./config.js";
 import {
   loadSchedules,
   loadTeamWeekly,
@@ -1479,6 +1481,104 @@ const parseGameIdTeams = (gameId) => {
   return { home: null, away: null };
 };
 
+function resolveTrainPaths(trainSettings = {}) {
+  const pathConfig = trainSettings?.paths ?? {};
+  const artifactsRaw = typeof pathConfig.artifacts === "string" ? pathConfig.artifacts.trim() : "";
+  const artifactsDir = artifactsRaw ? path.resolve(process.cwd(), artifactsRaw) : ART_DIR;
+  const replacements = {
+    "paths.artifacts": artifactsDir
+  };
+  const expand = (value, fallback) => {
+    if (typeof value !== "string") return fallback;
+    const substituted = value.replace(/\$\{([^}]+)\}/g, (_, token) => replacements[token] ?? "");
+    const trimmed = substituted.trim();
+    if (!trimmed) return fallback;
+    return path.resolve(process.cwd(), trimmed);
+  };
+  const modelsDir = expand(pathConfig.models, path.join(artifactsDir, "models"));
+  const predictionsDir = expand(pathConfig.predictions, path.join(artifactsDir, "predictions"));
+  return { artifactsDir, modelsDir, predictionsDir };
+}
+
+function formatCsvValue(value) {
+  const str = value == null ? "" : String(value);
+  if (/[",\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function buildPredictionsCsv(predictions = [], probabilityColumn = "prediction") {
+  const header = ["season", "week", "game_id", "home_team", "away_team", probabilityColumn].join(",");
+  if (!Array.isArray(predictions) || !predictions.length) {
+    return `${header}\n`;
+  }
+  const lines = predictions.map((pred) => {
+    const probRaw = Number(pred?.probs?.blended ?? pred?.forecast ?? 0.5);
+    const prob = Number.isFinite(probRaw) ? probRaw : 0.5;
+    const formatted = prob.toFixed(6);
+    return [
+      pred?.season ?? "",
+      pred?.week ?? "",
+      pred?.game_id ?? "",
+      pred?.home_team ?? "",
+      pred?.away_team ?? "",
+      formatted
+    ]
+      .map(formatCsvValue)
+      .join(",");
+  });
+  return `${header}\n${lines.join("\n")}\n`;
+}
+
+function sampleHistoricalRows(historical = {}, limit, seedKey) {
+  if (!Number.isFinite(limit) || limit <= 0) return historical;
+  const featureRows = Array.isArray(historical.featureRows) ? historical.featureRows : [];
+  if (!featureRows.length) return historical;
+  const homeRows = featureRows.filter((row) => Number(row?.home) === 1);
+  if (homeRows.length <= limit) {
+    return {
+      featureRows,
+      btRows: Array.isArray(historical.btRows) ? historical.btRows : [],
+      seasons: Array.isArray(historical.seasons) ? historical.seasons.slice() : []
+    };
+  }
+  const rng = seedrandom(seedKey ?? "historical");
+  const indices = homeRows.map((_, idx) => idx);
+  for (let i = indices.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  const selectedHomeRows = indices.slice(0, limit).map((idx) => homeRows[idx]);
+  const selectedIds = new Set(selectedHomeRows.map((row) => makeGameId(row)));
+  const filteredBtRows = Array.isArray(historical.btRows)
+    ? historical.btRows.filter((row) => selectedIds.has(row?.game_id))
+    : [];
+  return {
+    featureRows: selectedHomeRows,
+    btRows: filteredBtRows,
+    seasons: Array.isArray(historical.seasons) ? historical.seasons.slice() : []
+  };
+}
+
+function computeSeasonWeeks(schedules, season, { includePreseason = false } = {}) {
+  if (!Array.isArray(schedules)) return [];
+  const targetSeason = Number(season);
+  if (!Number.isFinite(targetSeason)) return [];
+  const weeks = new Set();
+  for (const game of schedules) {
+    if (Number(game?.season) !== targetSeason) continue;
+    const seasonType = game?.season_type ?? game?.seasonType ?? "";
+    const isReg = isRegularSeason(seasonType);
+    const isPre = includePreseason && isPreseasonType(seasonType);
+    if (!isReg && !isPre) continue;
+    const rawWeek = Number(game?.week ?? game?.game_week ?? game?.week_number);
+    if (!Number.isFinite(rawWeek) || rawWeek < 0) continue;
+    weeks.add(rawWeek);
+  }
+  return Array.from(weeks).sort((a, b) => a - b);
+}
+
 const resolveTeamCode = (primary, fallback, gameId, role) => {
   const normalizedPrimary = normalizeTeamCode(primary);
   if (normalizedPrimary) return normalizedPrimary;
@@ -1501,6 +1601,12 @@ const isRegularSeason = (value) => {
   if (value == null) return true;
   const str = String(value).trim().toUpperCase();
   return str === "" || str.startsWith("REG");
+};
+
+const isPreseasonType = (value) => {
+  if (value == null) return false;
+  const str = String(value).trim().toUpperCase();
+  return str.startsWith("PRE");
 };
 
 const scheduleGameId = (season, week, home, away) =>
@@ -2981,7 +3087,220 @@ async function runWeeklyWorkflow({ season, week }) {
   return trainingResult;
 }
 
+async function runCumulativeByWeek(trainSettings = {}) {
+  const windowConfig = trainSettings?.train_window ?? {};
+  const startSeasonRaw = Number(windowConfig.start_season);
+  const endSeasonRaw = Number(windowConfig.end_season ?? windowConfig.start_season);
+  if (!Number.isFinite(startSeasonRaw) || !Number.isFinite(endSeasonRaw)) {
+    throw new Error("[train] cumulative_by_week requires numeric start and end seasons in train_window.");
+  }
+  const windowStart = Math.min(startSeasonRaw, endSeasonRaw);
+  const windowEnd = Math.max(startSeasonRaw, endSeasonRaw);
+  const envSeason = Number.parseInt(process.env.SEASON ?? "", 10);
+  const restrictSeason = Number.isFinite(envSeason) ? envSeason : null;
+  if (restrictSeason && (restrictSeason < windowStart || restrictSeason > windowEnd)) {
+    throw new Error(
+      `[train] Requested season ${restrictSeason} is outside configured cumulative window ${windowStart}-${windowEnd}.`
+    );
+  }
+  const effectiveEnd = restrictSeason ? Math.min(windowEnd, restrictSeason) : windowEnd;
+  const seasons = [];
+  for (let season = windowStart; season <= effectiveEnd; season += 1) {
+    seasons.push(season);
+  }
+  if (!seasons.length) {
+    warn("[train:cumulative] No seasons available within the configured cumulative window.");
+    return;
+  }
+
+  const runtime = trainSettings?.runtime ?? {};
+  const outputs = trainSettings?.outputs ?? {};
+  const persistWeekModels = outputs.persist_week_models !== false;
+  const writePredictionsCsv = outputs.write_predictions_csv !== false;
+  const probabilityColumnRaw = outputs.prediction_probability_column;
+  const probabilityColumn =
+    typeof probabilityColumnRaw === "string" && probabilityColumnRaw.trim()
+      ? probabilityColumnRaw.trim()
+      : "prediction";
+  const sampleLimitRaw =
+    CI_FAST && runtime?.ci_fast_samples_per_week != null
+      ? Number(runtime.ci_fast_samples_per_week)
+      : null;
+  const sampleLimit = Number.isFinite(sampleLimitRaw) ? Math.max(1, Math.floor(sampleLimitRaw)) : null;
+  const maxWorkersRaw = runtime?.max_workers != null ? Number(runtime.max_workers) : null;
+  const effectiveMaxWorkers = CI_FAST && Number.isFinite(maxWorkersRaw)
+    ? Math.max(1, Math.floor(maxWorkersRaw))
+    : MAX_WORKERS;
+
+  const resolvedPaths = resolveTrainPaths(trainSettings);
+  await fsp.mkdir(resolvedPaths.artifactsDir, { recursive: true });
+  if (persistWeekModels) {
+    await fsp.mkdir(resolvedPaths.modelsDir, { recursive: true });
+  }
+  if (writePredictionsCsv) {
+    await fsp.mkdir(resolvedPaths.predictionsDir, { recursive: true });
+  }
+
+  const loadLimiter = createLimiter(effectiveMaxWorkers);
+  const seasonDataPromises = new Map();
+  for (const season of seasons) {
+    seasonDataPromises.set(season, loadLimiter(() => loadSeasonDataCached(season)));
+  }
+
+  const historicalFeatureRows = [];
+  const historicalBtRows = [];
+  const historicalSeasons = [];
+  const includePreseason = Boolean(windowConfig.include_preseason);
+  const seedNumeric = trainSettings?.seed != null ? Number(trainSettings.seed) : NaN;
+  const baseSeed = Number.isFinite(seedNumeric)
+    ? String(seedNumeric)
+    : trainSettings?.seed != null
+      ? String(trainSettings.seed)
+      : null;
+  const batchStartRaw = Number.parseInt(process.env.BATCH_START ?? "", 10);
+  const batchEndRaw = Number.parseInt(process.env.BATCH_END ?? "", 10);
+  const batchStart = Number.isFinite(batchStartRaw) ? batchStartRaw : null;
+  const batchEnd = Number.isFinite(batchEndRaw) ? batchEndRaw : null;
+
+  let annWarmStart = null;
+
+  for (const season of seasons) {
+    let seasonData = null;
+    try {
+      seasonData = await seasonDataPromises.get(season);
+    } catch (err) {
+      seasonData = null;
+    }
+    if (!seasonData) {
+      warn(`[train:cumulative] Failed to load season data for ${season}; skipping.`);
+      continue;
+    }
+
+    const weeks = computeSeasonWeeks(seasonData.schedules, season, { includePreseason });
+    if (!weeks.length) {
+      warn(`[train:cumulative] No eligible weeks discovered for season ${season}; continuing.`);
+    }
+
+    const seasonFeatureRows = buildFeatures({
+      teamWeekly: seasonData.teamWeekly,
+      teamGame: seasonData.teamGame,
+      schedules: seasonData.schedules,
+      season,
+      prevTeamWeekly: seasonData.prevTeamWeekly,
+      pbp: seasonData.pbp,
+      playerWeekly: seasonData.playerWeekly,
+      weather: seasonData.weather,
+      injuries: seasonData.injuries
+    });
+    const seasonBtRows = buildBTFeatures({
+      teamWeekly: seasonData.teamWeekly,
+      teamGame: seasonData.teamGame,
+      schedules: seasonData.schedules,
+      season,
+      prevTeamWeekly: seasonData.prevTeamWeekly,
+      injuries: seasonData.injuries
+    });
+
+    const shouldTrainSeason = !restrictSeason || season === restrictSeason;
+    if (shouldTrainSeason && weeks.length) {
+      for (const week of weeks) {
+        if (batchStart !== null && week < batchStart) continue;
+        if (batchEnd !== null && week > batchEnd) continue;
+
+        const historicalContext = {
+          featureRows: historicalFeatureRows,
+          btRows: historicalBtRows,
+          seasons: historicalSeasons.slice()
+        };
+        const histForWeek =
+          sampleLimit && historicalContext.featureRows.length
+            ? sampleHistoricalRows(historicalContext, sampleLimit, `${baseSeed ?? "seed"}:${season}:${week}`)
+            : historicalContext;
+
+        if (baseSeed) {
+          seedrandom(`${baseSeed}:${season}:${week}`, { global: true });
+        }
+
+        const result = await runTraining({
+          season,
+          week,
+          data: seasonData,
+          options: {
+            historical: histForWeek,
+            annWarmStart
+          }
+        });
+
+        if (!result || result.skipped) {
+          console.log(
+            `[train:cumulative] season=${season} week=${String(week).padStart(2, "0")} skipped`
+          );
+          continue;
+        }
+
+        if (result.annModel) {
+          annWarmStart = result.annModel;
+        }
+
+        const trainRows = Number(result.trainingMetadata?.featureStats?.train_rows ?? 0);
+        const testRows = Array.isArray(result.predictions) ? result.predictions.length : 0;
+        console.log(
+          `[train:cumulative] season=${season} week=${String(week).padStart(2, "0")} train_rows=${trainRows} test_rows=${testRows}`
+        );
+
+        if (persistWeekModels) {
+          const modelPayload = {
+            ...(result.modelSummary ?? {}),
+            generated_at: result.modelSummary?.generated_at ?? new Date().toISOString()
+          };
+          const modelPath = path.join(
+            resolvedPaths.modelsDir,
+            `model_${season}_W${String(week).padStart(2, "0")}.json`
+          );
+          await fsp.writeFile(modelPath, JSON.stringify(modelPayload, null, JSON_SPACE));
+        }
+
+        if (writePredictionsCsv) {
+          const csvPayload = buildPredictionsCsv(result.predictions ?? [], probabilityColumn);
+          const csvPath = path.join(
+            resolvedPaths.predictionsDir,
+            `predictions_${season}_W${String(week).padStart(2, "0")}.csv`
+          );
+          await fsp.writeFile(csvPath, csvPayload);
+        }
+      }
+    }
+
+    if (seasonFeatureRows.length) {
+      historicalFeatureRows.push(...seasonFeatureRows);
+    }
+    if (seasonBtRows.length) {
+      historicalBtRows.push(...seasonBtRows);
+    }
+    historicalSeasons.push(season);
+
+    if (restrictSeason && season === restrictSeason) {
+      break;
+    }
+  }
+}
+
 async function main() {
+  let trainSettings = {};
+  try {
+    const config = await loadTrainerConfig();
+    if (config?.trainSettings) {
+      trainSettings = config.trainSettings;
+    }
+  } catch (err) {
+    warn(`[train] Failed to load train configuration: ${err?.message ?? err}`);
+  }
+
+  if (trainSettings?.train_window?.mode === "cumulative_by_week") {
+    await runCumulativeByWeek(trainSettings);
+    return;
+  }
+
   await ensureArtifactsDir();
   await ensureChunkCacheDir();
   const targetSeason = Number(process.env.SEASON ?? new Date().getFullYear());

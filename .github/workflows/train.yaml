@@ -141,6 +141,7 @@ jobs:
         with:
           name: test-summary
           path: artifacts/test-summary.json
+          overwrite: true
           if-no-files-found: ignore
 
       - name: Bootstrap training state (if missing)
@@ -234,6 +235,7 @@ jobs:
         with:
           name: ${{ matrix.chunk.artifact_out }}
           path: ${{ env.ARTIFACTS_DIR }}
+          overwrite: true
           if-no-files-found: warn
           retention-days: 7
 
@@ -320,6 +322,7 @@ jobs:
         with:
           name: test-summary
           path: artifacts/test-summary.json
+          overwrite: true
           if-no-files-found: ignore
 
       - name: Resolve season (auto unless override)
@@ -412,6 +415,7 @@ jobs:
             trainer/tests/*.log
             **/*.txt
             **/*.log
+          overwrite: true
           if-no-files-found: warn
 
       - name: Fetch Rotowire injuries

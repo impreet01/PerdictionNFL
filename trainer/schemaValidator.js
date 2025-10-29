@@ -49,6 +49,12 @@ export function validateArtifact(name, data) {
   }
 }
 
+export function assertSchema(data, name) {
+  validateArtifact(name, data);
+  return data;
+}
+
 export default {
-  validateArtifact
+  validateArtifact,
+  assertSchema
 };

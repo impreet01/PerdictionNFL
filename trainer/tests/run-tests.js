@@ -18,8 +18,9 @@ const ORDER_HINT = [
 ];
 
 function listTestFiles() {
-  const all = fs.readdirSync(TEST_DIR)
-    .filter(f => f.endsWith('.js') && f !== 'run-tests.js');
+  const all = fs
+    .readdirSync(TEST_DIR)
+    .filter((f) => f.endsWith('.js') && f !== 'run-tests.js' && !f.endsWith('.vitest.js'));
 
   // Prefer explicit order when files exist; append any others alphabetically.
   const priority = [];

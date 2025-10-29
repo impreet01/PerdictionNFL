@@ -50,7 +50,7 @@ jobs:
         run: npm run lint || true
 
       - name: Unit tests (deterministic)
-        run: npm test -- --runInBand --maxWorkers=${{ env.MAX_WORKERS }}
+        run: npm test
 
       - name: Bootstrap training state (idempotent)
         run: node scripts/bootstrapTrainingState.js

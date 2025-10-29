@@ -11,6 +11,13 @@ import { loadDataSources } from './dataSources.js';
 import { assertSchema } from './schemaValidator.js';
 import { ModelProvider } from './utils/modelProvider.js'; // new small adapter (below)
 import { logger } from './utils/logger.js';              // simple wrapper around console
+import {
+  formatBatchWindowLog as legacyFormatBatchWindowLog,
+  resolveHistoricalChunkSelection as legacyResolveHistoricalChunkSelection,
+  runTraining as legacyRunTraining,
+  writeArtifacts as legacyWriteArtifacts,
+  updateHistoricalArtifacts as legacyUpdateHistoricalArtifacts,
+} from './train_multiOLD.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -179,3 +186,9 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+
+export const formatBatchWindowLog = legacyFormatBatchWindowLog;
+export const resolveHistoricalChunkSelection = legacyResolveHistoricalChunkSelection;
+export const runTraining = legacyRunTraining;
+export const writeArtifacts = legacyWriteArtifacts;
+export const updateHistoricalArtifacts = legacyUpdateHistoricalArtifacts;

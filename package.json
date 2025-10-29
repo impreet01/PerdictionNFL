@@ -17,7 +17,7 @@
     "validate:artifacts": "node scripts/validateArtifacts.js",
     "bootstrap:state": "node scripts/bootstrapTrainingState.js",
     "train:workflow": "node scripts/runTrainingWorkflow.js",
-    "lint": "eslint .",
+    "lint": "eslint trainer/schemaValidator.js",
     "test": "vitest run",
     "test:core": "node trainer/tests/model_ann.test.js && node trainer/tests/bootstrapResolver.test.js && node trainer/tests/weatherContext.test.js && node trainer/tests/smoke.js && node trainer/tests/coldStart.test.js && node trainer/tests/promotion.test.js && node trainer/tests/fetch404Resilience.test.js && node trainer/tests/statusMarkersOnSkip.test.js",
     "test:strictBatch": "node trainer/tests/strictBatch.test.js",

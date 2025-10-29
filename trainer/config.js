@@ -146,6 +146,12 @@ export function getTrainSettings() {
   return TRAIN_SETTINGS;
 }
 
+export async function getConfig() {
+  return {
+    trainSettings: getTrainSettings()
+  };
+}
+
 export default {
   getModelConfig,
   getDataConfig,

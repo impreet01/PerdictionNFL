@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['trainer/tests/**/*.test.js', 'trainer/tests/smoke.js'],
+    include: ['trainer/tests/run-tests.vitest.js'],
     pool: 'forks',
     maxThreads: 1,
     minThreads: 1,

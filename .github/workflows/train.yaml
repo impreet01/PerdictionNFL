@@ -18,6 +18,7 @@ env:
   LOG_LEVEL: warn
   CI_FAST: '1'
   MAX_WORKERS: '2'
+  NODE_OPTIONS: "--unhandled-rejections=strict --trace-uncaught"  # NEW: catch async errors early
 
 jobs:
   bootstrap:
@@ -97,45 +98,56 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+
       - name: Prepare artifacts directory
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           rm -rf "${ROOT}"
           mkdir -p "${ROOT}"
+
       - name: Restore previous artifacts
         if: ${{ matrix.chunk.artifact_in != '' }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.chunk.artifact_in }}
           path: ${{ env.ARTIFACTS_DIR }}
+
       - name: Ensure lockfile
         run: |
+          set -euo pipefail
           if [ ! -f package-lock.json ]; then
             echo "No package-lock.json found; generating one…"
             npm install --package-lock-only
           else
             echo "Found existing package-lock.json"
           fi
+
       - name: Install deps
         run: npm ci || npm install --no-audit --no-fund
+
       - name: Bootstrap training state (if missing)
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           if [ ! -f "${ROOT}/training_state.json" ]; then
             BATCH_START=${{ matrix.chunk.start }} \
             BATCH_END=${{ matrix.chunk.end }} \
             npm run bootstrap:state -- --start ${{ matrix.chunk.start }} --end ${{ matrix.chunk.end }}
           fi
+
       - name: Run chunked historical training ${{ matrix.chunk.label }}
         env:
           BATCH_START: ${{ matrix.chunk.start }}
           BATCH_END: ${{ matrix.chunk.end }}
           CI_FAST: '1'
         run: |
+          set -euo pipefail
           echo "Running historical chunk ${{ matrix.chunk.label }}"
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           CHUNK_DIR="${ROOT}/chunks"
@@ -147,23 +159,27 @@ jobs:
           BATCH_START=${{ matrix.chunk.start }} \
           BATCH_END=${{ matrix.chunk.end }} \
           CI_FAST=1 npm run train:multi
-      - name: Verify chunk markers present ${{ matrix.chunk.label }}
+
+      - name: Verify chunk marker present (exact) ${{ matrix.chunk.label }}  # CHANGED: check exact marker
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           CHUNK_DIR="${ROOT}/chunks"
+          MARKER="${CHUNK_DIR}/model_${{ matrix.chunk.label }}.done"
           echo "[verify] ARTIFACTS_DIR=${ROOT}"
-          echo "[verify] Looking for chunk markers in: ${CHUNK_DIR}"
-
-          if [ ! -d "${CHUNK_DIR}" ] || ! ls "${CHUNK_DIR}"/model_*.done >/dev/null 2>&1; then
-            echo "::error::Missing historical bootstrap cache markers in ${CHUNK_DIR}"
+          echo "[verify] Expecting: ${MARKER}"
+          if [ ! -f "${MARKER}" ]; then
+            echo "::error::Missing chunk marker ${MARKER}"
             echo "::group::Debug listing"
             ls -la "${ROOT}" || true
             ls -la "${CHUNK_DIR}" || true
             echo "::endgroup::"
             exit 1
           fi
+
       - name: Verify status markers present ${{ matrix.chunk.label }}
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           STATUS_DIR="${ROOT}/.status"
           echo "[verify] ARTIFACTS_DIR=${ROOT}"
@@ -190,14 +206,17 @@ jobs:
           fi
 
           echo "[verify] Found status markers:" "${STATUS_DIR}"/*.done
+
       - name: Pack bootstrap chunk ${{ matrix.chunk.label }}
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           tar -czf bootstrap_chunk.tgz -C "${ROOT}" .
           mv bootstrap_chunk.tgz "${ROOT}/bootstrap-${{ matrix.chunk.label }}.tgz"
           if [ "${{ matrix.chunk.artifact_out }}" = "historical_bootstrap" ]; then
             cp "${ROOT}/bootstrap-${{ matrix.chunk.label }}.tgz" "${ROOT}/historical_bootstrap.tgz"
           fi
+
       - name: Upload artifacts ${{ matrix.chunk.label }}
         uses: actions/upload-artifact@v4
         with:
@@ -218,19 +237,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+
       - name: Prepare artifacts directory
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           rm -rf "${ROOT}"
           mkdir -p "${ROOT}"
+
       - name: Resolve bootstrap revision
         run: |
-          REVISION=$(node --input-type=module -e "import('./trainer/trainingState.js').then((m) => process.stdout.write(m.CURRENT_BOOTSTRAP_REVISION))")
+          set -euo pipefail
+          REVISION=$(node --input-type=module -e "import('./trainer/trainingState.js').then((m) => process.stdout.write(m.CURRENT_BOOTSTRAP_REVISION)).catch((e)=>{console.error(e);process.exit(1);})")
           echo "CURRENT_BOOTSTRAP_REVISION=$REVISION" >> $GITHUB_ENV
+
       - name: Restore historical cache
         id: cache
         uses: actions/cache@v4
@@ -241,29 +266,41 @@ jobs:
             ${{ env.ARTIFACTS_DIR }}/predictions
             ${{ env.ARTIFACTS_DIR }}/training_state.json
           key: historical-${{ hashFiles('trainer/trainingState.js') }}-${{ env.CURRENT_BOOTSTRAP_REVISION }}
+
       - name: Download merged historical (fallback)
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/download-artifact@v4
         with:
           name: historical_bootstrap
           path: ${{ env.ARTIFACTS_DIR }}
-      - name: Extract merged historical
-        if: steps.cache.outputs.cache-hit != 'true' && hashFiles(format('{0}/historical_bootstrap.tgz', env.ARTIFACTS_DIR)) != ''
+
+      - name: Extract merged historical  # CHANGED: shell-guard instead of hashFiles-if
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
-          tar -xzf "${ROOT}/historical_bootstrap.tgz" -C "${ROOT}"
+          if [ -f "${ROOT}/historical_bootstrap.tgz" ]; then
+            tar -xzf "${ROOT}/historical_bootstrap.tgz" -C "${ROOT}"
+            echo "[extract] historical_bootstrap.tgz extracted into ${ROOT}"
+          else
+            echo "[extract] no historical_bootstrap.tgz present (cache hit or first run)"
+          fi
+
       - name: Ensure lockfile
         run: |
+          set -euo pipefail
           if [ ! -f package-lock.json ]; then
             echo "No package-lock.json found; generating one…"
             npm install --package-lock-only
           else
             echo "Found existing package-lock.json"
           fi
+
       - name: Install deps
         run: npm ci || npm install --no-audit --no-fund
+
       - name: Resolve season (auto unless override)
         run: |
+          set -euo pipefail
           if [ -n "${{ github.event.inputs.season }}" ]; then
             SEASON="${{ github.event.inputs.season }}"
           else
@@ -271,9 +308,11 @@ jobs:
           fi
           echo "SEASON=$SEASON" >> $GITHUB_ENV
           echo "Resolved SEASON=$SEASON"
+
       - name: Resolve week (auto unless override)
         id: resolve
         run: |
+          set -euo pipefail
           if [ -n "${{ github.event.inputs.week }}" ]; then
             WEEK="${{ github.event.inputs.week }}"
             echo "WEEK=${{ github.event.inputs.week }}" >> $GITHUB_ENV
@@ -287,8 +326,10 @@ jobs:
           PADDED=$(printf '%02d' "$WEEK")
           echo "PAD_WEEK=$PADDED" >> $GITHUB_ENV
           echo "WEEK=$WEEK" >> $GITHUB_OUTPUT
+
       - name: Cold-start training state (if missing)
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           if [ ! -f "${ROOT}/training_state.json" ]; then
             echo "training_state.json missing – synthesising minimal weekly state."
@@ -297,12 +338,16 @@ jobs:
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
+
       - name: "Guard: training_state available"
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           [[ -f "${ROOT}/training_state.json" ]] || { echo "::error::training_state.json missing after restore"; exit 1; }
+
       - name: Guard against historical override flags
         run: |
+          set -euo pipefail
           bad=()
           for k in REWRITE_HISTORICAL OVERWRITE_HISTORICAL REBUILD_HISTORICAL REGENERATE_HISTORICAL REGEN_HISTORICAL FORCE_HISTORICAL_BOOTSTRAP; do
             v="${!k-}"
@@ -311,6 +356,7 @@ jobs:
           if (( ${#bad[@]} )); then
             echo "::error::Historical override flags detected: ${bad[*]}"; exit 1;
           fi
+
       - name: Run core unit tests (must pass)
         run: npm run test:core
 
@@ -346,46 +392,87 @@ jobs:
             **/*.txt
             **/*.log
           if-no-files-found: warn
+
       - name: Fetch Rotowire injuries
         env:
           ROTOWIRE_ENABLED: 'true'
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
         run: npm run fetch:injuries -- --season=$SEASON --week=$WEEK
+
       - name: Fetch Rotowire markets
         env:
           ROTOWIRE_ENABLED: 'true'
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
         run: npm run fetch:markets -- --season=$SEASON --week=$WEEK
+
       - name: Fetch Rotowire weather
         env:
           ROTOWIRE_ENABLED: 'true'
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
         run: npm run fetch:weather -- --season=$SEASON --week=$WEEK
+
       - name: Build context
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
           SINCE_SEASON: ${{ env.MIN_TRAIN_SEASON }}
         run: npm run build:context
+
+      # CHANGED: robust heredoc; "no prior to promote" is a NOOP success, not a failure
       - name: Promote prior season ensemble
         env:
           SEASON: ${{ env.SEASON }}
           TRAIN_TRACE: "1"
+          ARTIFACTS_DIR: ${{ env.ARTIFACTS_DIR }}
         run: |
-          node --input-type=module -e "const season = Number(process.env.SEASON); if (!Number.isFinite(season)) { console.log('No season resolved; skipping promotion.'); process.exit(0); } const prev = season - 1; (async () => { const { promote } = await import('./trainer/promotePreviousSeason.js'); const ok = await promote({ prevSeason: prev, nextSeason: season }); if (!ok) { console.error('Unable to promote final ensemble from prior season.'); process.exit(1); } console.log(`Promoted finals from ${prev} → ${season}`); })().catch((err) => { console.error(err); process.exit(1); });"
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          (async () => {
+            const season = Number(process.env.SEASON);
+            if (!Number.isFinite(season)) {
+              console.log('[promote] No season resolved; skipping promotion.');
+              return;
+            }
+            const prev = season - 1;
+
+            const { resolve } = await import('node:path');
+            const { existsSync } = await import('node:fs');
+            const artifacts = process.env.ARTIFACTS_DIR || 'artifacts';
+            console.log('[promote] artifacts:', resolve(process.cwd(), artifacts));
+            console.log('[promote] prev → next:', prev, '→', season);
+
+            try {
+              const mod = await import('./trainer/promotePreviousSeason.js');
+              const ok = await mod.promote({ prevSeason: prev, nextSeason: season });
+              if (ok === false) {
+                console.log('[promote] no prior ensemble found — NOOP');
+                return; // success/no-op
+              }
+              console.log('[promote] promoted finals from', prev, '→', season);
+            } catch (err) {
+              console.error('[promote:error]', err && (err.stack || err));
+              process.exit(1);
+            }
+          })();
+          NODE
+          echo "[promote] step completed."
+      
       - name: Train + Predict (auto week)
         timeout-minutes: 25
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           echo "[train:init] ARTIFACTS_DIR=${ROOT}"
           echo "[train:init] STATUS_DIR=${ROOT}/.status"
           echo "Training SEASON=$SEASON WEEK=$WEEK"
           CI_FAST=1 SEASON=$SEASON WEEK=$WEEK npm run train:multi
+
       - name: Verify weekly status markers
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           STATUS_DIR="${ROOT}/.status"
           echo "[verify] ARTIFACTS_DIR=${ROOT}"
@@ -405,27 +492,34 @@ jobs:
           fi
 
           echo "[verify] Found marker ${marker}"
+
       - name: Run Hybrid v2 Calibration
         timeout-minutes: 15
         run: node trainer/hybrid_v2.js
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
+
       - name: Validate artifacts against schemas
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           echo "Validating artifacts in ${ROOT}/"
           npm run validate:artifacts
+
       - name: Show artifacts
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           echo "Artifacts directory:"
           ls -lah "${ROOT}" || true
           for f in "${ROOT}"/season_index_*.json "${ROOT}"/season_summary_*.json; do
             [ -f "$f" ] && echo "--- $f ---" && cat "$f"
           done
+
       - name: "Guard: weekly artifacts generated"
         run: |
+          set -euo pipefail
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           pad_week=$(printf '%02d' "$WEEK")
           stamp="${SEASON}_W${pad_week}"
@@ -446,10 +540,12 @@ jobs:
             echo "::error::Missing required weekly artifacts: ${missing[*]}"
             exit 1
           fi
+
       - name: Commit artifacts (try main)
         id: commit_main
         continue-on-error: true
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
@@ -495,6 +591,7 @@ jobs:
           git pull --rebase --autostash || true
           git push
           echo "no_changes=false" >> $GITHUB_OUTPUT
+
       - name: Create PR (fallback if push failed or branch protected)
         if: steps.commit_main.outcome == 'failure'
         uses: peter-evans/create-pull-request@v6

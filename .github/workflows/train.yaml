@@ -37,8 +37,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_bootstrap == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    env:
-      CACHE_KEY_PREFIX: artifacts-${{ hashFiles('package-lock.json', 'configs/model.json', 'configs/data.json') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,13 +49,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Compute artifact cache prefix
+        id: cache-prefix
+        run: |
+          set -euo pipefail
+          prefix=$(node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          const files = ['package-lock.json', 'configs/model.json', 'configs/data.json'];
+          const hash = crypto.createHash('sha256');
+          for (const file of files) {
+            try {
+              hash.update(fs.readFileSync(file));
+            } catch (err) {
+              if (err && err.code === 'ENOENT') continue;
+              throw err;
+            }
+          }
+          process.stdout.write(`artifacts-${hash.digest('hex')}`);
+          NODE)
+          echo "CACHE_KEY_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+
       - name: Restore artifact cache
         id: bootstrap-cache
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.ARTIFACTS_DIR }}
-          key: ${{ env.CACHE_KEY_PREFIX }}
-          restore-keys: ${{ env.CACHE_KEY_PREFIX }}-
+          key: ${{ steps.cache-prefix.outputs.prefix }}
+          restore-keys: ${{ steps.cache-prefix.outputs.prefix }}-
 
       - name: Resolve bootstrap range
         id: bootstrap-range
@@ -128,7 +148,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ env.ARTIFACTS_DIR }}
-          key: ${{ env.CACHE_KEY_PREFIX }}-${{ github.run_id }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-${{ github.run_id }}
 
   weekly-update:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.run_bootstrap != 'true'
@@ -136,8 +156,6 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: write
-    env:
-      CACHE_KEY_PREFIX: artifacts-${{ hashFiles('package-lock.json', 'configs/model.json', 'configs/data.json') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -150,13 +168,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Compute artifact cache prefix
+        id: cache-prefix
+        run: |
+          set -euo pipefail
+          prefix=$(node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          const files = ['package-lock.json', 'configs/model.json', 'configs/data.json'];
+          const hash = crypto.createHash('sha256');
+          for (const file of files) {
+            try {
+              hash.update(fs.readFileSync(file));
+            } catch (err) {
+              if (err && err.code === 'ENOENT') continue;
+              throw err;
+            }
+          }
+          process.stdout.write(`artifacts-${hash.digest('hex')}`);
+          NODE)
+          echo "CACHE_KEY_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+
       - name: Restore artifact cache
         id: weekly-cache
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.ARTIFACTS_DIR }}
-          key: ${{ env.CACHE_KEY_PREFIX }}
-          restore-keys: ${{ env.CACHE_KEY_PREFIX }}-
+          key: ${{ steps.cache-prefix.outputs.prefix }}
+          restore-keys: ${{ steps.cache-prefix.outputs.prefix }}-
 
       - name: Ensure artifacts directory
         run: mkdir -p "$ARTIFACTS_DIR"
@@ -257,4 +297,4 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ env.ARTIFACTS_DIR }}
-          key: ${{ env.CACHE_KEY_PREFIX }}-${{ github.run_id }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-${{ github.run_id }}

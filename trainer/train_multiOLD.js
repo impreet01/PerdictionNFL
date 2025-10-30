@@ -406,7 +406,7 @@ function parseCliArgs(argv = process.argv.slice(2)) {
       start: { type: "string" },
       end: { type: "string" },
       artifactsDir: { type: "string" },
-      strictBatch: { type: "boolean" }
+      strictBatch: { type: "boolean", alias: ["strict-batch"] }
     },
     allowPositionals: true,
     tokens: false,
@@ -421,7 +421,11 @@ function parseCliArgs(argv = process.argv.slice(2)) {
     end: values.end ?? null,
     artifactsDir: values.artifactsDir ?? null,
     strictBatch:
-      typeof values.strictBatch === "boolean" ? values.strictBatch : CLI_DEFAULT_STRICT_BATCH
+      typeof values.strictBatch === "boolean"
+        ? values.strictBatch
+        : typeof values["strict-batch"] === "boolean"
+          ? values["strict-batch"]
+          : CLI_DEFAULT_STRICT_BATCH
   };
 }
 

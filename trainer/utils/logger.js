@@ -57,12 +57,24 @@ class Logger {
     this._currentDate = isoDateOnly();
     this._stream = openDailyStream(this._currentDate);
 
+    process.on('beforeExit', () => {
+      try {
+        this._stream?.end?.();
+      } catch {}
+    });
+
     // bind methods for ease of use
     this.trace = this._log.bind(this, 'trace');
     this.debug = this._log.bind(this, 'debug');
     this.info = this._log.bind(this, 'info');
     this.warn = this._log.bind(this, 'warn');
     this.error = this._log.bind(this, 'error');
+  }
+
+  close() {
+    try {
+      this._stream?.end?.();
+    } catch {}
   }
 
   setLevel(name) {

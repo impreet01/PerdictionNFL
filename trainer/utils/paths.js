@@ -1,7 +1,8 @@
 import path from 'node:path';
 
 export function artifactsRoot() {
-  return process.env.ARTIFACTS_DIR || 'artifacts';
+  const root = process.env.ARTIFACTS_DIR || 'artifacts';
+  return path.resolve(root);
 }
 
 export function artp(...parts) {

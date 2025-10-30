@@ -219,7 +219,21 @@ async function runRollingWeek({ season, week, state }) {
 }
 
 export async function main(options = {}) {
-  const cli = parseCliArgs(options.argv ?? []);
+  const argv = Array.isArray(options.argv) ? options.argv : [];
+  const cli = parseCliArgs(argv);
+
+  const envPref =
+    cli.rolling === true ||
+    process.env.TRAIN_MULTI_ROLLING === '1' ||
+    process.env.TRAIN_MULTI_ROLLING === 'true';
+  const preferRolling = options.forceRolling ?? envPref;
+
+  if (!preferRolling && (options.allowLegacy ?? true) && argv.length) {
+    const filteredArgv = argv.filter((token) => token !== '--rolling' && token !== '--no-rolling');
+    await runLegacyCli(filteredArgv);
+    return { state: loadState(), results: [] };
+  }
+
   const resolved = {
     mode: options.mode ?? cli.mode ?? 'daily',
     dataRoot: options.dataRoot ?? cli.dataRoot ?? null,
@@ -233,12 +247,23 @@ export async function main(options = {}) {
   if (resolved.dataRoot) {
     process.env.DATA_ROOT = resolved.dataRoot;
   }
-  const seasons = resolveSeasonList(resolved);
+
+  const weeksInput =
+    Array.isArray(options.weeks) && options.weeks.length
+      ? options.weeks
+      : resolved.week != null
+      ? [resolved.week]
+      : [];
+  const weeksToRun = selectWeeks({ weeks: weeksInput, explicitWeek: resolved.week });
+  const seasons = resolveSeasonList({
+    season: resolved.season,
+    start: resolved.start,
+    end: resolved.end,
+  });
   const results = [];
 
   for (const season of seasons) {
-    const weeks = selectWeeks({ weeks: resolved.week ? [resolved.week] : [], explicitWeek: resolved.week });
-    const targets = weeks.length ? weeks : [null];
+    const targets = weeksToRun.length ? weeksToRun : [null];
     for (const week of targets) {
       if (resolved.mode === 'daily' && Number.isFinite(week)) {
         const predPath = WEEK_PRED_FILE(season, week);
@@ -269,26 +294,6 @@ async function runLegacyCli(argv) {
   });
 }
 
-async function runCli() {
-  const argv = process.argv.slice(2);
-  const parsed = parseCliArgs(argv);
-  const preferRolling =
-    parsed.rolling === true || process.env.TRAIN_MULTI_ROLLING === '1' || process.env.TRAIN_MULTI_ROLLING === 'true';
-
-  if (!preferRolling) {
-    const filteredArgv = argv.filter((token) => token !== '--rolling' && token !== '--no-rolling');
-    await runLegacyCli(filteredArgv);
-    return;
-  }
-
-  try {
-    await main({ ...parsed, argv });
-  } catch (err) {
-    console.error(err);
-    process.exit(1);
-  }
-}
-
 function isDirectCliRun() {
   try {
     const thisFile = fileURLToPath(import.meta.url);
@@ -300,7 +305,8 @@ function isDirectCliRun() {
 }
 
 if (isDirectCliRun()) {
-  runCli().catch((err) => {
+  const argv = process.argv.slice(2);
+  main({ argv, allowLegacy: true }).catch((err) => {
     console.error(err);
     process.exit(1);
   });

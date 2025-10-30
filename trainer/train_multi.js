@@ -289,7 +289,17 @@ async function runCli() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+function isDirectCliRun() {
+  try {
+    const thisFile = fileURLToPath(import.meta.url);
+    const cli = process.argv[1] ? path.resolve(process.argv[1]) : '';
+    return path.resolve(thisFile) === cli;
+  } catch {
+    return typeof require !== 'undefined' && require.main === module;
+  }
+}
+
+if (isDirectCliRun()) {
   runCli().catch((err) => {
     console.error(err);
     process.exit(1);

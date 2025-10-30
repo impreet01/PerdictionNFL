@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import crypto from "node:crypto";
 import {
@@ -59,6 +60,16 @@ import {
 import { artp, artifactsRoot } from "./utils/paths.js";
 import { isBefore, sortChronologically } from "./utils/temporalWindow.js";
 
+function isDirectCliRun() {
+  try {
+    const thisFile = fileURLToPath(import.meta.url);
+    const cli = process.argv[1] ? path.resolve(process.argv[1]) : "";
+    return path.resolve(thisFile) === cli;
+  } catch {
+    return typeof require !== "undefined" && require.main === module;
+  }
+}
+
 const { readFileSync, existsSync } = fs;
 
 const HISTORICAL_BATCH_SIZE = Number.isFinite(Number(process.env.BATCH_SIZE))
@@ -108,30 +119,27 @@ const ANN_CONFIG = (() => {
   return { ...ANN_BASE_CONFIG };
 })();
 
-const { values: cliOverrides } = parseArgs({
-  options: {
-    start: { type: "string" },
-    end: { type: "string" },
-    artifactsDir: { type: "string" }
-  },
-  allowPositionals: true
-});
-
-if (cliOverrides.start) process.env.BATCH_START = cliOverrides.start;
-if (cliOverrides.end) process.env.BATCH_END = cliOverrides.end;
-if (cliOverrides.artifactsDir) process.env.ARTIFACTS_DIR = cliOverrides.artifactsDir;
-
-const ART_DIR = artifactsRoot();
-trace("artifacts:resolve", {
-  cwd: process.cwd(),
-  env: process.env.ARTIFACTS_DIR ?? null,
-  resolved: ART_DIR
-});
-const STATUS_DIR = path.join(ART_DIR, ".status");
-const CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
 const CHUNK_FILE_PREFIX = "model";
-const CHECKPOINT_DIR = path.join(ART_DIR, "checkpoints");
-const ANN_CHECKPOINT_PATH = path.join(CHECKPOINT_DIR, "ann_committee.json");
+let ART_DIR = artifactsRoot();
+let STATUS_DIR = path.join(ART_DIR, ".status");
+let CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
+let CHECKPOINT_DIR = path.join(ART_DIR, "checkpoints");
+let ANN_CHECKPOINT_PATH = path.join(CHECKPOINT_DIR, "ann_committee.json");
+
+function refreshArtifactsPaths() {
+  ART_DIR = artifactsRoot();
+  STATUS_DIR = path.join(ART_DIR, ".status");
+  CHUNK_CACHE_DIR = path.join(ART_DIR, "chunks");
+  CHECKPOINT_DIR = path.join(ART_DIR, "checkpoints");
+  ANN_CHECKPOINT_PATH = path.join(CHECKPOINT_DIR, "ann_committee.json");
+  trace("artifacts:resolve", {
+    cwd: process.cwd(),
+    env: process.env.ARTIFACTS_DIR ?? null,
+    resolved: ART_DIR
+  });
+}
+
+refreshArtifactsPaths();
 const FEATURE_STATS_PREFIX = "feature_stats_1999_";
 const DEFAULT_CHUNK_SPAN = Math.min(
   MAX_SEASONS_PER_CHUNK,
@@ -386,43 +394,59 @@ function normaliseSeason(value) {
 
 const CLI_DEFAULT_STRICT_BATCH = process.env.CI ? true : false;
 
-function parseTrainCliArgs(argv = []) {
-  const result = {
-    start: null,
-    end: null,
-    strictBatch: CLI_DEFAULT_STRICT_BATCH
+function parseCliArgs(argv = process.argv.slice(2)) {
+  const arrayArgv = Array.isArray(argv) ? argv : [];
+  const { values } = parseArgs({
+    args: arrayArgv,
+    options: {
+      mode: { type: "string", short: "m" },
+      dataRoot: { type: "string" },
+      season: { type: "string" },
+      week: { type: "string" },
+      start: { type: "string" },
+      end: { type: "string" },
+      artifactsDir: { type: "string" },
+      strictBatch: { type: "boolean" }
+    },
+    allowPositionals: true,
+    tokens: false,
+    strict: false
+  });
+  return {
+    mode: values.mode ?? null,
+    dataRoot: values.dataRoot ?? null,
+    season: values.season ?? null,
+    week: values.week ?? null,
+    start: values.start ?? null,
+    end: values.end ?? null,
+    artifactsDir: values.artifactsDir ?? null,
+    strictBatch:
+      typeof values.strictBatch === "boolean" ? values.strictBatch : CLI_DEFAULT_STRICT_BATCH
   };
-  if (!Array.isArray(argv) || !argv.length) return result;
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    if (typeof token !== "string") continue;
-    if (token === "--strict-batch") {
-      result.strictBatch = true;
-      continue;
+}
+
+function applyCliEnvOverrides({
+  start,
+  end,
+  artifactsDir,
+  mode,
+  dataRoot,
+  season,
+  week
+} = {}) {
+  const assign = (key, value) => {
+    if (value !== undefined && value !== null) {
+      process.env[key] = String(value);
     }
-    if (token === "--no-strict-batch") {
-      result.strictBatch = false;
-      continue;
-    }
-    if (token === "--start") {
-      result.start = argv[i + 1] ?? null;
-      i += 1;
-      continue;
-    }
-    if (token.startsWith("--start=")) {
-      result.start = token.slice("--start=".length);
-      continue;
-    }
-    if (token === "--end") {
-      result.end = argv[i + 1] ?? null;
-      i += 1;
-      continue;
-    }
-    if (token.startsWith("--end=")) {
-      result.end = token.slice("--end=".length);
-    }
-  }
-  return result;
+  };
+  assign("BATCH_START", start);
+  assign("BATCH_END", end);
+  assign("ARTIFACTS_DIR", artifactsDir);
+  assign("MODE", mode);
+  assign("TRAIN_MODE", mode);
+  assign("DATA_ROOT", dataRoot);
+  assign("SEASON", season);
+  assign("WEEK", week);
 }
 
 function computeRequestedSeasons() {
@@ -555,8 +579,6 @@ export function resolveHistoricalChunkSelection({
 
   return { chunkSelection: null, explicit: false, autoCandidate: null };
 }
-
-const CLI_ARGS = parseTrainCliArgs(process.argv.slice(2));
 
 function chunkSeasonList(seasons, size = DEFAULT_CHUNK_SPAN) {
   if (!Array.isArray(seasons) || !seasons.length) return [];
@@ -2992,7 +3014,10 @@ async function runWeeklyWorkflow({ season, week }) {
   return trainingResult;
 }
 
-async function main() {
+export async function mainOld(options = {}) {
+  applyCliEnvOverrides(options);
+  refreshArtifactsPaths();
+
   await ensureArtifactsDir();
   await ensureChunkCacheDir();
   const targetSeason = Number(process.env.SEASON ?? new Date().getFullYear());
@@ -3057,9 +3082,10 @@ async function main() {
     }
   }
 
-  const strictBatch = Boolean(CLI_ARGS.strictBatch);
-  const cliBatchStart = CLI_ARGS.start;
-  const cliBatchEnd = CLI_ARGS.end;
+  const strictBatch =
+    typeof options.strictBatch === "boolean" ? options.strictBatch : CLI_DEFAULT_STRICT_BATCH;
+  const cliBatchStart = options.start ?? null;
+  const cliBatchEnd = options.end ?? null;
   const explicitStart = normaliseSeason(process.env.BATCH_START ?? cliBatchStart);
   const explicitEnd = normaliseSeason(process.env.BATCH_END ?? cliBatchEnd);
   const explicitWindow =
@@ -3655,8 +3681,9 @@ async function main() {
   saveTrainingState(state);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((err) => {
+if (isDirectCliRun()) {
+  const cli = parseCliArgs();
+  mainOld(cli).catch((err) => {
     console.error(err);
     process.exit(1);
   });

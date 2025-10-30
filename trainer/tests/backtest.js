@@ -161,7 +161,6 @@ async function main() {
 
     results.push({
       week,
-      count: labels.length,
       losses: {
         logistic: logLoss(labels, logistic),
         tree: logLoss(labels, tree),
@@ -185,11 +184,11 @@ async function main() {
   }
 
   const improvements = results
-    .filter((r) => r.week >= 4 && r.losses.blended != null && r.count >= 8)
+    .filter((r) => r.week >= 4 && r.losses.blended != null)
     .map((r) => {
       const indiv = [r.losses.logistic, r.losses.tree, r.losses.bt, r.losses.ann].filter((v) => v != null);
       const best = Math.min(...indiv);
-      return { week: r.week, blended: r.losses.blended, best, count: r.count };
+      return { week: r.week, blended: r.losses.blended, best };
     });
 
   for (const entry of improvements) {
@@ -264,29 +263,7 @@ async function main() {
   );
 }
 
-function isNetworkUnavailable(err) {
-  if (!err || typeof err !== "object") return false;
-  const codes = new Set();
-  if (typeof err.code === "string") codes.add(err.code);
-  const cause = err.cause;
-  if (cause && typeof cause === "object") {
-    if (typeof cause.code === "string") codes.add(cause.code);
-    if (Array.isArray(cause.errors)) {
-      for (const sub of cause.errors) {
-        if (sub && typeof sub === "object" && typeof sub.code === "string") {
-          codes.add(sub.code);
-        }
-      }
-    }
-  }
-  return [...codes].some((code) => code && ["ENETUNREACH", "ECONNREFUSED", "EAI_AGAIN"].includes(code));
-}
-
 main().catch((err) => {
-  if (isNetworkUnavailable(err)) {
-    console.warn("[backtest] Network unavailable – skipping backtest assertions.");
-    return;
-  }
   console.error(err);
   process.exit(1);
 });

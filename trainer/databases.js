@@ -10,7 +10,7 @@
 import fs from "fs";
 import path from "path";
 import axios from "axios";
-import zlib from "node:zlib";
+import zlib from "zlib";
 import { parse } from "csv-parse/sync";
 import {
   loadSchedules as loadSchedulesDS,

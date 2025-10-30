@@ -2,9 +2,6 @@
   "name": "nfl-wins-free-stack",
   "version": "1.0.0",
   "type": "module",
-  "engines": {
-    "node": ">=20"
-  },
   "scripts": {
     "build:context": "node trainer/databases.js",
     "train": "node trainer/train.js",
@@ -17,31 +14,18 @@
     "validate:artifacts": "node scripts/validateArtifacts.js",
     "bootstrap:state": "node scripts/bootstrapTrainingState.js",
     "train:workflow": "node scripts/runTrainingWorkflow.js",
-    "lint": "eslint trainer/schemaValidator.js",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand --ci",
-    "test:ci:hard": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand --detectOpenHandles --forceExit",
+    "test": "node trainer/tests/model_ann.test.js && node trainer/tests/bootstrapResolver.test.js && node trainer/tests/weatherContext.test.js && node trainer/tests/smoke.js && node trainer/tests/coldStart.test.js && node trainer/tests/promotion.test.js && node trainer/tests/fetch404Resilience.test.js && node trainer/tests/statusMarkersOnSkip.test.js && node trainer/tests/strictBatch.test.js",
     "test:core": "node trainer/tests/model_ann.test.js && node trainer/tests/bootstrapResolver.test.js && node trainer/tests/weatherContext.test.js && node trainer/tests/smoke.js && node trainer/tests/coldStart.test.js && node trainer/tests/promotion.test.js && node trainer/tests/fetch404Resilience.test.js && node trainer/tests/statusMarkersOnSkip.test.js",
-    "test:strictBatch": "node trainer/tests/strictBatch.test.js",
-    "train:daily": "node trainer/train_multi.js --mode=daily",
-    "train:debug": "node trainer/train_multi.js --mode=debug --limitSeasons=2 --limitWeeks=4",
-    "format": "prettier -w .",
-    "test:local": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand"
+    "test:strictBatch": "node trainer/tests/strictBatch.test.js"
   },
   "dependencies": {
-    "ajv": "^8.17.1",
     "axios": "^1.7.7",
+    "ajv": "^8.17.1",
     "cheerio": "^1.0.0",
-    "csv-parse": "^5.5.6",
     "ml-cart": "^2.0.1",
     "ml-logistic-regression": "^2.0.0",
     "ml-matrix": "^6.11.0",
+    "csv-parse": "^5.5.6",
     "papaparse": "^5.4.1"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.38.0",
-    "eslint": "^9.11.1",
-    "prettier": "^3.3.3",
-    "vitest": "^2.1.1",
-    "jest": "^29.7.0"
   }
 }

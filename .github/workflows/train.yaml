@@ -16,21 +16,17 @@ env:
   NODE_VERSION: "20.x"
   LOG_LEVEL: warn
   CI_FAST: "1"
-  MAX_WORKERS: "2"
+  MAX_WORKERS: "1"
 
 jobs:
   setup-test-train:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Use Node ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
+          cache: npm
 
       - name: Restore data cache
         uses: actions/cache@v4
@@ -46,19 +42,16 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Lint (non-blocking)
-        run: npm run lint || true
-
-      - name: Unit tests (deterministic)
-        run: npm test
-
-      - name: Bootstrap training state (idempotent)
+      - name: Bootstrap state
         run: node scripts/bootstrapTrainingState.js
 
-      - name: Train cumulative + roll current season
+      - name: Tests
+        run: npm test -- --runInBand
+
+      - name: Train daily
         run: npm run train:daily
 
-      - name: Upload artifacts (models/state/preds/logs)
+      - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:

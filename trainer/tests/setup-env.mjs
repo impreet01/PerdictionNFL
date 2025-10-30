@@ -1,6 +1,15 @@
 process.env.CI = process.env.CI || 'true';
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'warn';
 
+// Jest passes CLI flags such as --runInBand that confuse the legacy trainer's
+// parseArgs invocation; trim them globally before any modules evaluate.
+const argvCopy = process.argv.slice();
+const runInBandIdx = argvCopy.indexOf('--runInBand');
+if (runInBandIdx !== -1) {
+  argvCopy.splice(runInBandIdx, argvCopy.length - runInBandIdx, '--');
+  process.argv.splice(0, process.argv.length, ...argvCopy);
+}
+
 // deterministic RNG
 let _seed = 123456789;
 export function setSeed(n = 42) { _seed = n >>> 0; }

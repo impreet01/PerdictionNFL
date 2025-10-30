@@ -97,7 +97,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Configure logger import for Node
+      - name: Configure logger bootstrap
         run: |
           SCRIPT="${GITHUB_WORKSPACE}/ci/setupLogger.js"
           if [ ! -f "$SCRIPT" ]; then

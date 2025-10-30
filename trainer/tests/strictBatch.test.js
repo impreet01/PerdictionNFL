@@ -11,14 +11,18 @@ const fixturePath = path.join(repoRoot, "trainer", "tests", "mocks", "stateFixtu
 const artifactsDir = path.join(repoRoot, ".test_artifacts", `strictBatch-${process.pid}-${Date.now()}`);
 
 const originalEnv = {
-  ARTIFACTS_DIR: process.env.ARTIFACTS_DIR
+  ARTIFACTS_DIR: process.env.ARTIFACTS_DIR,
+  CI: process.env.CI
 };
 
-const baseEnv = { ARTIFACTS_DIR: artifactsDir };
+const ciValue = originalEnv.CI ?? "1";
+
+const baseEnv = { ARTIFACTS_DIR: artifactsDir, CI: ciValue };
 
 fs.rmSync(artifactsDir, { recursive: true, force: true });
 fs.mkdirSync(artifactsDir, { recursive: true });
 process.env.ARTIFACTS_DIR = artifactsDir;
+process.env.CI = ciValue;
 
 function runCommand(command, args = [], { env: envOverrides = {}, cwd = repoRoot } = {}) {
   const env = { ...process.env, ...baseEnv, ...envOverrides };
@@ -53,6 +57,11 @@ function cleanup() {
     delete process.env.ARTIFACTS_DIR;
   } else {
     process.env.ARTIFACTS_DIR = originalEnv.ARTIFACTS_DIR;
+  }
+  if (originalEnv.CI === undefined) {
+    delete process.env.CI;
+  } else {
+    process.env.CI = originalEnv.CI;
   }
 }
 

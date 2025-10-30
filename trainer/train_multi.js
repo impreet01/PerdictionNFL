@@ -2970,6 +2970,22 @@ async function main() {
     });
   }
   let chunkSelection = chunkResolution.chunkSelection;
+  const explicitRangeRequested = Boolean(explicitWindow);
+  if (!chunkSelection && explicitRangeRequested) {
+    const { start: fallbackStart, end: fallbackEnd } = explicitWindow;
+    if (Number.isFinite(fallbackStart) && Number.isFinite(fallbackEnd)) {
+      const fallbackSeasons = expandSeasonsFromSelection({
+        start: fallbackStart,
+        end: fallbackEnd
+      });
+      chunkSelection = {
+        start: fallbackStart,
+        end: fallbackEnd,
+        seasons: fallbackSeasons,
+        source: "explicit"
+      };
+    }
+  }
   if (explicitWindow) {
     if (!chunkSelection) {
       const label = `${explicitWindow.start}–${explicitWindow.end}`;
@@ -2985,7 +3001,7 @@ async function main() {
 
   const resolvedWindowLog = formatBatchWindowLog({
     chunkSelection,
-    explicit: Boolean(chunkResolution.explicit)
+    explicit: Boolean(chunkResolution.explicit || explicitRangeRequested)
   });
   if (resolvedWindowLog) {
     console.log(resolvedWindowLog);

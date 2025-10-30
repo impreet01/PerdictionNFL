@@ -340,8 +340,8 @@ jobs:
           path: |
             .test_artifacts/**
             trainer/tests/*.log
-          **/*.txt
-          **/*.log
+            **/*.txt
+            **/*.log
           if-no-files-found: warn
       - name: Upload logger output (train)
         if: always()

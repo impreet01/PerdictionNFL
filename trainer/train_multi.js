@@ -14,6 +14,7 @@ import {
   writeArtifacts as legacyWriteArtifacts,
   updateHistoricalArtifacts as legacyUpdateHistoricalArtifacts,
 } from './train_multiOLD.js';
+import { loadSchedules } from './dataSources.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

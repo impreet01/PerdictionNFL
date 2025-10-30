@@ -257,7 +257,7 @@ jobs:
           mkdir -p "${ROOT}"
       - name: Resolve bootstrap revision
         run: |
-          REVISION=$(NODE_OPTIONS=$LOGGER_OPTIONS node --input-type=module -e "import('./trainer/trainingState.js').then((m) => process.stdout.write(m.CURRENT_BOOTSTRAP_REVISION))")
+          REVISION=$(node --input-type=module -e "import('./trainer/trainingState.js').then((m) => process.stdout.write(m.CURRENT_BOOTSTRAP_REVISION))")
           echo "CURRENT_BOOTSTRAP_REVISION=$REVISION" >> $GITHUB_ENV
       - name: Restore historical cache
         id: cache
@@ -295,7 +295,7 @@ jobs:
           if [ -n "${{ github.event.inputs.season }}" ]; then
             SEASON="${{ github.event.inputs.season }}"
           else
-            SEASON=$(NODE_OPTIONS=$LOGGER_OPTIONS node -e 'console.log(new Date().getFullYear())')
+            SEASON=$(node -e 'console.log(new Date().getFullYear())')
           fi
           echo "SEASON=$SEASON" >> $GITHUB_ENV
           echo "Resolved SEASON=$SEASON"
@@ -307,7 +307,7 @@ jobs:
             echo "WEEK=${{ github.event.inputs.week }}" >> $GITHUB_ENV
             echo "Resolved WEEK=$WEEK (manual override)"
           else
-            WEEK=$(NODE_OPTIONS=$LOGGER_OPTIONS node scripts/resolveWeek.js | sed -n 's/Resolved WEEK=\(.*\)$/\1/p')
+            WEEK=$(node scripts/resolveWeek.js | sed -n 's/Resolved WEEK=\(.*\)$/\1/p')
             if [ -z "$WEEK" ]; then WEEK=2; fi
             echo "WEEK=$WEEK" >> $GITHUB_ENV
             echo "Resolved WEEK=$WEEK (auto)"

@@ -18,7 +18,6 @@ env:
   LOG_LEVEL: info
   CI_FAST: '1'
   MAX_WORKERS: '2'
-  NODE_OPTIONS: --import=${{ github.workspace }}/ci/setupLogger.js
 
 jobs:
   bootstrap:
@@ -105,6 +104,8 @@ jobs:
             echo "::error::Expected logger bootstrap script missing at $SCRIPT"
             exit 1
           fi
+      - name: Configure logger bootstrap
+        run: echo "NODE_OPTIONS=--import=${GITHUB_WORKSPACE}/ci/setupLogger.js" >> "$GITHUB_ENV"
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:

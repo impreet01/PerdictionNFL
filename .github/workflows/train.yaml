@@ -15,9 +15,10 @@ on:
 env:
   ARTIFACTS_DIR: ${{ vars.ARTIFACTS_DIR || 'artifacts' }}
   NODE_VERSION: 20.x
-  LOG_LEVEL: warn
+  LOG_LEVEL: info
   CI_FAST: '1'
   MAX_WORKERS: '2'
+  NODE_OPTIONS: '--import=./ci/setupLogger.js'
 
 jobs:
   bootstrap:
@@ -205,6 +206,14 @@ jobs:
           path: ${{ env.ARTIFACTS_DIR }}
           if-no-files-found: warn
           retention-days: 7
+      - name: Upload logger output ${{ matrix.chunk.label }}
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-${{ matrix.chunk.label }}
+          path: logs
+          if-no-files-found: ignore
+          retention-days: 7
 
   train:
     runs-on: ubuntu-latest
@@ -331,9 +340,17 @@ jobs:
           path: |
             .test_artifacts/**
             trainer/tests/*.log
-            **/*.txt
-            **/*.log
+          **/*.txt
+          **/*.log
           if-no-files-found: warn
+      - name: Upload logger output (train)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-train
+          path: logs
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Fetch Rotowire injuries
         env:
           ROTOWIRE_ENABLED: 'true'

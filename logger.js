@@ -280,10 +280,13 @@ class Logger {
     }
 
     const line = `${lineJson}\n`;
-    fs.promises.appendFile(filePath, line).catch((err) => {
+
+    try {
+      fs.appendFileSync(filePath, line, 'utf8');
+    } catch (err) {
       const fallbackWriter = baseConsole.error || baseConsole.log;
       fallbackWriter('logger: failed to append log entry', err);
-    });
+    }
   }
 }
 

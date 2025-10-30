@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { format as formatMessageArgs } from 'node:util';
+import { format as formatMessageArgs, inspect } from 'node:util';
 
 export const levels = Object.freeze({
   trace: 10,
@@ -61,6 +61,36 @@ function getLogFilePath(date = new Date()) {
 
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function jsonReplacer(_key, value) {
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    };
+  }
+  return value;
+}
+
+function safeJsonStringify(value) {
+  try {
+    return JSON.stringify(value, jsonReplacer);
+  } catch (err) {
+    return null;
+  }
+}
+
+function inspectForConsole(value) {
+  return inspect(value, {
+    depth: null,
+    breakLength: Infinity,
+    maxArrayLength: 100,
+  });
 }
 
 const consoleMethodToLevel = Object.freeze({
@@ -192,7 +222,12 @@ class Logger {
       };
     }
     if (Object.keys(contextForConsole).length > 0) {
-      parts.push(JSON.stringify(contextForConsole));
+      const contextJson = safeJsonStringify(contextForConsole);
+      if (contextJson) {
+        parts.push(contextJson);
+      } else {
+        parts.push(inspectForConsole(contextForConsole));
+      }
     }
     return parts.join(' ');
   }
@@ -237,9 +272,17 @@ class Logger {
       return;
     }
 
-    const line = `${JSON.stringify(entry)}\n`;
+    const lineJson = safeJsonStringify(entry);
+    if (!lineJson) {
+      const fallbackWriter = baseConsole.error || baseConsole.log;
+      fallbackWriter('logger: failed to serialize log entry', inspectForConsole(entry));
+      return;
+    }
+
+    const line = `${lineJson}\n`;
     fs.promises.appendFile(filePath, line).catch((err) => {
-      console.error('logger: failed to append log entry', err);
+      const fallbackWriter = baseConsole.error || baseConsole.log;
+      fallbackWriter('logger: failed to append log entry', err);
     });
   }
 }

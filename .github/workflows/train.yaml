@@ -25,7 +25,6 @@ jobs:
     timeout-minutes: 75
     env:
       LOGGER_BOOTSTRAP: ${{ github.workspace }}/ci/setupLogger.js
-      NODE_OPTIONS: --import=${{ github.workspace }}/ci/setupLogger.js
     strategy:
       max-parallel: 1
       matrix:
@@ -234,7 +233,6 @@ jobs:
       pull-requests: write
     env:
       LOGGER_BOOTSTRAP: ${{ github.workspace }}/ci/setupLogger.js
-      NODE_OPTIONS: --import=${{ github.workspace }}/ci/setupLogger.js
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -246,6 +244,8 @@ jobs:
             echo "::error::Expected logger bootstrap script missing at $LOGGER_BOOTSTRAP"
             exit 1
           fi
+      - name: Configure logger bootstrap
+        run: echo "NODE_OPTIONS=--import=${GITHUB_WORKSPACE}/ci/setupLogger.js" >> "$GITHUB_ENV"
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:

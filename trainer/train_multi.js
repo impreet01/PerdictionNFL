@@ -172,75 +172,10 @@ function resolveSeasonList({ season, start, end }) {
   return Array.from(seasons).sort((a, b) => a - b);
 }
 
-function parseWeekCandidate(value) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function discoverPredictedWeeks(season) {
-  try {
-    const entries = fs.readdirSync(PRED_DIR(season), { withFileTypes: true });
-    const weeks = [];
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      const match = entry.name.match(/^week_(\d+)_predictions\.json$/);
-      if (!match) continue;
-      const week = parseWeekCandidate(match[1]);
-      if (week) weeks.push(week);
-    }
-    return weeks;
-  } catch (err) {
-    if (err?.code !== 'ENOENT') {
-      console.warn(
-        `[train_multi] Failed to inspect predictions for season ${season}: ${err?.message ?? err}`
-      );
-    }
-    return [];
-  }
-}
-
-async function selectWeeks({ season, explicitWeek, state }) {
+function selectWeeks({ weeks, explicitWeek }) {
   if (Number.isFinite(explicitWeek)) return [explicitWeek];
-
-  const candidates = new Set();
-  discoverPredictedWeeks(season).forEach((week) => candidates.add(week));
-
-  try {
-    const schedules = await loadSchedules(season);
-    if (Array.isArray(schedules)) {
-      for (const game of schedules) {
-        const week =
-          parseWeekCandidate(game?.week) ??
-          parseWeekCandidate(game?.week_number) ??
-          parseWeekCandidate(game?.weekNum) ??
-          parseWeekCandidate(game?.weekNumber);
-        if (week) candidates.add(week);
-      }
-    }
-  } catch (err) {
-    console.warn(
-      `[train_multi] Unable to resolve schedules for season ${season}: ${err?.message ?? err}`
-    );
-  }
-
-  const lastTrackedWeek =
-    Number(state?.lastSeason) === Number(season) && Number.isFinite(state?.lastWeek)
-      ? Number(state.lastWeek)
-      : null;
-  if (Number.isFinite(lastTrackedWeek)) {
-    candidates.add(Math.max(1, lastTrackedWeek));
-    candidates.add(Math.max(1, lastTrackedWeek + 1));
-  }
-
-  if (!candidates.size) {
-    for (let week = 1; week <= 18; week += 1) {
-      candidates.add(week);
-    }
-  }
-
-  return Array.from(candidates)
-    .filter((week) => Number.isFinite(week) && week > 0 && week <= 23)
-    .sort((a, b) => a - b);
+  if (Array.isArray(weeks) && weeks.length) return weeks;
+  return [];
 }
 
 async function runRollingWeek({ season, week, state }) {
@@ -302,14 +237,14 @@ export async function main(options = {}) {
   const results = [];
 
   for (const season of seasons) {
-    const weeks = await selectWeeks({ season, explicitWeek: resolved.week, state });
-    for (const week of weeks) {
-      if (!Number.isFinite(week)) continue;
-      if (resolved.mode === 'daily') {
+    const weeks = selectWeeks({ weeks: resolved.week ? [resolved.week] : [], explicitWeek: resolved.week });
+    const targets = weeks.length ? weeks : [null];
+    for (const week of targets) {
+      if (resolved.mode === 'daily' && Number.isFinite(week)) {
         const predPath = WEEK_PRED_FILE(season, week);
         if (fs.existsSync(predPath)) continue;
       }
-      const outcome = await runRollingWeek({ season, week, state });
+      const outcome = await runRollingWeek({ season, week: week ?? undefined, state });
       if (outcome) results.push(outcome);
     }
   }

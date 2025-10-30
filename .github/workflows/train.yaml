@@ -18,12 +18,14 @@ env:
   LOG_LEVEL: info
   CI_FAST: '1'
   MAX_WORKERS: '2'
-  NODE_OPTIONS: --import=${{ github.workspace }}/ci/setupLogger.js
 
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    env:
+      LOGGER_BOOTSTRAP: ${{ github.workspace }}/ci/setupLogger.js
+      NODE_OPTIONS: --import=${{ github.workspace }}/ci/setupLogger.js
     strategy:
       max-parallel: 1
       matrix:
@@ -100,9 +102,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify logger bootstrap script
         run: |
-          SCRIPT="${GITHUB_WORKSPACE}/ci/setupLogger.js"
-          if [ ! -f "$SCRIPT" ]; then
-            echo "::error::Expected logger bootstrap script missing at $SCRIPT"
+          if [ ! -f "$LOGGER_BOOTSTRAP" ]; then
+            echo "::error::Expected logger bootstrap script missing at $LOGGER_BOOTSTRAP"
             exit 1
           fi
       - name: Use Node ${{ env.NODE_VERSION }}
@@ -229,19 +230,20 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    env:
+      LOGGER_BOOTSTRAP: ${{ github.workspace }}/ci/setupLogger.js
+      NODE_OPTIONS: --import=${{ github.workspace }}/ci/setupLogger.js
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Configure logger import for Node
+      - name: Verify logger bootstrap script
         run: |
-          SCRIPT="${GITHUB_WORKSPACE}/ci/setupLogger.js"
-          if [ ! -f "$SCRIPT" ]; then
-            echo "::error::Expected logger bootstrap script missing at $SCRIPT"
+          if [ ! -f "$LOGGER_BOOTSTRAP" ]; then
+            echo "::error::Expected logger bootstrap script missing at $LOGGER_BOOTSTRAP"
             exit 1
           fi
-          echo "NODE_OPTIONS=--import=$SCRIPT" >> "$GITHUB_ENV"
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:

@@ -13,6 +13,7 @@ const tmp = path.join(repoRoot, ".test_artifacts", `coldStart-${process.pid}-${D
 
 const originalEnv = {
   ARTIFACTS_DIR: process.env.ARTIFACTS_DIR,
+  ROTOWIRE_ARTIFACTS_DIR: process.env.ROTOWIRE_ARTIFACTS_DIR,
   BATCH_START: process.env.BATCH_START,
   BATCH_END: process.env.BATCH_END,
   BOOTSTRAP_RESET: process.env.BOOTSTRAP_RESET
@@ -20,6 +21,7 @@ const originalEnv = {
 
 const baseEnv = {
   ARTIFACTS_DIR: tmp,
+  ROTOWIRE_ARTIFACTS_DIR: tmp,
   BATCH_START: "1999",
   BATCH_END: "2000",
   BOOTSTRAP_RESET: "1"
@@ -28,6 +30,7 @@ const baseEnv = {
 fs.rmSync(tmp, { recursive: true, force: true });
 fs.mkdirSync(tmp, { recursive: true });
 process.env.ARTIFACTS_DIR = tmp;
+process.env.ROTOWIRE_ARTIFACTS_DIR = tmp;
 process.env.BATCH_START = baseEnv.BATCH_START;
 process.env.BATCH_END = baseEnv.BATCH_END;
 process.env.BOOTSTRAP_RESET = baseEnv.BOOTSTRAP_RESET;

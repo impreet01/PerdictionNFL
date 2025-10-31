@@ -12,16 +12,18 @@ const artifactsDir = path.join(repoRoot, ".test_artifacts", `strictBatch-${proce
 
 const originalEnv = {
   ARTIFACTS_DIR: process.env.ARTIFACTS_DIR,
+  ROTOWIRE_ARTIFACTS_DIR: process.env.ROTOWIRE_ARTIFACTS_DIR,
   CI: process.env.CI
 };
 
 const ciValue = originalEnv.CI ?? "1";
 
-const baseEnv = { ARTIFACTS_DIR: artifactsDir, CI: ciValue };
+const baseEnv = { ARTIFACTS_DIR: artifactsDir, ROTOWIRE_ARTIFACTS_DIR: artifactsDir, CI: ciValue };
 
 fs.rmSync(artifactsDir, { recursive: true, force: true });
 fs.mkdirSync(artifactsDir, { recursive: true });
 process.env.ARTIFACTS_DIR = artifactsDir;
+process.env.ROTOWIRE_ARTIFACTS_DIR = artifactsDir;
 process.env.CI = ciValue;
 
 function runCommand(command, args = [], { env: envOverrides = {}, cwd = repoRoot } = {}) {
@@ -57,6 +59,11 @@ function cleanup() {
     delete process.env.ARTIFACTS_DIR;
   } else {
     process.env.ARTIFACTS_DIR = originalEnv.ARTIFACTS_DIR;
+  }
+  if (originalEnv.ROTOWIRE_ARTIFACTS_DIR === undefined) {
+    delete process.env.ROTOWIRE_ARTIFACTS_DIR;
+  } else {
+    process.env.ROTOWIRE_ARTIFACTS_DIR = originalEnv.ROTOWIRE_ARTIFACTS_DIR;
   }
   if (originalEnv.CI === undefined) {
     delete process.env.CI;

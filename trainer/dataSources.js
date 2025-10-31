@@ -865,7 +865,10 @@ async function cached(store, key, loader, options = {}) {
   return val;
 }
 
-const ROTOWIRE_ARTIFACTS_DIR = path.resolve(process.cwd(), process.env.ROTOWIRE_ARTIFACTS_DIR ?? 'artifacts');
+const ROTOWIRE_ARTIFACTS_DIR = (() => {
+  const root = process.env.ROTOWIRE_ARTIFACTS_DIR ?? process.env.ARTIFACTS_DIR ?? 'artifacts';
+  return path.resolve(process.cwd(), root);
+})();
 
 function normalizeRotowireRecord(row, defaults = {}) {
   if (!row || typeof row !== 'object') return null;

@@ -14,6 +14,7 @@ on:
 
 env:
   ARTIFACTS_DIR: ${{ vars.ARTIFACTS_DIR || 'artifacts' }}
+  ROTOWIRE_ARTIFACTS_DIR: ${{ vars.ARTIFACTS_DIR || 'artifacts' }}
   NODE_VERSION: 20.x
   LOG_LEVEL: info
   CI_FAST: '1'
@@ -344,17 +345,6 @@ jobs:
           fi
         continue-on-error: ${{ vars.CI_ALLOW_TEST_SOFT_FAIL == '1' }}
 
-      - name: Upload CI artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-artifacts
-          path: |
-            .test_artifacts/**
-            trainer/tests/*.log
-            **/*.txt
-            **/*.log
-          if-no-files-found: warn
       - name: Fetch Rotowire injuries
         env:
           ROTOWIRE_ENABLED: 'true'
@@ -454,6 +444,17 @@ jobs:
             echo "::error::Missing required weekly artifacts: ${missing[*]}"
             exit 1
           fi
+      - name: Upload CI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-artifacts
+          path: |
+            .test_artifacts/**
+            trainer/tests/*.log
+            **/*.txt
+            **/*.log
+          if-no-files-found: warn
       - name: Commit artifacts (try main)
         id: commit_main
         continue-on-error: true

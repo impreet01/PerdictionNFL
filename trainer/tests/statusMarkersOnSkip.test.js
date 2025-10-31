@@ -26,6 +26,10 @@ function runNode(args, env = {}) {
 const tmp = path.join(repoRoot, ".test_artifacts", `status-skip-${Date.now()}`);
 fs.rmSync(tmp, { recursive: true, force: true });
 fs.mkdirSync(tmp, { recursive: true });
+const originalArtifactsDir = process.env.ARTIFACTS_DIR;
+const originalRotowireDir = process.env.ROTOWIRE_ARTIFACTS_DIR;
+process.env.ARTIFACTS_DIR = tmp;
+process.env.ROTOWIRE_ARTIFACTS_DIR = tmp;
 const trainingStateSrc = path.join(repoRoot, "artifacts", "training_state.json");
 if (fs.existsSync(trainingStateSrc)) {
   fs.copyFileSync(trainingStateSrc, path.join(tmp, "training_state.json"));
@@ -34,6 +38,7 @@ if (fs.existsSync(trainingStateSrc)) {
 try {
   runNode([path.join(repoRoot, "trainer", "train_multi.js")], {
     ARTIFACTS_DIR: tmp,
+    ROTOWIRE_ARTIFACTS_DIR: tmp,
     CI_FAST: "1",
     BATCH_START: "1999",
     BATCH_END: "2000",
@@ -50,4 +55,16 @@ try {
   console.error("statusMarkersOnSkip: FAIL");
   console.error(err);
   process.exitCode = 1;
+} finally {
+  if (originalArtifactsDir === undefined) {
+    delete process.env.ARTIFACTS_DIR;
+  } else {
+    process.env.ARTIFACTS_DIR = originalArtifactsDir;
+  }
+  if (originalRotowireDir === undefined) {
+    delete process.env.ROTOWIRE_ARTIFACTS_DIR;
+  } else {
+    process.env.ROTOWIRE_ARTIFACTS_DIR = originalRotowireDir;
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
 }

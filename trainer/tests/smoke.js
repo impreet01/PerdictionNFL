@@ -10,7 +10,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 const artifactsDir = path.join(repoRoot, ".test_artifacts", `smoke-${process.pid}-${Date.now()}`);
+const originalArtifactsDir = process.env.ARTIFACTS_DIR;
+const originalRotowireDir = process.env.ROTOWIRE_ARTIFACTS_DIR;
 process.env.ARTIFACTS_DIR = artifactsDir;
+process.env.ROTOWIRE_ARTIFACTS_DIR = artifactsDir;
 
 const { runTraining, writeArtifacts, updateHistoricalArtifacts } = await import("../train_multi.js");
 
@@ -196,6 +199,16 @@ async function main() {
     console.log("Smoke test passed");
   } finally {
     rmSync(artifactsDir, { recursive: true, force: true });
+    if (originalArtifactsDir === undefined) {
+      delete process.env.ARTIFACTS_DIR;
+    } else {
+      process.env.ARTIFACTS_DIR = originalArtifactsDir;
+    }
+    if (originalRotowireDir === undefined) {
+      delete process.env.ROTOWIRE_ARTIFACTS_DIR;
+    } else {
+      process.env.ROTOWIRE_ARTIFACTS_DIR = originalRotowireDir;
+    }
   }
 }
 

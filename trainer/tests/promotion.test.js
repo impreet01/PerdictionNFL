@@ -12,10 +12,11 @@ const artifactsDir = path.join(repoRoot, ".test_artifacts", `promotion-${process
 const sampleArtifactsDir = path.join(repoRoot, "artifacts");
 
 const originalEnv = {
-  ARTIFACTS_DIR: process.env.ARTIFACTS_DIR
+  ARTIFACTS_DIR: process.env.ARTIFACTS_DIR,
+  ROTOWIRE_ARTIFACTS_DIR: process.env.ROTOWIRE_ARTIFACTS_DIR
 };
 
-const baseEnv = { ARTIFACTS_DIR: artifactsDir };
+const baseEnv = { ARTIFACTS_DIR: artifactsDir, ROTOWIRE_ARTIFACTS_DIR: artifactsDir };
 
 const EXCLUDED_SEED_FILES = new Set(["historical_bootstrap.tgz"]);
 const EXCLUDED_SEED_EXTENSIONS = new Set([".tgz"]);
@@ -40,6 +41,7 @@ function seedArtifacts() {
 
 seedArtifacts();
 process.env.ARTIFACTS_DIR = artifactsDir;
+process.env.ROTOWIRE_ARTIFACTS_DIR = artifactsDir;
 
 function runCommand(command, args = [], { env: envOverrides = {}, cwd = repoRoot } = {}) {
   const env = { ...process.env, ...baseEnv, ...envOverrides };
@@ -74,6 +76,11 @@ function cleanup() {
     delete process.env.ARTIFACTS_DIR;
   } else {
     process.env.ARTIFACTS_DIR = originalEnv.ARTIFACTS_DIR;
+  }
+  if (originalEnv.ROTOWIRE_ARTIFACTS_DIR === undefined) {
+    delete process.env.ROTOWIRE_ARTIFACTS_DIR;
+  } else {
+    process.env.ROTOWIRE_ARTIFACTS_DIR = originalEnv.ROTOWIRE_ARTIFACTS_DIR;
   }
 }
 

@@ -212,7 +212,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.chunk.artifact_out }}
-          path: ${{ env.ARTIFACTS_DIR }}
+          path: ${{ env.ARTIFACTS_DIR }}/*
           if-no-files-found: warn
           retention-days: 7
       - name: Upload logger output ${{ matrix.chunk.label }}
@@ -275,6 +275,27 @@ jobs:
         with:
           name: historical_bootstrap
           path: ${{ env.ARTIFACTS_DIR }}
+      - name: Normalize merged historical layout
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          ROOT="${ARTIFACTS_DIR:-artifacts}"
+          NESTED="${ROOT}/artifacts"
+
+          if [ -d "${NESTED}" ]; then
+            echo "Nested artifacts directory detected at ${NESTED}; flattening"
+            shopt -s dotglob nullglob
+            entries=("${NESTED}"/*)
+            if [ ${#entries[@]} -gt 0 ]; then
+              mv "${entries[@]}" "${ROOT}/"
+            fi
+            shopt -u dotglob nullglob
+            rmdir "${NESTED}" 2>/dev/null || rm -rf "${NESTED}"
+          fi
+
+          echo "::group::Artifacts layout (${ROOT})"
+          find "${ROOT}" -maxdepth 2 -mindepth 1 -print | sort
+          echo "::endgroup::"
       - name: Extract merged historical
         if: steps.cache.outputs.cache-hit != 'true' && hashFiles(format('{0}/historical_bootstrap.tgz', env.ARTIFACTS_DIR)) != ''
         run: |

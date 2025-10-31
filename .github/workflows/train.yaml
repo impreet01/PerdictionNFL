@@ -23,8 +23,6 @@ jobs:
   bootstrap:
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    env:
-      LOGGER_BOOTSTRAP: ${{ github.workspace }}/ci/setupLogger.js
     strategy:
       max-parallel: 1
       matrix:
@@ -99,14 +97,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify logger bootstrap script
-        run: |
-          if [ ! -f "$LOGGER_BOOTSTRAP" ]; then
-            echo "::error::Expected logger bootstrap script missing at $LOGGER_BOOTSTRAP"
-            exit 1
-          fi
-      - name: Configure logger bootstrap
-        run: echo "LOGGER_OPTIONS=--import=${GITHUB_WORKSPACE}/ci/setupLogger.js" >> "$GITHUB_ENV"
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
@@ -126,19 +116,19 @@ jobs:
         run: |
           if [ ! -f package-lock.json ]; then
             echo "No package-lock.json found; generating one…"
-            NODE_OPTIONS=$LOGGER_OPTIONS npm install --package-lock-only
+            npm install --package-lock-only
           else
             echo "Found existing package-lock.json"
           fi
       - name: Install deps
-        run: NODE_OPTIONS=$LOGGER_OPTIONS npm ci || NODE_OPTIONS=$LOGGER_OPTIONS npm install --no-audit --no-fund
+        run: npm ci || npm install --no-audit --no-fund
       - name: Bootstrap training state (if missing)
         run: |
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           if [ ! -f "${ROOT}/training_state.json" ]; then
             BATCH_START=${{ matrix.chunk.start }} \
             BATCH_END=${{ matrix.chunk.end }} \
-            NODE_OPTIONS=$LOGGER_OPTIONS npm run bootstrap:state -- --start ${{ matrix.chunk.start }} --end ${{ matrix.chunk.end }}
+            npm run bootstrap:state -- --start ${{ matrix.chunk.start }} --end ${{ matrix.chunk.end }}
           fi
       - name: Run chunked historical training ${{ matrix.chunk.label }}
         env:
@@ -156,7 +146,7 @@ jobs:
           fi
           BATCH_START=${{ matrix.chunk.start }} \
           BATCH_END=${{ matrix.chunk.end }} \
-          CI_FAST=1 NODE_OPTIONS=$LOGGER_OPTIONS npm run train:multi
+          CI_FAST=1 npm run train:multi
       - name: Verify chunk markers present ${{ matrix.chunk.label }}
         run: |
           ROOT="${ARTIFACTS_DIR:-artifacts}"
@@ -215,14 +205,6 @@ jobs:
           path: ${{ env.ARTIFACTS_DIR }}/*
           if-no-files-found: warn
           retention-days: 7
-      - name: Upload logger output ${{ matrix.chunk.label }}
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-logs-${{ matrix.chunk.label }}
-          path: logs
-          if-no-files-found: ignore
-          retention-days: 7
 
   train:
     runs-on: ubuntu-latest
@@ -231,21 +213,11 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    env:
-      LOGGER_BOOTSTRAP: ${{ github.workspace }}/ci/setupLogger.js
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify logger bootstrap script
-        run: |
-          if [ ! -f "$LOGGER_BOOTSTRAP" ]; then
-            echo "::error::Expected logger bootstrap script missing at $LOGGER_BOOTSTRAP"
-            exit 1
-          fi
-      - name: Configure logger bootstrap
-        run: echo "LOGGER_OPTIONS=--import=${GITHUB_WORKSPACE}/ci/setupLogger.js" >> "$GITHUB_ENV"
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
@@ -305,12 +277,12 @@ jobs:
         run: |
           if [ ! -f package-lock.json ]; then
             echo "No package-lock.json found; generating one…"
-            NODE_OPTIONS=$LOGGER_OPTIONS npm install --package-lock-only
+            npm install --package-lock-only
           else
             echo "Found existing package-lock.json"
           fi
       - name: Install deps
-        run: NODE_OPTIONS=$LOGGER_OPTIONS npm ci || NODE_OPTIONS=$LOGGER_OPTIONS npm install --no-audit --no-fund
+        run: npm ci || npm install --no-audit --no-fund
       - name: Resolve season (auto unless override)
         run: |
           if [ -n "${{ github.event.inputs.season }}" ]; then
@@ -341,7 +313,7 @@ jobs:
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           if [ ! -f "${ROOT}/training_state.json" ]; then
             echo "training_state.json missing – synthesising minimal weekly state."
-            NODE_OPTIONS=$LOGGER_OPTIONS npm run bootstrap:state
+            npm run bootstrap:state
           fi
         env:
           SEASON: ${{ env.SEASON }}
@@ -361,14 +333,14 @@ jobs:
             echo "::error::Historical override flags detected: ${bad[*]}"; exit 1;
           fi
       - name: Run core unit tests (must pass)
-        run: NODE_OPTIONS=$LOGGER_OPTIONS npm run test:core
+        run: npm run test:core
 
       - name: Run strict-batch window test (soft-fail if allowed)
         run: |
           if [ "${{ vars.CI_ALLOW_TEST_SOFT_FAIL }}" = "1" ]; then
-            NODE_OPTIONS=$LOGGER_OPTIONS npm run test:strictBatch || echo "::warning::strictBatch failed (soft-fail enabled)"
+            npm run test:strictBatch || echo "::warning::strictBatch failed (soft-fail enabled)"
           else
-            NODE_OPTIONS=$LOGGER_OPTIONS npm run test:strictBatch
+            npm run test:strictBatch
           fi
         continue-on-error: ${{ vars.CI_ALLOW_TEST_SOFT_FAIL == '1' }}
 
@@ -383,43 +355,35 @@ jobs:
             **/*.txt
             **/*.log
           if-no-files-found: warn
-      - name: Upload logger output (train)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-logs-train
-          path: logs
-          if-no-files-found: ignore
-          retention-days: 7
       - name: Fetch Rotowire injuries
         env:
           ROTOWIRE_ENABLED: 'true'
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
-        run: NODE_OPTIONS=$LOGGER_OPTIONS npm run fetch:injuries -- --season=$SEASON --week=$WEEK
+        run: npm run fetch:injuries -- --season=$SEASON --week=$WEEK
       - name: Fetch Rotowire markets
         env:
           ROTOWIRE_ENABLED: 'true'
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
-        run: NODE_OPTIONS=$LOGGER_OPTIONS npm run fetch:markets -- --season=$SEASON --week=$WEEK
+        run: npm run fetch:markets -- --season=$SEASON --week=$WEEK
       - name: Fetch Rotowire weather
         env:
           ROTOWIRE_ENABLED: 'true'
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
-        run: NODE_OPTIONS=$LOGGER_OPTIONS npm run fetch:weather -- --season=$SEASON --week=$WEEK
+        run: npm run fetch:weather -- --season=$SEASON --week=$WEEK
       - name: Build context
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
           SINCE_SEASON: ${{ env.MIN_TRAIN_SEASON }}
-        run: NODE_OPTIONS=$LOGGER_OPTIONS npm run build:context
+        run: npm run build:context
       - name: Promote prior season ensemble
         env:
           SEASON: ${{ env.SEASON }}
         run: |
-          NODE_OPTIONS=$LOGGER_OPTIONS node --input-type=module -e "const season = Number(process.env.SEASON); if (!Number.isFinite(season)) { console.log('No season resolved; skipping promotion.'); process.exit(0); } const prev = season - 1; (async () => { const { promote } = await import('./trainer/promotePreviousSeason.js'); const ok = await promote({ prevSeason: prev, nextSeason: season }); if (!ok) { console.error('Unable to promote final ensemble from prior season.'); process.exit(1); } console.log(\`Promoted finals from \${prev} → \${season}\`); })().catch((err) => { console.error(err); process.exit(1); });"
+          node --input-type=module -e "const season = Number(process.env.SEASON); if (!Number.isFinite(season)) { console.log('No season resolved; skipping promotion.'); process.exit(0); } const prev = season - 1; (async () => { const { promote } = await import('./trainer/promotePreviousSeason.js'); const ok = await promote({ prevSeason: prev, nextSeason: season }); if (!ok) { console.error('Unable to promote final ensemble from prior season.'); process.exit(1); } console.log(\`Promoted finals from \${prev} → \${season}\`); })().catch((err) => { console.error(err); process.exit(1); });"
       - name: Train + Predict (auto week)
         timeout-minutes: 25
         run: |
@@ -427,7 +391,7 @@ jobs:
           echo "[train:init] ARTIFACTS_DIR=${ROOT}"
           echo "[train:init] STATUS_DIR=${ROOT}/.status"
           echo "Training SEASON=$SEASON WEEK=$WEEK"
-          CI_FAST=1 SEASON=$SEASON WEEK=$WEEK NODE_OPTIONS=$LOGGER_OPTIONS npm run train:multi
+          CI_FAST=1 SEASON=$SEASON WEEK=$WEEK npm run train:multi
       - name: Verify weekly status markers
         run: |
           ROOT="${ARTIFACTS_DIR:-artifacts}"
@@ -451,7 +415,7 @@ jobs:
           echo "[verify] Found marker ${marker}"
       - name: Run Hybrid v2 Calibration
         timeout-minutes: 15
-        run: NODE_OPTIONS=$LOGGER_OPTIONS node trainer/hybrid_v2.js
+        run: node trainer/hybrid_v2.js
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ steps.resolve.outputs.WEEK }}
@@ -459,7 +423,7 @@ jobs:
         run: |
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           echo "Validating artifacts in ${ROOT}/"
-          NODE_OPTIONS=$LOGGER_OPTIONS npm run validate:artifacts
+          npm run validate:artifacts
       - name: Show artifacts
         run: |
           ROOT="${ARTIFACTS_DIR:-artifacts}"

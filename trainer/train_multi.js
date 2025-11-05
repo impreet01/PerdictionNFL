@@ -57,6 +57,37 @@ import {
   MIN_SEASON as MIN_SEASON_CONSTANT
 } from "./stateBuilder.js";
 import { artp, artifactsRoot } from "./utils/paths.js";
+import { cachePromise } from "./utils/cache.js";
+import {
+  chunkLabel,
+  chunkMetadataPath,
+  chunkDonePath,
+  loadChunkCache,
+  writeChunkCache,
+  seasonMetadataPath,
+  seasonDonePath,
+  loadSeasonCache,
+  writeSeasonCache,
+  normaliseSeason,
+  chunkSeasonList,
+  expandSeasonsFromSelection,
+  ensureChunkCacheDir
+} from "./utils/chunks.js";
+import {
+  weekStamp,
+  artifactPath,
+  weekArtifactsExist,
+  modelsForSeasonExist,
+  ensureStatusDir,
+  weekStatusPath,
+  weekStatusExists,
+  markWeekStatus,
+  seasonStatusPath,
+  seasonStatusExists,
+  markSeasonStatus,
+  writeArtifact,
+  readArtifact
+} from "./utils/artifacts.js";
 
 const { readFileSync, existsSync } = fs;
 
@@ -129,90 +160,22 @@ async function ensureArtifactsDir() {
 }
 const MODEL_PARAMS_PATH = "./config/modelParams.json";
 
-async function ensureChunkCacheDir() {
-  await fsp.mkdir(CHUNK_CACHE_DIR, { recursive: true });
+// Chunk and season cache utilities now imported from ./utils/chunks.js
+// Wrapper functions to maintain API compatibility with CURRENT_BOOTSTRAP_REVISION
+async function loadChunkCacheLocal(label) {
+  return loadChunkCache(label, CURRENT_BOOTSTRAP_REVISION);
 }
 
-function chunkLabel(start, end) {
-  return `${start}-${end}`;
+async function writeChunkCacheLocal(label, payload = {}) {
+  return writeChunkCache(label, payload, CURRENT_BOOTSTRAP_REVISION, JSON_SPACE);
 }
 
-function chunkMetadataPath(label) {
-  return path.join(CHUNK_CACHE_DIR, `${CHUNK_FILE_PREFIX}_${label}.json`);
+async function loadSeasonCacheLocal(season) {
+  return loadSeasonCache(season, CURRENT_BOOTSTRAP_REVISION);
 }
 
-function chunkDonePath(label) {
-  return path.join(CHUNK_CACHE_DIR, `${CHUNK_FILE_PREFIX}_${label}.done`);
-}
-
-function expandSeasonsFromSelection(selection) {
-  if (!selection || !Number.isFinite(selection.start) || !Number.isFinite(selection.end)) return [];
-  const out = [];
-  for (let s = selection.start; s <= selection.end; s += 1) out.push(s);
-  return out;
-}
-
-async function loadChunkCache(label) {
-  try {
-    const raw = await fsp.readFile(chunkMetadataPath(label), "utf8");
-    const parsed = JSON.parse(raw);
-    if (parsed?.revision === CURRENT_BOOTSTRAP_REVISION) {
-      return parsed;
-    }
-    return null;
-  } catch (err) {
-    if (err?.code === "ENOENT") return null;
-    throw err;
-  }
-}
-
-async function writeChunkCache(label, payload = {}) {
-  await ensureChunkCacheDir();
-  const record = {
-    label,
-    revision: CURRENT_BOOTSTRAP_REVISION,
-    completed_at: new Date().toISOString(),
-    ...payload
-  };
-  await fsp.writeFile(chunkMetadataPath(label), JSON.stringify(record, null, JSON_SPACE));
-  await fsp.writeFile(chunkDonePath(label), `${record.completed_at}\n`);
-  return record;
-}
-
-function seasonMetadataPath(season) {
-  return path.join(CHUNK_CACHE_DIR, `season-${season}.json`);
-}
-
-function seasonDonePath(season) {
-  return path.join(CHUNK_CACHE_DIR, `season-${season}.done`);
-}
-
-async function loadSeasonCache(season) {
-  try {
-    const raw = await fsp.readFile(seasonMetadataPath(season), "utf8");
-    const parsed = JSON.parse(raw);
-    if (parsed?.revision === CURRENT_BOOTSTRAP_REVISION) {
-      return parsed;
-    }
-    return null;
-  } catch (err) {
-    if (err?.code === "ENOENT") return null;
-    throw err;
-  }
-}
-
-async function writeSeasonCache({ season, weeks }) {
-  if (!Number.isFinite(season) || !Array.isArray(weeks) || !weeks.length) return null;
-  await ensureChunkCacheDir();
-  const record = {
-    season,
-    weeks: Array.from(new Set(weeks)).sort((a, b) => a - b),
-    revision: CURRENT_BOOTSTRAP_REVISION,
-    updated_at: new Date().toISOString()
-  };
-  await fsp.writeFile(seasonMetadataPath(season), JSON.stringify(record, null, JSON_SPACE));
-  await fsp.writeFile(seasonDonePath(season), `${record.updated_at}\n`);
-  return record;
+async function writeSeasonCacheLocal({ season, weeks }) {
+  return writeSeasonCache({ season, weeks }, CURRENT_BOOTSTRAP_REVISION, JSON_SPACE);
 }
 
 const MIN_SEASON = MIN_SEASON_CONSTANT;
@@ -226,10 +189,7 @@ const NEXTGEN_DATA_MIN_SEASON = 2016;
 const seasonDbCache = new Map();
 const seasonDataCache = new Map();
 
-function normaliseSeason(value) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
+// normaliseSeason now imported from ./utils/chunks.js
 
 const CLI_DEFAULT_STRICT_BATCH = process.env.CI ? true : false;
 
@@ -405,48 +365,20 @@ export function resolveHistoricalChunkSelection({
 
 const CLI_ARGS = parseTrainCliArgs(process.argv.slice(2));
 
-function chunkSeasonList(seasons, size = DEFAULT_CHUNK_SPAN) {
-  if (!Array.isArray(seasons) || !seasons.length) return [];
-  const chunkSize = Math.max(1, Math.min(MAX_SEASONS_PER_CHUNK, Math.floor(size)));
-  const sorted = seasons
-    .map(normaliseSeason)
-    .filter((season) => season !== null)
-    .sort((a, b) => a - b);
-  const chunks = [];
-  for (let i = 0; i < sorted.length; i += chunkSize) {
-    const slice = sorted.slice(i, i + chunkSize);
-    if (slice.length) {
-      chunks.push({
-        seasons: slice,
-        start: slice[0],
-        end: slice[slice.length - 1]
-      });
-    }
-  }
-  return chunks;
+// chunkSeasonList now imported from ./utils/chunks.js
+// Wrapper to maintain default parameter behavior
+function chunkSeasonListLocal(seasons, size = DEFAULT_CHUNK_SPAN) {
+  return chunkSeasonList(seasons, size, MAX_SEASONS_PER_CHUNK);
 }
 
-function cachePromise(cache, key, factory) {
-  if (cache.has(key)) return cache.get(key);
-  const promise = Promise.resolve().then(factory).then(
-    (value) => {
-      cache.set(key, Promise.resolve(value));
-      return value;
-    },
-    (err) => {
-      cache.delete(key);
-      throw err;
-    }
-  );
-  cache.set(key, promise);
-  return promise;
-}
+// cachePromise now imported from ./utils/cache.js
+// createLimiter imported from ./utils/cache.js but using local version with MAX_WORKERS logic
 
 async function getSeasonDB(season) {
   return cachePromise(seasonDbCache, season, () => buildSeasonDB(season));
 }
 
-function createLimiter(maxConcurrent) {
+function createLimiterWithWorkerLimit(maxConcurrent) {
   const requested = Number.isFinite(maxConcurrent) && maxConcurrent > 0 ? Math.floor(maxConcurrent) : 1;
   const limit = Math.max(1, Math.min(MAX_WORKERS, requested));
   let active = 0;
@@ -498,6 +430,9 @@ function createLimiter(maxConcurrent) {
   };
 }
 
+// Alias for backward compatibility
+const createLimiter = createLimiterWithWorkerLimit;
+
 const dataGapNotices = new Set();
 
 function logDataCoverage(season) {
@@ -540,57 +475,10 @@ const HISTORICAL_ARTIFACT_PREFIXES = [
   "bt_features"
 ];
 
-function weekStamp(season, week) {
-  return `${season}_W${String(week).padStart(2, "0")}`;
-}
-
-function artifactPath(prefix, season, week) {
-  return path.join(ART_DIR, `${prefix}_${weekStamp(season, week)}.json`);
-}
-
-function weekArtifactsExist(season, week) {
-  return HISTORICAL_ARTIFACT_PREFIXES.every((prefix) => existsSync(artifactPath(prefix, season, week)));
-}
-
-async function modelsForSeasonExist(season) {
-  const seasonDir = path.join(ART_DIR, "models", String(season));
-  try {
-    const entries = await fsp.readdir(seasonDir, { withFileTypes: true });
-    return entries.some((entry) => entry.isFile() || entry.isDirectory());
-  } catch (err) {
-    if (err?.code === "ENOENT") return false;
-    throw err;
-  }
-}
-
-function ensureStatusDir() {
-  fs.mkdirSync(STATUS_DIR, { recursive: true });
-}
-
-function weekStatusPath(season, week) {
-  return path.join(STATUS_DIR, `${season}-W${String(week).padStart(2, "0")}.done`);
-}
-
-function weekStatusExists(season, week) {
-  return existsSync(weekStatusPath(season, week));
-}
-
-function markWeekStatus(season, week) {
-  ensureStatusDir();
-  fs.writeFileSync(weekStatusPath(season, week), new Date().toISOString());
-}
-
-function seasonStatusPath(season) {
-  return path.join(STATUS_DIR, `${season}.done`);
-}
-
-function seasonStatusExists(season) {
-  return existsSync(seasonStatusPath(season));
-}
-
-function markSeasonStatus(season) {
-  ensureStatusDir();
-  fs.writeFileSync(seasonStatusPath(season), new Date().toISOString());
+// Artifact and status utilities now imported from ./utils/artifacts.js
+// Wrapper for weekArtifactsExist to maintain HISTORICAL_ARTIFACT_PREFIXES behavior
+function weekArtifactsExistLocal(season, week) {
+  return weekArtifactsExist(season, week, HISTORICAL_ARTIFACT_PREFIXES);
 }
 
 function touchStrictBatchStatusIfAny() {

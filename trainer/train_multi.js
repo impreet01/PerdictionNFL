@@ -2913,7 +2913,7 @@ async function main() {
   );
 
   if (activeChunkLabel && !historicalOverride) {
-    const cachedChunk = await loadChunkCache(activeChunkLabel);
+    const cachedChunk = await loadChunkCacheLocal(activeChunkLabel);
     if (cachedChunk) {
       if (cachedChunk?.seasons?.length) {
         markSeasonStatusBatch(cachedChunk.seasons);
@@ -2970,7 +2970,7 @@ async function main() {
     if (chunkSelection) {
       const strictSeasonsFallback = expandSeasonsFromSelection(chunkSelection);
       if (activeChunkLabel) {
-        await writeChunkCache(activeChunkLabel, {
+        await writeChunkCacheLocal(activeChunkLabel, {
           startSeason: chunkSelection?.start,
           endSeason: chunkSelection?.end,
           seasons: strictSeasonsFallback
@@ -3054,7 +3054,7 @@ async function main() {
       }
       logDataCoverage(resolvedSeason);
       const sharedData = await (seasonLoadPromises.get(resolvedSeason) ?? loadSeasonDataCached(resolvedSeason));
-      const cachedSeason = !historicalOverride ? await loadSeasonCache(resolvedSeason) : null;
+      const cachedSeason = !historicalOverride ? await loadSeasonCacheLocal(resolvedSeason) : null;
       const seasonMarkerExists = !historicalOverride && seasonStatusExists(resolvedSeason);
       const isTargetSeason = resolvedSeason === targetSeason && !bootstrapRequired;
       if (seasonMarkerExists && cachedSeason?.weeks?.length && !isTargetSeason) {
@@ -3193,7 +3193,7 @@ async function main() {
       }
 
       if (processedWeeks.length) {
-        await writeSeasonCache({ season: resolvedSeason, weeks: processedWeeks });
+        await writeSeasonCacheLocal({ season: resolvedSeason, weeks: processedWeeks });
         if (_markSeasonOnce() && !historicalOverride) {
           console.log(`[train] Season ${resolvedSeason}: status marked (processed weeks).`);
         }
@@ -3218,7 +3218,7 @@ async function main() {
   const seasonsForRecord = (processedSeasons.length ? processedSeasons : strictSeasonsFallback);
 
   if (activeChunkLabel) {
-    await writeChunkCache(activeChunkLabel, {
+    await writeChunkCacheLocal(activeChunkLabel, {
       startSeason: chunkSelection?.start,
       endSeason: chunkSelection?.end,
       seasons: seasonsForRecord

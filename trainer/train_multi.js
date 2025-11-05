@@ -91,15 +91,14 @@ import {
 
 const { readFileSync, existsSync } = fs;
 
+const CI_FAST = process.env.CI_FAST === "1";
 const HISTORICAL_BATCH_SIZE = Number.isFinite(Number(process.env.BATCH_SIZE))
   ? Math.max(1, Number(process.env.BATCH_SIZE))
-  : 2;
-
-const CI_FAST = process.env.CI_FAST === "1";
+  : CI_FAST ? 4 : 2;
 const MAX_WORKERS = Number.isFinite(Number(process.env.MAX_WORKERS))
   ? Math.max(1, Number(process.env.MAX_WORKERS))
   : 2;
-const MAX_SEASONS_PER_CHUNK = CI_FAST ? 2 : 3;
+const MAX_SEASONS_PER_CHUNK = CI_FAST ? 4 : 3;
 const JSON_SPACE = CI_FAST ? undefined : 2;
 const ANN_BASE_CONFIG = Object.freeze({
   seeds: Number.isFinite(Number(process.env.ANN_SEEDS))

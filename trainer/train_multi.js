@@ -2916,6 +2916,7 @@ async function main() {
 
   if (activeChunkLabel && !historicalOverride) {
     const cachedChunk = await loadChunkCacheLocal(activeChunkLabel);
+    console.log(`[train:cache-check] cachedChunk=${cachedChunk ? 'found' : 'not found'} for label="${activeChunkLabel}"`);
     if (cachedChunk) {
       if (cachedChunk?.seasons?.length) {
         markSeasonStatusBatch(cachedChunk.seasons);
@@ -2948,6 +2949,7 @@ async function main() {
       console.log(
         `[train] Historical bootstrap chunk ${chunkSelection.start}-${chunkSelection.end} already cached – skipping.`
       );
+      console.log(`[train:early-return] Returning early due to cached chunk (line 2958)`);
       state = recordBootstrapChunk(state, BOOTSTRAP_KEYS.MODEL, {
         startSeason: chunkSelection.start,
         endSeason: chunkSelection.end,
@@ -2958,12 +2960,14 @@ async function main() {
       return;
     }
   }
+  console.log(`[train:cache-check] No cached chunk found, proceeding with training`);
 
   const requestedRangeLabel = explicitWindow
     ? `${explicitWindow.start}-${explicitWindow.end}`
     : "auto";
 
   if (!activeSeasons.length) {
+    console.log(`[train:no-seasons] No active seasons to process, taking early return path`);
     if (bootstrapRequired) {
       console.log(
         `[train] Historical bootstrap already satisfied for requested chunk range ${requestedRangeLabel}.`
@@ -2971,12 +2975,17 @@ async function main() {
     }
     if (chunkSelection) {
       const strictSeasonsFallback = expandSeasonsFromSelection(chunkSelection);
+      console.log(`[train:no-seasons] Writing chunk cache for empty season list, fallback=${JSON.stringify(strictSeasonsFallback)}`);
       if (activeChunkLabel) {
+        console.log(`[train:no-seasons] Calling writeChunkCacheLocal for "${activeChunkLabel}"`);
         await writeChunkCacheLocal(activeChunkLabel, {
           startSeason: chunkSelection?.start,
           endSeason: chunkSelection?.end,
           seasons: strictSeasonsFallback
         });
+        console.log(`[train:no-seasons] writeChunkCacheLocal completed`);
+      } else {
+        console.log(`[train:no-seasons] Skipping writeChunkCacheLocal because activeChunkLabel is null`);
       }
       state = recordBootstrapChunk(state, BOOTSTRAP_KEYS.MODEL, {
         startSeason: chunkSelection.start,
@@ -2986,11 +2995,15 @@ async function main() {
       console.log(
         `[train] Chunk ${chunkSelection.start}-${chunkSelection.end}: recorded ${strictSeasonsFallback.length} seasons.`
       );
+    } else {
+      console.log(`[train:no-seasons] chunkSelection is null, not writing chunk cache`);
     }
     saveTrainingState(state);
     touchStrictBatchStatusIfAny();
+    console.log(`[train:early-return] Returning early due to no active seasons (line 2992)`);
     return;
   }
+  console.log(`[train:seasons] Found ${activeSeasons.length} active seasons, proceeding with main processing loop`);
 
   if (bootstrapRequired && chunkSelection) {
     console.log(

@@ -2902,7 +2902,9 @@ async function main() {
     }
   }
 
+  console.log(`[train:init] chunkSelection=${JSON.stringify(chunkSelection)}`);
   const activeChunkLabel = chunkSelection ? chunkLabel(chunkSelection.start, chunkSelection.end) : null;
+  console.log(`[train:init] activeChunkLabel="${activeChunkLabel}"`);
 
   const activeSeasons = computeRequestedSeasons();
 
@@ -3217,12 +3219,21 @@ async function main() {
   const strictSeasonsFallback = expandSeasonsFromSelection(chunkSelection);
   const seasonsForRecord = (processedSeasons.length ? processedSeasons : strictSeasonsFallback);
 
+  console.log(`[train:chunk] activeChunkLabel="${activeChunkLabel}"`);
+  console.log(`[train:chunk] chunkSelection=${JSON.stringify(chunkSelection)}`);
+  console.log(`[train:chunk] processedSeasons=${JSON.stringify(processedSeasons)}`);
+  console.log(`[train:chunk] seasonsForRecord=${JSON.stringify(seasonsForRecord)}`);
+
   if (activeChunkLabel) {
+    console.log(`[train:chunk] Calling writeChunkCacheLocal for "${activeChunkLabel}"`);
     await writeChunkCacheLocal(activeChunkLabel, {
       startSeason: chunkSelection?.start,
       endSeason: chunkSelection?.end,
       seasons: seasonsForRecord
     });
+    console.log(`[train:chunk] writeChunkCacheLocal completed for "${activeChunkLabel}"`);
+  } else {
+    console.log(`[train:chunk] Skipping writeChunkCacheLocal because activeChunkLabel is null/undefined`);
   }
 
   if (chunkSelection) {

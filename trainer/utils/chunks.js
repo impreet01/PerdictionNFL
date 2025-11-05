@@ -71,11 +71,22 @@ export async function writeChunkCache(label, payload = {}, revision = null, json
     ...payload
   };
 
+  const metaPath = chunkMetadataPath(label);
+  const donePath = chunkDonePath(label);
+
+  console.log(`[writeChunkCache] Writing chunk cache for label="${label}"`);
+  console.log(`[writeChunkCache] Metadata path: ${metaPath}`);
+  console.log(`[writeChunkCache] Done marker path: ${donePath}`);
+  console.log(`[writeChunkCache] CHUNK_CACHE_DIR: ${CHUNK_CACHE_DIR}`);
+  console.log(`[writeChunkCache] ART_DIR: ${ART_DIR}`);
+
   await fsp.writeFile(
-    chunkMetadataPath(label),
+    metaPath,
     JSON.stringify(record, null, jsonSpace)
   );
-  await fsp.writeFile(chunkDonePath(label), `${record.completed_at}\n`);
+  await fsp.writeFile(donePath, `${record.completed_at}\n`);
+
+  console.log(`[writeChunkCache] Successfully wrote chunk marker: ${donePath}`);
 
   return record;
 }

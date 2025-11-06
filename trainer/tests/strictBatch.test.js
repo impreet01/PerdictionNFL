@@ -106,10 +106,34 @@ function cleanup() {
       }
     });
 
+    console.log("[test:verify-chunk] Checking for chunk markers");
+    console.log("[test:verify-chunk] artifactsDir:", artifactsDir);
+    console.log("[test:verify-chunk] Expected chunk directory:", path.join(artifactsDir, "chunks"));
+
     const chunkDir = path.join(artifactsDir, "chunks");
+    console.log("[test:verify-chunk] Does chunk directory exist?", fs.existsSync(chunkDir));
+
+    if (fs.existsSync(chunkDir)) {
+      const allFiles = fs.readdirSync(chunkDir);
+      console.log("[test:verify-chunk] All files in chunk directory:", allFiles);
+    } else {
+      console.log("[test:verify-chunk] Chunk directory does not exist");
+      console.log("[test:verify-chunk] Listing artifacts directory:");
+      if (fs.existsSync(artifactsDir)) {
+        const artifactsDirContents = fs.readdirSync(artifactsDir);
+        console.log("[test:verify-chunk] Contents of artifacts directory:", artifactsDirContents);
+      } else {
+        console.log("[test:verify-chunk] Artifacts directory itself does not exist!");
+      }
+    }
+
     const chunkFiles = fs.existsSync(chunkDir)
       ? fs.readdirSync(chunkDir).filter((name) => name.startsWith("model_") && name.endsWith(".done"))
       : [];
+
+    console.log("[test:verify-chunk] Filtered chunk files:", chunkFiles);
+    console.log("[test:verify-chunk] Expected:", ["model_2001-2002.done"]);
+
     assert.deepEqual(chunkFiles, ["model_2001-2002.done"], "Trainer should only emit the requested chunk marker");
 
     const finalState = readTrainingState();

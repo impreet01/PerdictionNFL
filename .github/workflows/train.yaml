@@ -205,6 +205,16 @@ jobs:
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           rm -rf "${ROOT}"
           mkdir -p "${ROOT}"
+      - name: Ensure lockfile
+        run: |
+          if [ ! -f package-lock.json ]; then
+            echo "No package-lock.json found; generating one…"
+            npm install --package-lock-only
+          else
+            echo "Found existing package-lock.json"
+          fi
+      - name: Install deps
+        run: npm ci --prefer-offline --no-audit --no-fund || npm install --no-audit --no-fund
       - name: Resolve bootstrap revision
         run: |
           REVISION=$(node --input-type=module -e "import('./trainer/trainingState.js').then((m) => process.stdout.write(m.CURRENT_BOOTSTRAP_REVISION))" 2>/dev/null | tr -d '\n\r' | grep -v '^\[' | head -n 1)
@@ -256,16 +266,6 @@ jobs:
         run: |
           ROOT="${ARTIFACTS_DIR:-artifacts}"
           tar -xzf "${ROOT}/historical_bootstrap.tgz" -C "${ROOT}"
-      - name: Ensure lockfile
-        run: |
-          if [ ! -f package-lock.json ]; then
-            echo "No package-lock.json found; generating one…"
-            npm install --package-lock-only
-          else
-            echo "Found existing package-lock.json"
-          fi
-      - name: Install deps
-        run: npm ci --prefer-offline --no-audit --no-fund || npm install --no-audit --no-fund
       - name: Resolve season (auto unless override)
         run: |
           if [ -n "${{ github.event.inputs.season }}" ]; then

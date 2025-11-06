@@ -21,7 +21,7 @@ env:
 jobs:
   train-and-predict:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     permissions:
       contents: write
       pull-requests: write
@@ -149,7 +149,7 @@ jobs:
         continue-on-error: true
 
       - name: Train and generate predictions
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: |
           echo "Training for Season $SEASON, Week $WEEK"
           CI_FAST=1 SEASON=${{ env.SEASON }} WEEK=${{ env.WEEK }} npm run train:multi
@@ -159,7 +159,7 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Run hybrid calibration
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: node trainer/hybrid_v2.js || echo "Calibration failed (non-fatal)"
         continue-on-error: true
         env:

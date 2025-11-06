@@ -2694,6 +2694,10 @@ async function runWeeklyWorkflow({ season, week }) {
 }
 
 async function main() {
+  console.log('[train:main:ENTRY] ========== MAIN FUNCTION STARTED ==========');
+  console.log('[train:main:ENTRY] process.argv:', process.argv);
+  console.log('[train:main:ENTRY] BATCH_START:', process.env.BATCH_START, 'BATCH_END:', process.env.BATCH_END);
+  console.log('[train:main:ENTRY] TRAINER_SMOKE_TEST:', process.env.TRAINER_SMOKE_TEST);
   await ensureArtifactsDir();
   await ensureChunkCacheDir();
   const targetSeason = Number(process.env.SEASON ?? new Date().getFullYear());
@@ -3352,14 +3356,18 @@ async function main() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  console.log('[train:bootstrap] About to call main()');
   main()
     .then(() => {
-      console.log('[train:main] Training completed successfully');
+      console.log('[train:main:EXIT] ========== TRAINING COMPLETED SUCCESSFULLY ==========');
+      console.log('[train:main:EXIT] About to call process.exit(0)');
       process.exit(0);
     })
     .catch((err) => {
-      console.error('[train:main] Training failed with error:');
-      console.error(err);
+      console.error('[train:main:ERROR] ========== TRAINING FAILED ==========');
+      console.error('[train:main:ERROR] Error:', err);
+      console.error('[train:main:ERROR] Stack:', err?.stack);
+      console.error('[train:main:ERROR] About to call process.exit(1)');
       process.exit(1);
     });
 }

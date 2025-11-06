@@ -99,6 +99,8 @@ function cleanup() {
       env: {
         BATCH_START: "2001",
         BATCH_END: "2002",
+        SEASON: "",  // Explicitly unset to avoid weekly mode
+        WEEK: "",    // Explicitly unset to avoid weekly mode
         TRAINER_SMOKE_TEST: "1",
         CI_FAST: "1",
         MAX_WORKERS: "1",

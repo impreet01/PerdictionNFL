@@ -99,6 +99,8 @@ jobs:
           echo "Cache miss detected - running historical training to populate cache"
           echo "This will train on all historical seasons to build the training cache"
           echo "Using reduced batch size and increased heap to avoid OOM"
+          # Unset SEASON and WEEK so train_multi.js doesn't enter weekly mode
+          unset SEASON WEEK
           FORCE_HISTORICAL_BOOTSTRAP=true CI_FAST=1 BATCH_SIZE=2 npm run train:multi
         env:
           FORCE_HISTORICAL_BOOTSTRAP: 'true'

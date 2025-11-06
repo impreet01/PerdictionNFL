@@ -1,0 +1,206 @@
+name: Bootstrap Historical Training
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'Season to train (or "all" for batch)'
+        required: false
+        default: 'all'
+      start_season:
+        description: 'Start season for batch (if season=all)'
+        required: false
+        default: '1999'
+      end_season:
+        description: 'End season for batch (if season=all)'
+        required: false
+        default: '2024'
+
+env:
+  ARTIFACTS_DIR: ${{ vars.ARTIFACTS_DIR || 'artifacts' }}
+  NODE_VERSION: 20.x
+  LOG_LEVEL: info
+
+jobs:
+  # Job 1: Determine which seasons need training
+  plan-seasons:
+    runs-on: ubuntu-latest
+    outputs:
+      seasons: ${{ steps.plan.outputs.seasons }}
+      matrix_size: ${{ steps.plan.outputs.matrix_size }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Restore training state cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ARTIFACTS_DIR }}/training_state.json
+            ${{ env.ARTIFACTS_DIR }}/chunks
+          key: historical-state-${{ github.sha }}
+          restore-keys: |
+            historical-state-
+
+      - name: Plan seasons to train
+        id: plan
+        run: |
+          node --input-type=module -e "
+          import { loadTrainingState } from './trainer/trainingState.js';
+          import fs from 'fs';
+
+          const state = loadTrainingState();
+          const completedSeasons = new Set(
+            (state?.bootstraps?.model_training?.seasons || [])
+              .map(s => Number(s.season))
+              .filter(s => Number.isFinite(s))
+          );
+
+          const input = process.env.SEASON_INPUT || 'all';
+          let seasons = [];
+
+          if (input === 'all') {
+            const start = Number(process.env.START_SEASON || 1999);
+            const end = Number(process.env.END_SEASON || 2024);
+            for (let s = start; s <= end; s++) {
+              if (!completedSeasons.has(s)) {
+                seasons.push(s);
+              }
+            }
+          } else {
+            const s = Number(input);
+            if (Number.isFinite(s) && !completedSeasons.has(s)) {
+              seasons.push(s);
+            }
+          }
+
+          console.log(\`Seasons needing training: \${seasons.join(', ')}\`);
+
+          // GitHub Actions matrix limit is 256, but we'll keep it reasonable
+          const matrixSize = Math.min(seasons.length, 10);
+
+          // Output as JSON array for matrix
+          console.log(\`::set-output name=seasons::\${JSON.stringify(seasons)}\`);
+          console.log(\`::set-output name=matrix_size::\${matrixSize}\`);
+          "
+        env:
+          SEASON_INPUT: ${{ github.event.inputs.season }}
+          START_SEASON: ${{ github.event.inputs.start_season }}
+          END_SEASON: ${{ github.event.inputs.end_season }}
+
+  # Job 2: Train each season independently (matrix strategy)
+  train-season:
+    needs: plan-seasons
+    if: needs.plan-seasons.outputs.matrix_size > 0
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false  # Continue even if one season fails
+      max-parallel: 3   # Train 3 seasons at a time
+      matrix:
+        season: ${{ fromJson(needs.plan-seasons.outputs.seasons) }}
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Restore season cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ARTIFACTS_DIR }}/model_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/predictions_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/bt_features_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/diagnostics_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/season_${{ matrix.season }}.json
+            ${{ env.ARTIFACTS_DIR }}/.status/season_${{ matrix.season }}.done
+          key: season-${{ matrix.season }}-${{ hashFiles('trainer/train_multi.js', 'trainer/trainingState.js') }}
+
+      - name: Train season ${{ matrix.season }}
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 25
+        run: |
+          echo "Training season ${{ matrix.season }} with historical context"
+          # Train this specific season with access to all prior seasons
+          BATCH_START=${{ matrix.season }} BATCH_END=${{ matrix.season }} \
+          CI_FAST=1 MAX_WORKERS=1 DATA_FETCH_CONCURRENCY=1 \
+          npm run train:multi
+        env:
+          NODE_OPTIONS: '--max-old-space-size=7168 --expose-gc'
+          BATCH_START: ${{ matrix.season }}
+          BATCH_END: ${{ matrix.season }}
+          MAX_WORKERS: '1'
+          DATA_FETCH_CONCURRENCY: '1'
+
+      - name: Upload season artifacts
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: season-${{ matrix.season }}-artifacts
+          path: |
+            ${{ env.ARTIFACTS_DIR }}/model_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/predictions_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/bt_features_${{ matrix.season }}_*.json
+          retention-days: 90
+
+  # Job 3: Consolidate and update training state
+  consolidate:
+    needs: train-season
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Download all season artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: temp-artifacts
+          pattern: season-*-artifacts
+
+      - name: Consolidate artifacts
+        run: |
+          mkdir -p ${{ env.ARTIFACTS_DIR }}
+          cp -r temp-artifacts/*/* ${{ env.ARTIFACTS_DIR }}/ || true
+
+      - name: Update training state
+        run: npm run bootstrap:state
+
+      - name: Commit consolidated artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add artifacts/
+          git diff --cached --quiet || git commit -m "Historical training: consolidated seasons"
+          git push || echo "No changes to push"

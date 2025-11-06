@@ -92,6 +92,16 @@ jobs:
             npm run bootstrap:state || echo "Bootstrap failed, will use existing artifacts"
           fi
 
+      - name: Run historical training on cache miss
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 30
+        run: |
+          echo "Cache miss detected - running historical training to populate cache"
+          echo "This will train on all historical seasons to build the training cache"
+          FORCE_HISTORICAL_BOOTSTRAP=true CI_FAST=1 npm run train:multi
+        env:
+          FORCE_HISTORICAL_BOOTSTRAP: 'true'
+
       - name: Fetch context data
         run: |
           echo "Fetching injuries, markets, and weather data..."

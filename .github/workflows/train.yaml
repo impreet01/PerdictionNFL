@@ -152,11 +152,14 @@ jobs:
         timeout-minutes: 30
         run: |
           echo "Training for Season $SEASON, Week $WEEK"
-          CI_FAST=1 SEASON=${{ env.SEASON }} WEEK=${{ env.WEEK }} npm run train:multi
+          # Use same aggressive memory settings as historical training
+          CI_FAST=1 MAX_WORKERS=1 DATA_FETCH_CONCURRENCY=1 SEASON=${{ env.SEASON }} WEEK=${{ env.WEEK }} npm run train:multi
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ env.WEEK }}
-          NODE_OPTIONS: '--max-old-space-size=4096'
+          MAX_WORKERS: '1'
+          DATA_FETCH_CONCURRENCY: '1'
+          NODE_OPTIONS: '--max-old-space-size=7168 --expose-gc'
 
       - name: Run hybrid calibration
         timeout-minutes: 15
@@ -165,7 +168,7 @@ jobs:
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ env.WEEK }}
-          NODE_OPTIONS: '--max-old-space-size=4096'
+          NODE_OPTIONS: '--max-old-space-size=7168 --expose-gc'
 
       - name: Validate output artifacts
         run: npm run validate:artifacts || echo "Validation warnings found (non-fatal)"

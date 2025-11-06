@@ -3352,10 +3352,16 @@ async function main() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+  main()
+    .then(() => {
+      console.log('[train:main] Training completed successfully');
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('[train:main] Training failed with error:');
+      console.error(err);
+      process.exit(1);
+    });
 }
 
 export { runWeeklyWorkflow };

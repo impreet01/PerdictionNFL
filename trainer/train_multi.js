@@ -572,7 +572,8 @@ function shouldRewriteHistorical() {
     "OVERWRITE_HISTORICAL",
     "REBUILD_HISTORICAL",
     "REGENERATE_HISTORICAL",
-    "REGEN_HISTORICAL"
+    "REGEN_HISTORICAL",
+    "FORCE_HISTORICAL_BOOTSTRAP"
   ];
   return keys.some((key) => envFlag(key));
 }

@@ -143,10 +143,12 @@ jobs:
         run: |
           echo "Training season ${{ matrix.season }} with historical context"
           # Train this specific season with access to all prior seasons
-          BATCH_START=${{ matrix.season }} BATCH_END=${{ matrix.season }} \
+          # FORCE_HISTORICAL_BOOTSTRAP ensures artifacts are regenerated even if they exist
+          FORCE_HISTORICAL_BOOTSTRAP=true BATCH_START=${{ matrix.season }} BATCH_END=${{ matrix.season }} \
           CI_FAST=1 MAX_WORKERS=1 DATA_FETCH_CONCURRENCY=1 \
           npm run train:multi
         env:
+          FORCE_HISTORICAL_BOOTSTRAP: 'true'
           NODE_OPTIONS: '--max-old-space-size=7168 --expose-gc'
           BATCH_START: ${{ matrix.season }}
           BATCH_END: ${{ matrix.season }}

@@ -94,13 +94,18 @@ jobs:
 
       - name: Run historical training on cache miss
         if: steps.cache.outputs.cache-hit != 'true'
-        timeout-minutes: 30
+        timeout-minutes: 35
         run: |
           echo "Cache miss detected - running historical training to populate cache"
           echo "This will train on all historical seasons to build the training cache"
-          FORCE_HISTORICAL_BOOTSTRAP=true CI_FAST=1 npm run train:multi
+          echo "Using reduced batch size and increased heap to avoid OOM"
+          # Unset SEASON and WEEK so train_multi.js doesn't enter weekly mode
+          unset SEASON WEEK
+          FORCE_HISTORICAL_BOOTSTRAP=true CI_FAST=1 BATCH_SIZE=2 npm run train:multi
         env:
           FORCE_HISTORICAL_BOOTSTRAP: 'true'
+          BATCH_SIZE: '2'
+          NODE_OPTIONS: '--max-old-space-size=6144'
 
       - name: Fetch context data
         run: |
@@ -149,6 +154,7 @@ jobs:
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ env.WEEK }}
+          NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Run hybrid calibration
         timeout-minutes: 10
@@ -157,6 +163,7 @@ jobs:
         env:
           SEASON: ${{ env.SEASON }}
           WEEK: ${{ env.WEEK }}
+          NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Validate output artifacts
         run: npm run validate:artifacts || echo "Validation warnings found (non-fatal)"

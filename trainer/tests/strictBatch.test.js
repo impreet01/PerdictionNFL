@@ -34,6 +34,15 @@ function runCommand(command, args = [], { env: envOverrides = {}, cwd = repoRoot
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
+
+  // Always log output for debugging
+  if (result.stdout) {
+    console.log(`[${command} stdout]:\n${result.stdout}`);
+  }
+  if (result.stderr) {
+    console.log(`[${command} stderr]:\n${result.stderr}`);
+  }
+
   if (result.status !== 0) {
     const message = [
       `${command} ${args.join(" ")} failed with code ${result.status}`,

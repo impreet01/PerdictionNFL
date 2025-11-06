@@ -207,8 +207,13 @@ jobs:
           mkdir -p "${ROOT}"
       - name: Resolve bootstrap revision
         run: |
-          REVISION=$(node --input-type=module -e "import('./trainer/trainingState.js').then((m) => process.stdout.write(m.CURRENT_BOOTSTRAP_REVISION))")
+          REVISION=$(node --input-type=module -e "import('./trainer/trainingState.js').then((m) => process.stdout.write(m.CURRENT_BOOTSTRAP_REVISION))" 2>/dev/null | tr -d '\n\r' | grep -v '^\[' | head -n 1)
+          if [ -z "$REVISION" ]; then
+            echo "Failed to resolve bootstrap revision"
+            exit 1
+          fi
           echo "CURRENT_BOOTSTRAP_REVISION=$REVISION" >> $GITHUB_ENV
+          echo "Resolved revision: $REVISION"
       - name: Restore historical cache
         id: cache
         uses: actions/cache@v4

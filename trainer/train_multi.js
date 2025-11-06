@@ -2772,14 +2772,29 @@ async function main() {
 
   let seasonsInScope = [targetSeason];
   if (bootstrapRequired || allowHistoricalRewrite) {
-    const discoveredSeasons = await listDatasetSeasons("teamWeekly").catch(() => []);
-    seasonsInScope = await resolveSeasonList({
-      targetSeason,
-      includeAll: true,
-      sinceSeason: bootstrapRequired ? MIN_SEASON : MIN_TRAIN_SEASON,
-      maxSeasons: Number.isFinite(MAX_TRAIN_SEASONS) ? MAX_TRAIN_SEASONS : null,
-      availableSeasons: discoveredSeasons
-    });
+    // When forcing historical bootstrap, generate the full season range explicitly
+    // This ensures we train on all historical data (1999-2024) regardless of dataset discovery
+    if (shouldRewriteHistorical()) {
+      const currentYear = new Date().getFullYear();
+      const historicalEnd = Number.isFinite(targetSeason) && targetSeason < currentYear
+        ? targetSeason
+        : currentYear - 1;
+      console.log(`[train] FORCE_HISTORICAL_BOOTSTRAP: Generating full season range ${MIN_SEASON}-${historicalEnd}`);
+      const fullRange = [];
+      for (let season = MIN_SEASON; season <= historicalEnd; season += 1) {
+        fullRange.push(season);
+      }
+      seasonsInScope = fullRange;
+    } else {
+      const discoveredSeasons = await listDatasetSeasons("teamWeekly").catch(() => []);
+      seasonsInScope = await resolveSeasonList({
+        targetSeason,
+        includeAll: true,
+        sinceSeason: bootstrapRequired ? MIN_SEASON : MIN_TRAIN_SEASON,
+        maxSeasons: Number.isFinite(MAX_TRAIN_SEASONS) ? MAX_TRAIN_SEASONS : null,
+        availableSeasons: discoveredSeasons
+      });
+    }
   }
 
   let uniqueSeasons = Array.from(

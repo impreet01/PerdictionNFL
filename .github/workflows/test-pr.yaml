@@ -1,0 +1,53 @@
+name: Test Pull Requests
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - 'claude/**'
+
+env:
+  NODE_VERSION: 20.x
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Ensure lockfile
+        run: |
+          if [ ! -f package-lock.json ]; then
+            echo "No package-lock.json found; generating one…"
+            npm install --package-lock-only
+          else
+            echo "Found existing package-lock.json"
+          fi
+
+      - name: Install deps
+        run: npm ci --prefer-offline --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Run core tests
+        run: npm run test:core
+
+      - name: Run strict-batch window test
+        run: npm run test:strictBatch
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts
+          path: |
+            .test_artifacts/**
+            trainer/tests/*.log
+          if-no-files-found: warn

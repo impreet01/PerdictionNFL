@@ -3230,6 +3230,10 @@ async function main() {
       if (_markSeasonOnce() && !historicalOverride) {
         console.log(`[train] Season ${resolvedSeason}: status marked (finalize).`);
       }
+      // Manual garbage collection after each season to reclaim memory
+      if (typeof global.gc === "function") {
+        global.gc();
+      }
     }
   }
 
@@ -3336,6 +3340,11 @@ async function main() {
         `[train] Historical bootstrap revision ${CURRENT_BOOTSTRAP_REVISION} now covers seasons ${seasonsPayload[0]?.season ?? ""}-${seasonsPayload[seasonsPayload.length - 1]?.season ?? ""}.`
       );
     }
+  }
+
+  // Manual garbage collection after chunk processing completes
+  if (typeof global.gc === "function") {
+    global.gc();
   }
 
   const runSummary = latestTargetResult

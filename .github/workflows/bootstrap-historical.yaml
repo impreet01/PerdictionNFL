@@ -104,7 +104,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false  # Continue even if one season fails
-      max-parallel: 3   # Train 3 seasons at a time
+      max-parallel: 1   # Train seasons sequentially to preserve warm-start learning
       matrix:
         season: ${{ fromJson(needs.plan-seasons.outputs.seasons) }}
 
@@ -123,6 +123,14 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Download prior season artifacts for warm-start
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ env.ARTIFACTS_DIR }}
+          pattern: season-*-artifacts
+          merge-multiple: true
+        continue-on-error: true  # First season (1999) won't have prior artifacts
 
       - name: Restore season cache
         id: cache

@@ -54,15 +54,23 @@ jobs:
         id: plan
         run: |
           node --input-type=module -e "
-          import { loadTrainingState } from './trainer/trainingState.js';
+          import { loadTrainingState, shouldForceBootstrap } from './trainer/trainingState.js';
           import fs from 'fs';
 
+          // Check if we should force training on all seasons (ignore cache)
+          const forceAll = shouldForceBootstrap();
+
           const state = loadTrainingState();
-          const completedSeasons = new Set(
+          const completedSeasons = forceAll ? new Set() : new Set(
             (state?.bootstraps?.model_training?.seasons || [])
               .map(s => Number(s.season))
               .filter(s => Number.isFinite(s))
           );
+
+          if (forceAll) {
+            console.log('🔥 FORCE_HISTORICAL_BOOTSTRAP detected - ignoring all cached state');
+            console.log('📋 Will train ALL seasons from 1999-2024 regardless of cache');
+          }
 
           const input = process.env.SEASON_INPUT || 'all';
           let seasons = [];
@@ -83,6 +91,7 @@ jobs:
           }
 
           console.log(\`Seasons needing training: \${seasons.join(', ')}\`);
+          console.log(\`Total seasons to train: \${seasons.length}\`);
 
           // GitHub Actions matrix limit is 256, but we'll keep it reasonable
           const matrixSize = Math.min(seasons.length, 10);
@@ -95,6 +104,7 @@ jobs:
           SEASON_INPUT: ${{ github.event.inputs.season }}
           START_SEASON: ${{ github.event.inputs.start_season }}
           END_SEASON: ${{ github.event.inputs.end_season }}
+          FORCE_HISTORICAL_BOOTSTRAP: 'true'
 
   # Job 2: Train each season independently (matrix strategy)
   train-season:
@@ -143,7 +153,7 @@ jobs:
             ${{ env.ARTIFACTS_DIR }}/diagnostics_${{ matrix.season }}_*.json
             ${{ env.ARTIFACTS_DIR }}/season_${{ matrix.season }}.json
             ${{ env.ARTIFACTS_DIR }}/.status/season_${{ matrix.season }}.done
-          key: season-${{ matrix.season }}-${{ hashFiles('trainer/train_multi.js', 'trainer/trainingState.js') }}
+          key: season-${{ matrix.season }}-run${{ github.run_number }}-${{ hashFiles('trainer/train_multi.js', 'trainer/trainingState.js') }}
 
       - name: Train season ${{ matrix.season }}
         if: steps.cache.outputs.cache-hit != 'true'

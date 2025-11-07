@@ -163,6 +163,17 @@ jobs:
           MAX_WORKERS: '1'
           DATA_FETCH_CONCURRENCY: '1'
 
+      - name: Run hybrid calibration for season ${{ matrix.season }}
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        run: |
+          echo "Running hybrid v2 calibration for season ${{ matrix.season }}"
+          node trainer/hybrid_v2.js || echo "Hybrid calibration failed (non-fatal)"
+        continue-on-error: true
+        env:
+          SEASON: ${{ matrix.season }}
+          NODE_OPTIONS: '--max-old-space-size=7168 --expose-gc'
+
       - name: Upload season artifacts
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v4
@@ -172,6 +183,10 @@ jobs:
             ${{ env.ARTIFACTS_DIR }}/model_${{ matrix.season }}_*.json
             ${{ env.ARTIFACTS_DIR }}/predictions_${{ matrix.season }}_*.json
             ${{ env.ARTIFACTS_DIR }}/bt_features_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/outcomes_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/metrics_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/diagnostics_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/calibration_history_${{ matrix.season }}.csv
           retention-days: 90
 
   # Job 3: Consolidate and update training state

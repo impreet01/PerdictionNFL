@@ -172,6 +172,8 @@ jobs:
             ${{ env.ARTIFACTS_DIR }}/model_${{ matrix.season }}_*.json
             ${{ env.ARTIFACTS_DIR }}/predictions_${{ matrix.season }}_*.json
             ${{ env.ARTIFACTS_DIR }}/bt_features_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/outcomes_${{ matrix.season }}_*.json
+            ${{ env.ARTIFACTS_DIR }}/metrics_${{ matrix.season }}_*.json
           retention-days: 90
 
   # Job 3: Consolidate and update training state

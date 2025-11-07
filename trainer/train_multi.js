@@ -2562,9 +2562,29 @@ async function runWeeklyWorkflow({ season, week }) {
   const prevSeason = season - 1;
   const promoted = await promote({ prevSeason, nextSeason: season });
   if (week === 1 && !promoted) {
-    throw new Error(`[train] Unable to promote final ensemble from season ${prevSeason}: promotion failed.`);
-  }
-  if (!promoted) {
+    // Check if week-00 models already exist or if seed metadata is present
+    const hasModels = await modelsForSeasonExist(season);
+    const state = loadTrainingState();
+    const hasSeedMetadata = state?.weekly_seed?.season === season &&
+                           state?.weekly_seed?.seededFrom === prevSeason;
+
+    if (!hasModels && !hasSeedMetadata) {
+      throw new Error(
+        `[train] Unable to promote final ensemble from season ${prevSeason}: promotion failed. ` +
+        `Expected ${artp("models", String(prevSeason), "final")} to exist. ` +
+        `Restore prior-season finals before running Week 1.`
+      );
+    }
+
+    if (hasSeedMetadata) {
+      console.log(
+        `[train] Week-00 seed metadata exists for season ${season} (seeded from ${prevSeason}); ` +
+        `skipping promotion.`
+      );
+    } else {
+      console.log(`[train] Week-00 models already exist for season ${season}; skipping promotion.`);
+    }
+  } else if (!promoted) {
     console.warn(`[train] Promotion skipped for season ${season}; continuing with existing seeds.`);
   } else {
     console.log(`[train] Promotion complete for season ${season} using finals from ${prevSeason}.`);

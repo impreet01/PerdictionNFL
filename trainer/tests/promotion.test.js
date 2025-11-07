@@ -179,6 +179,15 @@ function cleanup() {
         NODE_OPTIONS: `--import=${fixturePath}`
       }
     });
+
+    // Clear weekly_seed metadata to test that promotion failure is properly detected
+    const stateBeforeFailureTest = readTrainingState();
+    delete stateBeforeFailureTest.weekly_seed;
+    fs.writeFileSync(
+      path.join(artifactsDir, "training_state.json"),
+      JSON.stringify(stateBeforeFailureTest, null, 2)
+    );
+
     const failure = spawnSync("npm", ["run", "train:multi"], {
       cwd: repoRoot,
       env: {

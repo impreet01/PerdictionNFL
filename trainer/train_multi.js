@@ -30,6 +30,11 @@ import { buildFeatures, FEATS as FEATS_BASE } from "./featureBuild.js";
 import { buildBTFeatures, BT_FEATURES } from "./featureBuild_bt.js";
 import { trainBTModel, predictBT, predictBTDeterministic } from "./model_bt.js";
 import { trainANNCommittee, predictANNCommittee, gradientANNCommittee } from "./model_ann.js";
+import { loadFeatureFlags, loadAnalysisFlags, isFeatureEnabled } from "./featureFlags.js";
+import { enhanceFeatures, getEnabledEnhancedFeatures, getTotalFeatureCount } from "./featureBuild_enhanced.js";
+import { generateAnalysisReport, generateSegmentedReport, calculateROI, analyzeErrors, calculateCalibrationError, trackFeatureImportance } from "./analysis.js";
+import { generateAllVisualizations, generateCalibrationPlot, generateConfusionMatrix, generateFeatureImportancePlot, saveVisualization } from "./visualizations.js";
+import { isABTestingEnabled, loadABTestingConfig, saveVariantPredictions } from "./abTesting.js";
 import { isStrictBatch, getStrictBounds, clampSeasonsToStrictBounds } from "./lib/strictBatch.js";
 import { DecisionTreeClassifier as CART } from "ml-cart";
 import { Matrix, SVD } from "ml-matrix";
@@ -1384,6 +1389,41 @@ export async function runTraining({ season, week, data = {}, options = {} } = {}
     weather: weatherRows,
     injuries: injuryRows
   });
+
+  // --- Apply enhanced features if enabled ---
+  const featureFlags = loadFeatureFlags();
+  const hasEnhancedFeatures = getEnabledEnhancedFeatures().length > 0;
+  if (hasEnhancedFeatures) {
+    console.log(`[train] Applying enhanced features: ${getEnabledEnhancedFeatures().join(", ")}`);
+
+    // Apply to current season feature rows
+    for (let i = 0; i < featureRows.length; i++) {
+      const row = featureRows[i];
+      const game = schedules.find(
+        (g) => g.season === row.season && g.week === row.week &&
+               ((g.home_team === row.team && row.home === 1) || (g.away_team === row.team && row.home === 0))
+      );
+      if (game) {
+        featureRows[i] = enhanceFeatures(row, game.home_team, game.away_team, null, null);
+      }
+    }
+
+    // Apply to historical feature rows
+    for (let i = 0; i < historicalFeatureRows.length; i++) {
+      const row = historicalFeatureRows[i];
+      const game = schedules.find(
+        (g) => g.season === row.season && g.week === row.week &&
+               ((g.home_team === row.team && row.home === 1) || (g.away_team === row.team && row.home === 0))
+      );
+      if (game) {
+        historicalFeatureRows[i] = enhanceFeatures(row, game.home_team, game.away_team, null, null);
+      }
+    }
+
+    console.log(`[train] Enhanced ${featureRows.length} current season rows and ${historicalFeatureRows.length} historical rows`);
+    console.log(`[train] Total feature count: ${getTotalFeatureCount(FEATS_BASE.length)}`);
+  }
+
   const btRows = buildBTFeatures({
     teamWeekly,
     teamGame,
@@ -2076,6 +2116,93 @@ export async function writeArtifacts(result) {
     path.join(ART_DIR, `bt_features_${stamp}.json`),
     JSON.stringify(result.btDebug, null, JSON_SPACE)
   );
+
+  // --- Generate enhanced analysis artifacts if enabled ---
+  const analysisFlags = loadAnalysisFlags();
+  const predictions = Array.isArray(result.predictions)
+    ? result.predictions
+    : result.predictions?.games || result.predictions;
+
+  if (analysisFlags.enableROIMetrics) {
+    console.log("[writeArtifacts] Generating ROI analysis...");
+    const roiThresholds = [0.55, 0.60, 0.65, 0.70];
+    const roiAnalysis = {};
+    for (const threshold of roiThresholds) {
+      roiAnalysis[`threshold_${Math.round(threshold * 100)}`] = calculateROI(predictions, threshold);
+    }
+    await fsp.writeFile(
+      path.join(ART_DIR, `roi_analysis_${stamp}.json`),
+      JSON.stringify(roiAnalysis, null, JSON_SPACE)
+    );
+  }
+
+  if (analysisFlags.enableSegmentedReports) {
+    console.log("[writeArtifacts] Generating segmented performance report...");
+    const segmentedReport = generateSegmentedReport(predictions);
+    await fsp.writeFile(
+      path.join(ART_DIR, `segmented_report_${stamp}.json`),
+      JSON.stringify(segmentedReport, null, JSON_SPACE)
+    );
+  }
+
+  if (analysisFlags.enableFeatureImportance && result.modelSummary?.models?.logistic?.coefficients) {
+    console.log("[writeArtifacts] Generating feature importance analysis...");
+    const featureImportance = trackFeatureImportance(
+      result.modelSummary.models.logistic,
+      FEATS_ENR
+    );
+    await fsp.writeFile(
+      path.join(ART_DIR, `feature_importance_${stamp}.json`),
+      JSON.stringify(featureImportance, null, JSON_SPACE)
+    );
+  }
+
+  // Generate error analysis and calibration metrics
+  const hasActuals = predictions.some(p => p.actual !== null && p.actual !== undefined);
+  if (hasActuals) {
+    console.log("[writeArtifacts] Generating error analysis and calibration metrics...");
+    const errorAnalysis = analyzeErrors(predictions);
+    await fsp.writeFile(
+      path.join(ART_DIR, `error_analysis_${stamp}.json`),
+      JSON.stringify(errorAnalysis, null, JSON_SPACE)
+    );
+
+    const calibrationMetrics = calculateCalibrationError(predictions, 10);
+    await fsp.writeFile(
+      path.join(ART_DIR, `calibration_metrics_${stamp}.json`),
+      JSON.stringify(calibrationMetrics, null, JSON_SPACE)
+    );
+  }
+
+  // --- Generate visualizations if enabled ---
+  if (analysisFlags.enableCalibrationPlots && hasActuals) {
+    console.log("[writeArtifacts] Generating calibration plot...");
+    const calibrationPlot = generateCalibrationPlot(predictions);
+    await saveVisualization(calibrationPlot, `calibration_${stamp}.html`);
+  }
+
+  if (analysisFlags.enableConfusionMatrix && hasActuals) {
+    console.log("[writeArtifacts] Generating confusion matrix...");
+    const confusionMatrix = generateConfusionMatrix(predictions);
+    await saveVisualization(confusionMatrix, `confusion_matrix_${stamp}.html`);
+  }
+
+  if (analysisFlags.enableFeatureImportance && result.modelSummary?.models?.logistic?.coefficients) {
+    console.log("[writeArtifacts] Generating feature importance chart...");
+    const featureImportance = trackFeatureImportance(
+      result.modelSummary.models.logistic,
+      FEATS_ENR
+    );
+    const importancePlot = generateFeatureImportancePlot(featureImportance);
+    await saveVisualization(importancePlot, `feature_importance_${stamp}.html`);
+  }
+
+  // --- Save A/B test variant predictions if enabled ---
+  if (isABTestingEnabled()) {
+    const abConfig = loadABTestingConfig();
+    console.log(`[writeArtifacts] Saving variant predictions for: ${abConfig.variantName}`);
+    await saveVariantPredictions(predictions, abConfig.variantName, result.season, result.week);
+  }
 }
 
 export async function updateHistoricalArtifacts({ season, schedules }) {

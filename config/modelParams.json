@@ -11,5 +11,38 @@
     "batchSize": 32,
     "maxEpochs": 400,
     "dropout": 0.5
+  },
+  "features": {
+    "divisionalGames": false,
+    "travelDistance": false,
+    "enhancedHomeAway": false,
+    "additionalRollingWindows": false,
+    "interactionFeatures": false
+  },
+  "analysis": {
+    "enableROIMetrics": true,
+    "enableSegmentedReports": true,
+    "enableFeatureImportance": true,
+    "enableCalibrationPlots": false,
+    "enableConfusionMatrix": false
+  },
+  "models": {
+    "logistic": {
+      "enabled": true
+    },
+    "cart": {
+      "enabled": true
+    },
+    "bt": {
+      "enabled": true
+    },
+    "ann": {
+      "enabled": true
+    }
+  },
+  "abTesting": {
+    "enabled": false,
+    "variantName": "baseline",
+    "compareAgainst": null
   }
 }

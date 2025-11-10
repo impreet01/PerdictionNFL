@@ -757,6 +757,120 @@ async function historyResponse(query, mode) {
   return { filter, data: filtered };
 }
 
+async function respondWithVariantPredictions(url) {
+  const variant = url.searchParams.get("variant");
+  if (!variant) {
+    throw new HttpError(400, "variant query parameter is required");
+  }
+
+  const normalizedVariant = variant.trim().toLowerCase();
+  const validVariants = ["baseline", "variant_a", "variant_b", "variant_c"];
+  if (!validVariants.includes(normalizedVariant)) {
+    throw new HttpError(400, `variant must be one of: ${validVariants.join(", ")}`);
+  }
+
+  // Construct filename with variant suffix
+  const season = toInt(url.searchParams.get("season"), "season", null);
+  const week = toInt(url.searchParams.get("week"), "week", null);
+
+  if (season == null || week == null) {
+    throw new HttpError(400, "season and week are required for variant predictions");
+  }
+
+  const paddedWeek = String(week).padStart(2, "0");
+  const filename = `predictions_${season}_W${paddedWeek}_${normalizedVariant}.json`;
+
+  const { rawBase } = resolveConfig();
+  const url_str = `${rawBase}/${filename}`;
+
+  try {
+    const { data, etag, lastModified } = await fetchArtifactJson(url_str, filename);
+    return json(
+      {
+        season,
+        week,
+        variant: normalizedVariant,
+        data: Array.isArray(data) ? data : []
+      },
+      200,
+      { headers: { etag, "last-modified": lastModified } }
+    );
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 404) {
+      throw new HttpError(404, `variant ${normalizedVariant} predictions not found for season ${season} week ${week}`);
+    }
+    throw err;
+  }
+}
+
+async function respondWithVisualization(type, url) {
+  const season = toInt(url.searchParams.get("season"), "season", null);
+  const week = toInt(url.searchParams.get("week"), "week", null);
+
+  if (season == null || week == null) {
+    throw new HttpError(400, "season and week are required for visualizations");
+  }
+
+  const paddedWeek = String(week).padStart(2, "0");
+  const filename = `${type}_${season}_W${paddedWeek}.html`;
+
+  const { rawBase } = resolveConfig();
+  const url_str = `${rawBase}/visualizations/${filename}`;
+
+  try {
+    const cacheTtl = CACHE_TTL();
+    let resp;
+
+    if (artifactCache) {
+      const cacheKey = `viz:${filename}`;
+      const cached = await artifactCache.get(cacheKey);
+      if (cached) {
+        return new Response(cached, {
+          status: 200,
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": `public, max-age=${cacheTtl}`,
+            "access-control-allow-origin": "*"
+          }
+        });
+      }
+    }
+
+    resp = await fetch(url_str, { cf: { cacheEverything: true, cacheTtl } });
+
+    if (!resp.ok) {
+      if (resp.status === 404) {
+        throw new HttpError(404, `${type} visualization not found for season ${season} week ${week}`);
+      }
+      throw new HttpError(resp.status || 502, `Failed to fetch visualization: ${resp.status}`);
+    }
+
+    const html = await resp.text();
+
+    if (artifactCache) {
+      const cacheKey = `viz:${filename}`;
+      await artifactCache.put(cacheKey, html, { expirationTtl: cacheTtl });
+    }
+
+    return new Response(html, {
+      status: 200,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": `public, max-age=${cacheTtl}`,
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET,OPTIONS",
+        "access-control-allow-headers": "*",
+        Vary: "Origin"
+      }
+    });
+  } catch (err) {
+    if (err instanceof HttpError) {
+      throw err;
+    }
+    throw new HttpError(502, `Failed to fetch visualization: ${err.message}`);
+  }
+}
+
 function corsPreflight() {
   return new Response(null, { status: 204, headers: baseHeaders(204) });
 }
@@ -846,6 +960,40 @@ export default {
       if (path === "/artifact") {
         return await artifactResponse(url);
       }
+
+      // Enhanced analysis endpoints (new)
+      if (path === "/analysis/roi") {
+        return await respondWithArtifact("roi_analysis", url);
+      }
+      if (path === "/analysis/segments") {
+        return await respondWithArtifact("segmented_report", url);
+      }
+      if (path === "/analysis/errors") {
+        return await respondWithArtifact("error_analysis", url);
+      }
+      if (path === "/analysis/calibration") {
+        return await respondWithArtifact("calibration_metrics", url);
+      }
+      if (path === "/analysis/importance") {
+        return await respondWithArtifact("feature_importance", url);
+      }
+
+      // A/B testing variant predictions (new)
+      if (path === "/predictions/variant") {
+        return await respondWithVariantPredictions(url);
+      }
+
+      // Visualization endpoints (new)
+      if (path === "/visualizations/calibration") {
+        return await respondWithVisualization("calibration", url);
+      }
+      if (path === "/visualizations/confusion") {
+        return await respondWithVisualization("confusion_matrix", url);
+      }
+      if (path === "/visualizations/importance") {
+        return await respondWithVisualization("feature_importance", url);
+      }
+
       return json({ error: "Unknown endpoint" }, 404);
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;

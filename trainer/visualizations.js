@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { loadAnalysisFlags } from "./featureFlags.js";
-import { calculateCalibrationError } from "./analysis.js";
+import { calculateCalibrationError, trackFeatureImportance } from "./analysis.js";
 
 /**
  * Generate HTML wrapper for visualizations.
@@ -376,7 +376,6 @@ export function generateAllVisualizations(predictions, model = null, featureName
 
   // Feature importance
   if (flags.enableFeatureImportance && model && featureNames) {
-    const { trackFeatureImportance } = await import("./analysis.js");
     const importance = trackFeatureImportance(model, featureNames);
 
     if (importance.length > 0) {

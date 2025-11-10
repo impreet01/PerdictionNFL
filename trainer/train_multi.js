@@ -2852,8 +2852,10 @@ async function main() {
   let weekEnv = Number(process.env.WEEK ?? 6);
   if (!Number.isFinite(weekEnv) || weekEnv < 1) weekEnv = 1;
   const targetWeek = Math.max(1, Math.floor(weekEnv));
+  // When doing historical bootstrap, include the current season so we can retrain all weeks after code improvements
+  const includeCurrentSeason = shouldRewriteHistorical();
   const historicalUpperBound = Number.isFinite(targetSeason)
-    ? Math.max(targetSeason - 1, MIN_SEASON)
+    ? Math.max(includeCurrentSeason ? targetSeason : targetSeason - 1, MIN_SEASON)
     : null;
 
   let state = loadTrainingState();
@@ -2921,12 +2923,13 @@ async function main() {
   let seasonsInScope = [targetSeason];
   if (bootstrapRequired || allowHistoricalRewrite) {
     // When forcing historical bootstrap, generate the full season range explicitly
-    // This ensures we train on all historical data (1999-2024) regardless of dataset discovery
+    // This ensures we train on all historical data (1999-2025) including the current season
     if (shouldRewriteHistorical()) {
       const currentYear = new Date().getFullYear();
-      const historicalEnd = Number.isFinite(targetSeason) && targetSeason < currentYear
+      // Include current season in historical bootstrap to retrain all previous weeks after code improvements
+      const historicalEnd = Number.isFinite(targetSeason) && targetSeason <= currentYear
         ? targetSeason
-        : currentYear - 1;
+        : currentYear;
       console.log(`[train] FORCE_HISTORICAL_BOOTSTRAP: Generating full season range ${MIN_SEASON}-${historicalEnd}`);
       const fullRange = [];
       for (let season = MIN_SEASON; season <= historicalEnd; season += 1) {

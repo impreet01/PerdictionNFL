@@ -311,6 +311,429 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /predictions/variant:
+    get:
+      operationId: getVariantPredictions
+      summary: Get A/B test variant predictions for a season/week
+      description: >
+        Retrieve predictions from a specific model variant (baseline, variant_a, variant_b, variant_c).
+        Used for A/B testing different model configurations.
+      parameters:
+        - in: query
+          name: variant
+          required: true
+          schema:
+            type: string
+            enum: [baseline, variant_a, variant_b, variant_c]
+            example: variant_a
+          description: Model variant name
+        - in: query
+          name: season
+          required: true
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          required: true
+          schema:
+            type: integer
+            example: 8
+      responses:
+        "200":
+          description: Variant prediction payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  variant:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PredictionGame"
+        "400":
+          description: Invalid variant or missing parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Variant predictions not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analysis/roi:
+    get:
+      operationId: getROIAnalysis
+      summary: Get ROI (Return on Investment) analysis for betting scenarios
+      description: >
+        Returns betting performance metrics including win rate, profit/loss,
+        and ROI at various confidence thresholds.
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          schema:
+            type: integer
+            example: 8
+      responses:
+        "200":
+          description: ROI analysis data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      threshold_55:
+                        $ref: "#/components/schemas/ROIMetrics"
+                      threshold_60:
+                        $ref: "#/components/schemas/ROIMetrics"
+                      threshold_65:
+                        $ref: "#/components/schemas/ROIMetrics"
+        "404":
+          description: ROI analysis not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analysis/segments:
+    get:
+      operationId: getSegmentedReport
+      summary: Get segmented performance analysis
+      description: >
+        Returns performance metrics broken down by various segments:
+        favorites/underdogs, home/away, divisional/non-divisional, week ranges, etc.
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          schema:
+            type: integer
+            example: 8
+      responses:
+        "200":
+          description: Segmented performance report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  data:
+                    type: object
+                    additionalProperties:
+                      $ref: "#/components/schemas/SegmentMetrics"
+        "404":
+          description: Segmented report not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analysis/errors:
+    get:
+      operationId: getErrorAnalysis
+      summary: Get error analysis and misprediction patterns
+      description: >
+        Returns analysis of model errors including top mispredictions,
+        error patterns (overconfident wins/losses, favorite upsets, etc.),
+        and overall error rate.
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          schema:
+            type: integer
+            example: 8
+      responses:
+        "200":
+          description: Error analysis data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      topErrors:
+                        type: array
+                        items:
+                          type: object
+                      errorPatterns:
+                        type: object
+                      totalErrors:
+                        type: integer
+                      errorRate:
+                        type: number
+        "404":
+          description: Error analysis not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analysis/calibration:
+    get:
+      operationId: getCalibrationMetrics
+      summary: Get calibration metrics (ECE, MCE, reliability bins)
+      description: >
+        Returns calibration analysis including Expected Calibration Error (ECE),
+        Maximum Calibration Error (MCE), and reliability diagram bin data.
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          schema:
+            type: integer
+            example: 8
+      responses:
+        "200":
+          description: Calibration metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      ece:
+                        type: number
+                        description: Expected Calibration Error
+                      mce:
+                        type: number
+                        description: Maximum Calibration Error
+                      bins:
+                        type: array
+                        items:
+                          type: object
+        "404":
+          description: Calibration metrics not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analysis/importance:
+    get:
+      operationId: getFeatureImportance
+      summary: Get feature importance rankings
+      description: >
+        Returns ranked list of feature importance scores showing which features
+        contribute most to model predictions.
+      parameters:
+        - in: query
+          name: season
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          schema:
+            type: integer
+            example: 8
+      responses:
+        "200":
+          description: Feature importance data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      top20:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            feature:
+                              type: string
+                            importance:
+                              type: number
+                            coefficient:
+                              type: number
+                              nullable: true
+                      all:
+                        type: array
+                        items:
+                          type: object
+        "404":
+          description: Feature importance not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /visualizations/calibration:
+    get:
+      operationId: getCalibrationPlot
+      summary: Get calibration plot (reliability diagram) as HTML
+      description: >
+        Returns an interactive HTML visualization showing model calibration
+        with predicted vs. actual probabilities.
+      parameters:
+        - in: query
+          name: season
+          required: true
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          required: true
+          schema:
+            type: integer
+            example: 8
+      responses:
+        "200":
+          description: HTML visualization
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Missing required parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Visualization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /visualizations/confusion:
+    get:
+      operationId: getConfusionMatrix
+      summary: Get confusion matrix visualization as HTML
+      description: >
+        Returns an interactive HTML visualization showing the confusion matrix
+        with true positives, false positives, true negatives, and false negatives.
+      parameters:
+        - in: query
+          name: season
+          required: true
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          required: true
+          schema:
+            type: integer
+            example: 8
+      responses:
+        "200":
+          description: HTML visualization
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Missing required parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Visualization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /visualizations/importance:
+    get:
+      operationId: getFeatureImportancePlot
+      summary: Get feature importance chart as HTML
+      description: >
+        Returns an interactive HTML visualization showing top features
+        ranked by importance with bar chart display.
+      parameters:
+        - in: query
+          name: season
+          required: true
+          schema:
+            type: integer
+            example: 2025
+        - in: query
+          name: week
+          required: true
+          schema:
+            type: integer
+            example: 8
+      responses:
+        "200":
+          description: HTML visualization
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Missing required parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Visualization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /context:
     get:
       operationId: getContext
@@ -1492,6 +1915,56 @@ components:
         away:
           $ref: "#/components/schemas/RollingStrengthMetrics"
       additionalProperties: true
+
+    ROIMetrics:
+      type: object
+      description: Return on Investment metrics for betting scenarios
+      properties:
+        totalBets:
+          type: integer
+          description: Total number of bets placed
+        totalWins:
+          type: integer
+          description: Number of winning bets
+        winRate:
+          type: number
+          description: Win rate (totalWins / totalBets)
+        totalUnits:
+          type: number
+          description: Total units wagered
+        profitUnits:
+          type: number
+          description: Net profit/loss in units
+        roi:
+          type: number
+          description: Return on investment percentage
+        breakEvenRate:
+          type: number
+          description: Win rate needed to break even (typically 52.4% at -110 odds)
+
+    SegmentMetrics:
+      type: object
+      description: Performance metrics for a specific segment
+      properties:
+        count:
+          type: integer
+          description: Number of predictions in this segment
+        logLoss:
+          type: number
+          nullable: true
+          description: Log loss metric
+        brier:
+          type: number
+          nullable: true
+          description: Brier score
+        accuracy:
+          type: number
+          nullable: true
+          description: Classification accuracy
+        auc:
+          type: number
+          nullable: true
+          description: Area under ROC curve
 
     RollingStrengthMetrics:
       type: object

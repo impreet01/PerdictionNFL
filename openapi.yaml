@@ -280,12 +280,8 @@ paths:
       operationId: getAnalysis
       summary: Get various analysis types (ROI, segments, errors, calibration, importance)
       description: >
-        Retrieve different types of analysis data based on the 'type' parameter.
-        - roi: Return on Investment analysis for betting scenarios
-        - segments: Segmented performance analysis (favorites/underdogs, home/away, etc.)
-        - errors: Error analysis and misprediction patterns
-        - calibration: Calibration metrics (ECE, MCE, reliability bins)
-        - importance: Feature importance rankings
+        Analysis by type: roi (betting ROI), segments (performance by category),
+        errors (mispredictions), calibration (ECE/MCE/bins), importance (feature rankings)
       parameters:
         - in: query
           name: type
@@ -395,10 +391,8 @@ paths:
       operationId: getVisualization
       summary: Get visualization HTML (calibration, confusion, importance)
       description: >
-        Returns interactive HTML visualizations based on the 'type' parameter.
-        - calibration: Reliability diagram showing model calibration
-        - confusion: Confusion matrix with TP/FP/TN/FN
-        - importance: Feature importance bar chart
+        HTML visualizations by type: calibration (reliability diagram),
+        confusion (matrix), importance (feature chart)
       parameters:
         - in: query
           name: type
@@ -875,9 +869,7 @@ paths:
       operationId: getMetrics
       summary: Get metrics by week or season scope
       description: >
-        Retrieve metrics data based on the 'scope' parameter.
-        - week: Get per-model metrics for a specific season/week
-        - season: Get cumulative metrics for an entire season
+        Metrics by scope: week (per-model for season/week) or season (cumulative)
       parameters:
         - in: query
           name: scope
@@ -980,9 +972,7 @@ paths:
       operationId: getHistory
       summary: Get prediction history by team or matchup
       description: >
-        Retrieve historical predictions based on the 'by' parameter.
-        - team: List predictions for a specific team across available weeks (requires 'team' param)
-        - game: List predictions for a specific home/away matchup (requires 'home' and 'away' params)
+        History by: team (requires team param) or game (requires home/away params)
       parameters:
         - in: query
           name: by

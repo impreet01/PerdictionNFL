@@ -79,57 +79,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /status:
-    get:
-      operationId: getStatus
-      summary: Alias of /health for uptime probes
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-      responses:
-        "200":
-          description: Same payload as /health
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  latest_week:
-                    type: integer
-                    nullable: true
-                  weeks:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        week:
-                          type: integer
-                        predictions_file:
-                          type: string
-                        model_file:
-                          type: string
-                          nullable: true
-                        injuries_file:
-                          type: string
-                          nullable: true
-        "400":
-          description: Invalid query parameter
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Season not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /weeks:
     get:
       operationId: listWeeks
@@ -170,19 +119,30 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /season/index:
+  /season:
     get:
-      operationId: getSeasonIndex
-      summary: Retrieve the compiled artifact index for a season
+      operationId: getSeason
+      summary: Retrieve season index or summary
+      description: >
+        Get season-level data. Use type=index for the compiled artifact index,
+        or type=summary for season summary metrics.
       parameters:
         - in: query
           name: season
           schema:
             type: integer
             example: 2025
+        - in: query
+          name: type
+          required: true
+          schema:
+            type: string
+            enum: [index, summary]
+            example: index
+          description: Type of season data to retrieve
       responses:
         "200":
-          description: Season index JSON
+          description: Season data
           content:
             application/json:
               schema:
@@ -190,8 +150,12 @@ paths:
                 properties:
                   season:
                     type: integer
+                  type:
+                    type: string
                   data:
-                    $ref: "#/components/schemas/SeasonIndex"
+                    oneOf:
+                      - $ref: "#/components/schemas/SeasonIndex"
+                      - $ref: "#/components/schemas/SeasonSummary"
         "400":
           description: Invalid query parameter
           content:
@@ -199,42 +163,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Index not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /season/summary:
-    get:
-      operationId: getSeasonSummary
-      summary: Retrieve the season summary artifact
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-      responses:
-        "200":
-          description: Season summary JSON
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  data:
-                    $ref: "#/components/schemas/SeasonSummary"
-        "400":
-          description: Invalid query parameter
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Summary not found
+          description: Season data not found
           content:
             application/json:
               schema:
@@ -244,6 +173,9 @@ paths:
     get:
       operationId: getPredictions
       summary: Get predictions for a season/week (defaults to latest)
+      description: >
+        Get predictions for a specific season/week. If no season/week specified,
+        returns the most recent available predictions.
       parameters:
         - in: query
           name: season
@@ -279,33 +211,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Predictions not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /predictions/current:
-    get:
-      operationId: getCurrentPredictions
-      summary: Get predictions for the newest available season/week
-      responses:
-        "200":
-          description: Latest prediction payload
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  week:
-                    type: integer
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/PredictionGame"
-        "404":
-          description: No predictions available yet
           content:
             application/json:
               schema:
@@ -370,338 +275,139 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /analysis/roi:
+  /analysis:
     get:
-      operationId: getROIAnalysis
-      summary: Get ROI (Return on Investment) analysis for betting scenarios
+      operationId: getAnalysis
+      summary: Get various analysis types (ROI, segments, errors, calibration, importance)
       description: >
-        Returns betting performance metrics including win rate, profit/loss,
-        and ROI at various confidence thresholds.
+        Retrieve different types of analysis data based on the 'type' parameter.
+        - roi: Return on Investment analysis for betting scenarios
+        - segments: Segmented performance analysis (favorites/underdogs, home/away, etc.)
+        - errors: Error analysis and misprediction patterns
+        - calibration: Calibration metrics (ECE, MCE, reliability bins)
+        - importance: Feature importance rankings
       parameters:
         - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: week
-          schema:
-            type: integer
-            example: 8
-      responses:
-        "200":
-          description: ROI analysis data
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  week:
-                    type: integer
-                  data:
-                    type: object
-                    properties:
-                      threshold_55:
-                        $ref: "#/components/schemas/ROIMetrics"
-                      threshold_60:
-                        $ref: "#/components/schemas/ROIMetrics"
-                      threshold_65:
-                        $ref: "#/components/schemas/ROIMetrics"
-        "404":
-          description: ROI analysis not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /analysis/segments:
-    get:
-      operationId: getSegmentedReport
-      summary: Get segmented performance analysis
-      description: >
-        Returns performance metrics broken down by various segments:
-        favorites/underdogs, home/away, divisional/non-divisional, week ranges, etc.
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: week
-          schema:
-            type: integer
-            example: 8
-      responses:
-        "200":
-          description: Segmented performance report
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  week:
-                    type: integer
-                  data:
-                    type: object
-                    additionalProperties:
-                      $ref: "#/components/schemas/SegmentMetrics"
-        "404":
-          description: Segmented report not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /analysis/errors:
-    get:
-      operationId: getErrorAnalysis
-      summary: Get error analysis and misprediction patterns
-      description: >
-        Returns analysis of model errors including top mispredictions,
-        error patterns (overconfident wins/losses, favorite upsets, etc.),
-        and overall error rate.
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: week
-          schema:
-            type: integer
-            example: 8
-      responses:
-        "200":
-          description: Error analysis data
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  week:
-                    type: integer
-                  data:
-                    type: object
-                    properties:
-                      topErrors:
-                        type: array
-                        items:
-                          type: object
-                      errorPatterns:
-                        type: object
-                      totalErrors:
-                        type: integer
-                      errorRate:
-                        type: number
-        "404":
-          description: Error analysis not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /analysis/calibration:
-    get:
-      operationId: getCalibrationMetrics
-      summary: Get calibration metrics (ECE, MCE, reliability bins)
-      description: >
-        Returns calibration analysis including Expected Calibration Error (ECE),
-        Maximum Calibration Error (MCE), and reliability diagram bin data.
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: week
-          schema:
-            type: integer
-            example: 8
-      responses:
-        "200":
-          description: Calibration metrics
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  week:
-                    type: integer
-                  data:
-                    type: object
-                    properties:
-                      ece:
-                        type: number
-                        description: Expected Calibration Error
-                      mce:
-                        type: number
-                        description: Maximum Calibration Error
-                      bins:
-                        type: array
-                        items:
-                          type: object
-        "404":
-          description: Calibration metrics not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /analysis/importance:
-    get:
-      operationId: getFeatureImportance
-      summary: Get feature importance rankings
-      description: >
-        Returns ranked list of feature importance scores showing which features
-        contribute most to model predictions.
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: week
-          schema:
-            type: integer
-            example: 8
-      responses:
-        "200":
-          description: Feature importance data
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  week:
-                    type: integer
-                  data:
-                    type: object
-                    properties:
-                      top20:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            feature:
-                              type: string
-                            importance:
-                              type: number
-                            coefficient:
-                              type: number
-                              nullable: true
-                      all:
-                        type: array
-                        items:
-                          type: object
-        "404":
-          description: Feature importance not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /visualizations/calibration:
-    get:
-      operationId: getCalibrationPlot
-      summary: Get calibration plot (reliability diagram) as HTML
-      description: >
-        Returns an interactive HTML visualization showing model calibration
-        with predicted vs. actual probabilities.
-      parameters:
-        - in: query
-          name: season
+          name: type
           required: true
           schema:
+            type: string
+            enum: [roi, segments, errors, calibration, importance]
+            example: roi
+          description: Type of analysis to retrieve
+        - in: query
+          name: season
+          schema:
             type: integer
             example: 2025
         - in: query
           name: week
-          required: true
           schema:
             type: integer
             example: 8
       responses:
         "200":
-          description: HTML visualization
+          description: Analysis data based on type
           content:
-            text/html:
+            application/json:
               schema:
-                type: string
+                type: object
+                properties:
+                  season:
+                    type: integer
+                  week:
+                    type: integer
+                  type:
+                    type: string
+                  data:
+                    oneOf:
+                      - type: object
+                        description: ROI analysis
+                        properties:
+                          threshold_55:
+                            $ref: "#/components/schemas/ROIMetrics"
+                          threshold_60:
+                            $ref: "#/components/schemas/ROIMetrics"
+                          threshold_65:
+                            $ref: "#/components/schemas/ROIMetrics"
+                      - type: object
+                        description: Segmented report
+                        additionalProperties:
+                          $ref: "#/components/schemas/SegmentMetrics"
+                      - type: object
+                        description: Error analysis
+                        properties:
+                          topErrors:
+                            type: array
+                            items:
+                              type: object
+                          errorPatterns:
+                            type: object
+                          totalErrors:
+                            type: integer
+                          errorRate:
+                            type: number
+                      - type: object
+                        description: Calibration metrics
+                        properties:
+                          ece:
+                            type: number
+                          mce:
+                            type: number
+                          bins:
+                            type: array
+                            items:
+                              type: object
+                      - type: object
+                        description: Feature importance
+                        properties:
+                          top20:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                feature:
+                                  type: string
+                                importance:
+                                  type: number
+                                coefficient:
+                                  type: number
+                                  nullable: true
+                          all:
+                            type: array
+                            items:
+                              type: object
         "400":
-          description: Missing required parameters
+          description: Invalid parameters
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Visualization not found
+          description: Analysis not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /visualizations/confusion:
+  /visualizations:
     get:
-      operationId: getConfusionMatrix
-      summary: Get confusion matrix visualization as HTML
+      operationId: getVisualization
+      summary: Get visualization HTML (calibration, confusion, importance)
       description: >
-        Returns an interactive HTML visualization showing the confusion matrix
-        with true positives, false positives, true negatives, and false negatives.
+        Returns interactive HTML visualizations based on the 'type' parameter.
+        - calibration: Reliability diagram showing model calibration
+        - confusion: Confusion matrix with TP/FP/TN/FN
+        - importance: Feature importance bar chart
       parameters:
         - in: query
-          name: season
+          name: type
           required: true
           schema:
-            type: integer
-            example: 2025
-        - in: query
-          name: week
-          required: true
-          schema:
-            type: integer
-            example: 8
-      responses:
-        "200":
-          description: HTML visualization
-          content:
-            text/html:
-              schema:
-                type: string
-        "400":
-          description: Missing required parameters
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Visualization not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /visualizations/importance:
-    get:
-      operationId: getFeatureImportancePlot
-      summary: Get feature importance chart as HTML
-      description: >
-        Returns an interactive HTML visualization showing top features
-        ranked by importance with bar chart display.
-      parameters:
+            type: string
+            enum: [calibration, confusion, importance]
+            example: calibration
+          description: Type of visualization to retrieve
         - in: query
           name: season
           required: true
@@ -738,6 +444,9 @@ paths:
     get:
       operationId: getContext
       summary: Get context pack for a season/week (defaults to latest)
+      description: >
+        Get context data for a specific season/week. If no season/week specified,
+        returns the context built through the latest week.
       parameters:
         - in: query
           name: season
@@ -788,8 +497,14 @@ paths:
                 properties:
                   season:
                     type: integer
+                    nullable: true
                   week:
                     type: integer
+                    nullable: true
+                  built_through_week:
+                    type: integer
+                    nullable: true
+                    description: Present when no season/week specified (latest context)
                   filters:
                     type: object
                     additionalProperties: false
@@ -835,37 +550,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /context/current:
-    get:
-      operationId: getCurrentContext
-      summary: Get the context payload built through the latest week
-      responses:
-        "200":
-          description: Context current payload
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                    nullable: true
-                  built_through_week:
-                    type: integer
-                    nullable: true
-                  data:
-                    $ref: "#/components/schemas/ContextPayload"
-        "404":
-          description: Context not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /injuries:
     get:
       operationId: getInjuries
       summary: Get injury reports for a season/week (defaults to latest)
+      description: >
+        Get injury reports for a specific season/week. If no season/week specified,
+        returns the latest available injury report.
       parameters:
         - in: query
           name: season
@@ -923,8 +614,10 @@ paths:
                 properties:
                   season:
                     type: integer
+                    nullable: true
                   week:
                     type: integer
+                    nullable: true
                   filters:
                     type: object
                     additionalProperties: false
@@ -958,69 +651,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /injuries/current:
-    get:
-      operationId: getCurrentInjuries
-      summary: Get the latest available injury report
-      parameters:
-        - in: query
-          name: team
-          description: Optional comma-separated team filter.
-          schema:
-            type: string
-        - in: query
-          name: status
-          description: Optional comma-separated status filter.
-          schema:
-            type: string
-        - in: query
-          name: limit
-          description: Optional maximum number of records to return.
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Latest injury report payload
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                    nullable: true
-                  filters:
-                    type: object
-                    additionalProperties: false
-                    properties:
-                      teams:
-                        type: array
-                        items:
-                          type: string
-                      statuses:
-                        type: array
-                        items:
-                          type: string
-                      limit:
-                        type: integer
-                  week:
-                    type: integer
-                    nullable: true
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/InjuryEntry"
-        "404":
-          description: Injury artifact not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /weather:
     get:
       operationId: getWeather
       summary: Get weather outlook for a season/week (defaults to latest)
+      description: >
+        Get weather outlook for a specific season/week. If no season/week specified,
+        returns the latest weather outlook.
       parameters:
         - in: query
           name: season
@@ -1042,8 +679,10 @@ paths:
                 properties:
                   season:
                     type: integer
+                    nullable: true
                   week:
                     type: integer
+                    nullable: true
                   data:
                     type: array
                     items:
@@ -1054,35 +693,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Weather artifact not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /weather/current:
-    get:
-      operationId: getCurrentWeather
-      summary: Get the latest weather outlook
-      responses:
-        "200":
-          description: Latest weather payload
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                    nullable: true
-                  week:
-                    type: integer
-                    nullable: true
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/WeatherEntry"
         "404":
           description: Weather artifact not found
           content:
@@ -1260,11 +870,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /metrics/week:
+  /metrics:
     get:
-      operationId: getWeekMetrics
-      summary: Get per-model metrics for a season/week
+      operationId: getMetrics
+      summary: Get metrics by week or season scope
+      description: >
+        Retrieve metrics data based on the 'scope' parameter.
+        - week: Get per-model metrics for a specific season/week
+        - season: Get cumulative metrics for an entire season
       parameters:
+        - in: query
+          name: scope
+          required: true
+          schema:
+            type: string
+            enum: [week, season]
+            example: week
+          description: Scope of metrics (week or season)
         - in: query
           name: season
           schema:
@@ -1275,55 +897,26 @@ paths:
           schema:
             type: integer
             example: 5
+          description: Required when scope=week
       responses:
         "200":
-          description: Weekly metrics payload
+          description: Metrics payload
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  scope:
+                    type: string
                   season:
                     type: integer
                   week:
                     type: integer
+                    nullable: true
                   data:
-                    $ref: "#/components/schemas/WeekMetrics"
-        "400":
-          description: Invalid query parameter
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Metrics artifact not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /metrics/season:
-    get:
-      operationId: getSeasonMetrics
-      summary: Get cumulative metrics for a season
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
-      responses:
-        "200":
-          description: Season metrics payload
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  season:
-                    type: integer
-                  data:
-                    $ref: "#/components/schemas/SeasonMetrics"
+                    oneOf:
+                      - $ref: "#/components/schemas/WeekMetrics"
+                      - $ref: "#/components/schemas/SeasonMetrics"
         "400":
           description: Invalid query parameter
           content:
@@ -1382,11 +975,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /history/team:
+  /history:
     get:
-      operationId: getTeamHistory
-      summary: List predictions for a team across available weeks
+      operationId: getHistory
+      summary: Get prediction history by team or matchup
+      description: >
+        Retrieve historical predictions based on the 'by' parameter.
+        - team: List predictions for a specific team across available weeks (requires 'team' param)
+        - game: List predictions for a specific home/away matchup (requires 'home' and 'away' params)
       parameters:
+        - in: query
+          name: by
+          required: true
+          schema:
+            type: string
+            enum: [team, game]
+            example: team
+          description: History type (team or game matchup)
         - in: query
           name: season
           schema:
@@ -1394,74 +999,41 @@ paths:
             example: 2025
         - in: query
           name: team
-          required: true
           schema:
             type: string
             example: BUF
-      responses:
-        "200":
-          description: Team history payload
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  team:
-                    type: string
-                  season:
-                    type: integer
-                    nullable: true
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/HistoryEntry"
-        "400":
-          description: Missing or invalid parameters
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: No predictions available
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /history/game:
-    get:
-      operationId: getMatchupHistory
-      summary: List predictions for a specific home/away matchup
-      parameters:
-        - in: query
-          name: season
-          schema:
-            type: integer
-            example: 2025
+          description: Required when by=team
         - in: query
           name: home
-          required: true
           schema:
             type: string
             example: KC
+          description: Required when by=game
         - in: query
           name: away
-          required: true
           schema:
             type: string
             example: BUF
+          description: Required when by=game
       responses:
         "200":
-          description: Matchup history payload
+          description: History payload
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  by:
+                    type: string
+                  team:
+                    type: string
+                    nullable: true
                   home:
                     type: string
+                    nullable: true
                   away:
                     type: string
+                    nullable: true
                   season:
                     type: integer
                     nullable: true

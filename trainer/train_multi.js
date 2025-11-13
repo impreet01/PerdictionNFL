@@ -3301,6 +3301,7 @@ async function main() {
       }
 
       const trainWeek = async (wk, { isTargetWeek }) => {
+        // Check for completion marker first - fastest path to skip
         if (!historicalOverride && weekStatusExists(resolvedSeason, wk)) {
           console.log(
             `[train] Season ${resolvedSeason} week ${wk}: completion marker detected – skipping.`
@@ -3312,8 +3313,11 @@ async function main() {
             skipped: true
           };
         }
-        const hasArtifacts = weekArtifactsExist(resolvedSeason, wk);
-        if (!historicalOverride && hasArtifacts && !isTargetWeek) {
+        // Check if prediction artifacts exist - prevents updating predictions with new data
+        // This ensures predictions remain frozen once generated, maintaining integrity
+        // Use REWRITE_HISTORICAL=true or similar flags to force regeneration
+        const hasArtifacts = weekArtifactsExist(resolvedSeason, wk, HISTORICAL_ARTIFACT_PREFIXES);
+        if (!historicalOverride && hasArtifacts) {
           console.log(
             `[train] Season ${resolvedSeason} week ${wk}: cached artifacts detected – skipping retrain.`
           );
@@ -3326,7 +3330,7 @@ async function main() {
           };
         }
         const result = await runTraining({ season: resolvedSeason, week: wk, data: sharedData });
-        if (!allowHistoricalRewrite && hasArtifacts && !isTargetWeek) {
+        if (!allowHistoricalRewrite && hasArtifacts) {
           console.log(
             `[train] skipping artifact write for season ${resolvedSeason} week ${wk} (historical artifacts locked)`
           );

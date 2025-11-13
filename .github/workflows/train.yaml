@@ -11,6 +11,11 @@ on:
       week:
         description: 'Week override (default: auto)'
         required: false
+      force_regenerate:
+        description: 'Force regenerate predictions even if artifacts exist'
+        required: false
+        type: boolean
+        default: false
 
 env:
   ARTIFACTS_DIR: ${{ vars.ARTIFACTS_DIR || 'artifacts' }}
@@ -166,6 +171,7 @@ jobs:
           MAX_WORKERS: '1'
           DATA_FETCH_CONCURRENCY: '1'
           NODE_OPTIONS: '--max-old-space-size=7168 --expose-gc'
+          REWRITE_HISTORICAL: ${{ github.event.inputs.force_regenerate || 'false' }}
 
       - name: Run hybrid calibration
         timeout-minutes: 25

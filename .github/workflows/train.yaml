@@ -104,11 +104,11 @@ jobs:
           echo "Cache miss detected - running historical training to populate cache"
           echo "This will train on all historical seasons (1999-2024) to build the training cache"
           echo "Using aggressive memory optimization: batch_size=1, max_workers=1, serial processing"
+          echo "Respecting existing prediction artifacts to maintain integrity"
           # Unset SEASON and WEEK so train_multi.js doesn't enter weekly mode
           unset SEASON WEEK
-          FORCE_HISTORICAL_BOOTSTRAP=true CI_FAST=1 BATCH_SIZE=1 MAX_WORKERS=1 DATA_FETCH_CONCURRENCY=1 npm run train:multi
+          CI_FAST=1 BATCH_SIZE=1 MAX_WORKERS=1 DATA_FETCH_CONCURRENCY=1 npm run train:multi
         env:
-          FORCE_HISTORICAL_BOOTSTRAP: 'true'
           BATCH_SIZE: '1'
           MAX_WORKERS: '1'
           DATA_FETCH_CONCURRENCY: '1'

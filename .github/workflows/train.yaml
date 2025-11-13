@@ -119,6 +119,12 @@ jobs:
         env:
           ROTOWIRE_ENABLED: 'true'
 
+      - name: Validate data freshness
+        run: |
+          echo "Validating fetched data for current week only..."
+          node scripts/validateDataFreshness.js --season=${{ env.SEASON }} --week=${{ env.WEEK }}
+        continue-on-error: true
+
       - name: Build game context
         run: npm run build:context
         env:
@@ -203,6 +209,13 @@ jobs:
             "${ROOT}/diagnostics_${stamp}.json" \
             "${ROOT}/context_${{ env.SEASON }}_W${{ env.PAD_WEEK }}.json" \
             "${ROOT}/training_state.json" \
+            2>/dev/null || true
+
+          # Add weekly data files (injuries, weather, markets) for current week only
+          git add -f \
+            "${ROOT}/injuries_${stamp}.json" \
+            "${ROOT}/weather_${stamp}.json" \
+            "${ROOT}/markets_${stamp}.json" \
             2>/dev/null || true
 
           # Add summary files

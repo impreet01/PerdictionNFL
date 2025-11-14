@@ -15,6 +15,11 @@ on:
         description: 'End season for batch (if season=all)'
         required: false
         default: '2025'
+      force_regenerate:
+        description: 'Force regenerate predictions even if artifacts exist'
+        required: false
+        type: boolean
+        default: false
 
 env:
   ARTIFACTS_DIR: ${{ vars.ARTIFACTS_DIR || 'artifacts' }}
@@ -68,8 +73,10 @@ jobs:
           );
 
           if (forceAll) {
-            console.log('🔥 FORCE_HISTORICAL_BOOTSTRAP detected - ignoring all cached state');
+            console.log('🔥 Force regenerate enabled - will override existing artifacts');
             console.log('📋 Will train ALL seasons from 1999-2025 regardless of cache');
+          } else {
+            console.log('📋 Will skip seasons with existing artifacts (use force_regenerate to override)');
           }
 
           const input = process.env.SEASON_INPUT || 'all';
@@ -104,7 +111,7 @@ jobs:
           SEASON_INPUT: ${{ github.event.inputs.season }}
           START_SEASON: ${{ github.event.inputs.start_season }}
           END_SEASON: ${{ github.event.inputs.end_season }}
-          FORCE_HISTORICAL_BOOTSTRAP: 'true'
+          FORCE_HISTORICAL_BOOTSTRAP: ${{ github.event.inputs.force_regenerate || 'false' }}
 
   # Job 2: Train each season independently (matrix strategy)
   train-season:
@@ -161,12 +168,12 @@ jobs:
         run: |
           echo "Training season ${{ matrix.season }} with historical context"
           # Train this specific season with access to all prior seasons
-          # FORCE_HISTORICAL_BOOTSTRAP ensures artifacts are regenerated even if they exist
-          FORCE_HISTORICAL_BOOTSTRAP=true BATCH_START=${{ matrix.season }} BATCH_END=${{ matrix.season }} \
+          # Only regenerates artifacts if force_regenerate=true, otherwise respects existing predictions
+          BATCH_START=${{ matrix.season }} BATCH_END=${{ matrix.season }} \
           CI_FAST=1 MAX_WORKERS=1 DATA_FETCH_CONCURRENCY=1 \
           npm run train:multi
         env:
-          FORCE_HISTORICAL_BOOTSTRAP: 'true'
+          FORCE_HISTORICAL_BOOTSTRAP: ${{ github.event.inputs.force_regenerate || 'false' }}
           NODE_OPTIONS: '--max-old-space-size=7168 --expose-gc'
           BATCH_START: ${{ matrix.season }}
           BATCH_END: ${{ matrix.season }}

@@ -892,45 +892,10 @@
     if (winRateEl) winRateEl.textContent = `${(best.winRate * 100).toFixed(1)}%`;
   }
 
-  // ===== TAB HANDLING =====
-
-  function handleTabChange(tabId) {
-    // Show/hide tab panels
-    document.querySelectorAll('.tab-panel').forEach(panel => {
-      panel.hidden = panel.id !== tabId;
-    });
-
-    // Update tab buttons
-    document.querySelectorAll('.tab').forEach(tab => {
-      const isActive = tab.getAttribute('aria-controls') === tabId;
-      tab.classList.toggle('is-active', isActive);
-      tab.setAttribute('aria-selected', isActive);
-    });
-
-    // Load data for specific tabs
-    if (tabId === 'tab-analytics' && !enhancedState.analyticsLoaded) {
-      loadAnalyticsData();
-      enhancedState.analyticsLoaded = true;
-    }
-
-    if (tabId === 'tab-betting' && !enhancedState.bettingLoaded) {
-      loadBettingData();
-      enhancedState.bettingLoaded = true;
-    }
-  }
-
   // ===== INITIALIZATION =====
 
   function init() {
     console.log('Initializing enhanced NFL analytics platform...');
-
-    // Bind tab clicks
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', (e) => {
-        const tabId = e.target.getAttribute('aria-controls');
-        handleTabChange(tabId);
-      });
-    });
 
     // Bind calibration model selector
     const calModelSelect = document.getElementById('calibration-model-select');
@@ -967,6 +932,21 @@
       };
     }
   }
+
+  // Export loading functions for app.js to call
+  window.loadEnhancedAnalytics = function() {
+    if (!enhancedState.analyticsLoaded) {
+      loadAnalyticsData();
+      enhancedState.analyticsLoaded = true;
+    }
+  };
+
+  window.loadEnhancedBetting = function() {
+    if (!enhancedState.bettingLoaded) {
+      loadBettingData();
+      enhancedState.bettingLoaded = true;
+    }
+  };
 
   // Start initialization when DOM is ready
   if (document.readyState === 'loading') {

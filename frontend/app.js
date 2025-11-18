@@ -210,6 +210,14 @@ function activateTab(tabId) {
     loadExplanationsTab();
   } else if (newTab === "tab-history") {
     loadHistoryTab();
+  } else if (newTab === "tab-analytics") {
+    if (window.loadEnhancedAnalytics) {
+      window.loadEnhancedAnalytics();
+    }
+  } else if (newTab === "tab-betting") {
+    if (window.loadEnhancedBetting) {
+      window.loadEnhancedBetting();
+    }
   }
 }
 

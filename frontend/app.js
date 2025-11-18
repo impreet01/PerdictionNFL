@@ -1486,3 +1486,12 @@ function buildStatusMessage() {
   );
   return parts.join(" ");
 }
+
+// Export state and functions globally for enhanced app integration
+window.state = state;
+window.charts = charts;
+window.DEFAULT_MODEL_CONFIG = DEFAULT_MODEL_CONFIG;
+window.seasonMetricsCache = seasonMetricsCache;
+window.renderPredictions = renderPredictions;
+window.loadWeekContext = loadWeekContext;
+window.showToast = showToast;

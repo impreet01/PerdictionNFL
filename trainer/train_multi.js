@@ -2806,8 +2806,19 @@ async function runWeeklyWorkflow({ season, week }) {
     }
   });
 
-  if (!trainingResult || trainingResult.skipped) {
+  if (!trainingResult) {
     throw new Error(`[train] Weekly training failed to produce a model for season ${season} week ${week}.`);
+  }
+
+  if (trainingResult.skipped) {
+    console.log(
+      `[train] Training skipped for season ${season} week ${week}: model already exists with same feature hash.`
+    );
+    // Update training state to record this week was processed
+    let state = loadTrainingState();
+    state = recordLatestRun(state, BOOTSTRAP_KEYS.MODEL, { season, week, weekly: true });
+    saveTrainingState(state);
+    return trainingResult;
   }
 
   const statsRecord = await persistWeeklyFeatureStats({

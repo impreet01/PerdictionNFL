@@ -263,12 +263,38 @@ async function discoverSeasons() {
   setStatus("Discovering available seasons…");
   const currentYear = new Date().getFullYear();
   const candidates = [];
+
+  // Check seasons in parallel for faster discovery
+  const checkPromises = [];
   for (let season = 1999; season <= currentYear + 1; season += 1) {
-    const data = await fetchSeasonMetrics(season, { silent: true });
-    if (data) {
+    checkPromises.push(
+      (async () => {
+        // First try season metrics file
+        const data = await fetchSeasonMetrics(season, { silent: true });
+        if (data) {
+          return season;
+        }
+        // Fallback: check if week 1 predictions exist
+        try {
+          const response = await fetch(`../artifacts/predictions_${season}_W01.json`, { method: 'HEAD' });
+          if (response.ok) {
+            return season;
+          }
+        } catch (e) {
+          // Ignore
+        }
+        return null;
+      })()
+    );
+  }
+
+  const results = await Promise.all(checkPromises);
+  results.forEach(season => {
+    if (season !== null) {
       candidates.push(season);
     }
-  }
+  });
+
   if (candidates.length === 0) {
     const fallback = currentYear - 1;
     candidates.push(fallback);
@@ -288,14 +314,30 @@ async function discoverSeasons() {
 }
 
 async function loadSeasonContext() {
-  const metrics = await fetchSeasonMetrics(state.season);
-  populateWeekOptions(metrics);
+  const metrics = await fetchSeasonMetrics(state.season, { silent: true });
+  await populateWeekOptions(metrics);
   await loadWeekContext();
 }
 
-function populateWeekOptions(seasonMetrics) {
+async function populateWeekOptions(seasonMetrics) {
   weekSelect.innerHTML = "";
   const maxWeeks = 23;
+
+  // Determine which weeks have predictions by checking files
+  const weekChecks = [];
+  for (let week = 1; week <= maxWeeks; week += 1) {
+    weekChecks.push(
+      fetch(`../artifacts/predictions_${state.season}_W${String(week).padStart(2, '0')}.json`, { method: 'HEAD' })
+        .then(r => r.ok ? week : null)
+        .catch(() => null)
+    );
+  }
+
+  const weekResults = await Promise.all(weekChecks);
+  const availableWeeks = weekResults.filter(w => w !== null);
+  const latestAvailableWeek = availableWeeks.length > 0 ? Math.max(...availableWeeks) : 1;
+
+  // Use metrics latest_completed_week if available, otherwise use latest available
   let latestCompletedWeek = seasonMetrics?.latest_completed_week ?? null;
   if (!latestCompletedWeek && Array.isArray(seasonMetrics?.weeks)) {
     latestCompletedWeek = seasonMetrics.weeks.reduce((acc, week) => {
@@ -303,17 +345,26 @@ function populateWeekOptions(seasonMetrics) {
       return Number.isFinite(weekNum) && weekNum > acc ? weekNum : acc;
     }, 0);
   }
+
+  // If metrics say week 6 but we have predictions up to week 12, use the higher number
+  const effectiveLatestWeek = Math.max(latestCompletedWeek || 0, latestAvailableWeek);
+
   for (let week = 1; week <= maxWeeks; week += 1) {
     const option = document.createElement("option");
     option.value = String(week);
     let label = `Week ${week}`;
-    if (latestCompletedWeek && week > latestCompletedWeek) {
-      label += " (upcoming)";
+    const hasData = availableWeeks.includes(week);
+    if (!hasData) {
+      label += " (no data)";
+    } else if (latestCompletedWeek && week > latestCompletedWeek) {
+      label += " (pending results)";
     }
     option.textContent = label;
     weekSelect.append(option);
   }
-  state.week = latestCompletedWeek || 1;
+
+  // Default to the latest week with data
+  state.week = effectiveLatestWeek || 1;
   weekSelect.value = String(state.week);
 }
 

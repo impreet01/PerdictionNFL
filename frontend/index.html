@@ -15,6 +15,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js" defer></script>
     <script src="app.js" defer></script>
+    <script type="module" src="app-enhanced.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -46,6 +47,12 @@
       <nav class="tabs" role="tablist" aria-label="Dashboard sections">
         <button class="tab is-active" role="tab" aria-selected="true" aria-controls="tab-predictions" id="tab-predictions-btn">
           Predictions
+        </button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="tab-analytics" id="tab-analytics-btn">
+          Analytics
+        </button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="tab-betting" id="tab-betting-btn">
+          Betting
         </button>
         <button class="tab" role="tab" aria-selected="false" aria-controls="tab-metrics" id="tab-metrics-btn">
           Metrics
@@ -85,6 +92,14 @@
 
         <section class="status" aria-live="polite">
           <p id="status-message">Discovering available seasons…</p>
+        </section>
+
+        <!-- Smart Cards Section -->
+        <section class="smart-cards-section" id="smart-cards-container" aria-label="Quick insights">
+        </section>
+
+        <!-- Advanced Filters -->
+        <section id="advanced-filters-container" aria-label="Advanced filters">
         </section>
 
         <section class="search" aria-label="Prediction search tools">
@@ -150,6 +165,135 @@
             <p id="trend-chart-message" class="chart-message" role="status"></p>
           </article>
         </section>
+      </section>
+
+      <!-- Analytics Tab -->
+      <section id="tab-analytics" class="tab-panel" role="tabpanel" aria-labelledby="tab-analytics-btn" hidden>
+        <div class="panel-intro">
+          <h2>Performance Analytics</h2>
+          <p>
+            Deep-dive into model performance with advanced visualizations. Track cumulative accuracy,
+            analyze calibration curves, and compare model performance across different dimensions.
+          </p>
+        </div>
+
+        <div class="analytics-grid">
+          <!-- Season Accuracy Tracker -->
+          <article class="card card--wide">
+            <header>
+              <h3>Season Accuracy Tracker</h3>
+              <div class="chart-toolbar">
+                <label class="toggle-option">
+                  <input type="checkbox" id="show-confidence-intervals" checked>
+                  <span>Show CI</span>
+                </label>
+                <label class="toggle-option">
+                  <input type="checkbox" id="show-rolling-average">
+                  <span>Rolling Avg</span>
+                </label>
+                <button type="button" class="chart-reset" data-chart="accuracy-tracker">Reset Zoom</button>
+              </div>
+            </header>
+            <canvas id="accuracy-tracker-chart" aria-label="Cumulative accuracy over season"></canvas>
+          </article>
+
+          <!-- Calibration Plot -->
+          <article class="card">
+            <header>
+              <h3>Calibration Plot</h3>
+              <div class="chart-toolbar">
+                <select id="calibration-model-select" aria-label="Select model for calibration">
+                  <option value="blended">Ensemble</option>
+                  <option value="logistic">Logistic</option>
+                  <option value="tree">Tree</option>
+                  <option value="ann">ANN</option>
+                </select>
+              </div>
+            </header>
+            <canvas id="calibration-chart" aria-label="Calibration plot showing predicted vs actual"></canvas>
+            <div id="calibration-metrics" class="calibration-metrics"></div>
+          </article>
+
+          <!-- Performance Matrix -->
+          <article class="card">
+            <header>
+              <h3>Performance Matrix</h3>
+            </header>
+            <div id="performance-matrix-container"></div>
+          </article>
+
+          <!-- Predictive Power Metrics -->
+          <article class="card card--wide">
+            <header>
+              <h3>Predictive Power Metrics</h3>
+            </header>
+            <div id="predictive-metrics-container"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Betting Tab -->
+      <section id="tab-betting" class="tab-panel" role="tabpanel" aria-labelledby="tab-betting-btn" hidden>
+        <div class="panel-intro">
+          <h2>Betting Analytics</h2>
+          <p>
+            Track hypothetical betting performance, analyze ROI by confidence threshold,
+            and explore optimal bet sizing with Kelly criterion suggestions.
+          </p>
+        </div>
+
+        <div class="betting-grid">
+          <!-- ROI Dashboard -->
+          <article class="card card--wide" id="roi-dashboard-container">
+            <header>
+              <h3>ROI Analysis</h3>
+              <div class="chart-toolbar">
+                <select id="roi-model-select" aria-label="Select model for ROI">
+                  <option value="blended">Ensemble</option>
+                  <option value="logistic">Logistic</option>
+                  <option value="tree">Tree</option>
+                  <option value="ann">ANN</option>
+                </select>
+              </div>
+            </header>
+            <div id="roi-summary-cards" class="roi-summary-cards"></div>
+            <div class="roi-charts">
+              <div class="roi-chart-wrapper">
+                <canvas id="roi-threshold-chart" aria-label="ROI by confidence threshold"></canvas>
+              </div>
+              <div class="roi-chart-wrapper">
+                <canvas id="bankroll-chart" aria-label="Bankroll progression"></canvas>
+              </div>
+            </div>
+          </article>
+
+          <!-- Bet History -->
+          <article class="card">
+            <header>
+              <h3>Recent Bets</h3>
+            </header>
+            <div id="bet-history-container"></div>
+          </article>
+
+          <!-- Risk Metrics -->
+          <article class="card">
+            <header>
+              <h3>Risk Metrics</h3>
+            </header>
+            <div id="risk-metrics-container">
+              <dl class="risk-metrics-list">
+                <dt>Sharpe Ratio</dt>
+                <dd id="sharpe-ratio">—</dd>
+                <dt>Max Drawdown</dt>
+                <dd id="max-drawdown">—</dd>
+                <dt>Win Rate</dt>
+                <dd id="win-rate">—</dd>
+                <dt>Volatility</dt>
+                <dd id="volatility">—</dd>
+              </dl>
+            </div>
+          </article>
+        </div>
       </section>
 
       <section id="tab-metrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-metrics-btn" hidden>
